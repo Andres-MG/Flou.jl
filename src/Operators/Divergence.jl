@@ -3,13 +3,22 @@ abstract type AbstractDivOperator <: AbstractOperator end
 function volume_div_operator!  end
 function surface_div_operator!  end
 
-function surface_div_operator!(dQ, Fn, mesh, dh, stdvec, eq, ::AbstractDivOperator)
+function surface_div_operator!(
+    dQ,
+    Fn,
+    dg::DGSEM,
+    eq::AbstractEquation,
+    ::AbstractDivOperator,
+)
+    # Unpack
+    (; mesh, dofhandler, stdvec) = dg
+
     ndim = spatialdim(mesh)
-    for ireg in eachregion(dh)
+    for ireg in eachregion(dofhandler)
         std = stdvec[ireg]
 
-        @flouthreads for ieloc in eachelement(dh, ireg)
-            ie = reg2loc(dh, ireg, ieloc)
+        @flouthreads for ieloc in eachelement(dofhandler, ireg)
+            ie = reg2loc(dofhandler, ireg, ieloc)
             iface = element(mesh, ie).faceinds
             facepos = element(mesh, ie).facepos
 
@@ -65,15 +74,18 @@ end
 
 struct WeakDivOperator <: AbstractDivOperator end
 
-function volume_div_operator!(dQ, Q, dh, stdvec, physelem, eq, ::WeakDivOperator)
-    for ireg in eachregion(dh)
+function volume_div_operator!(dQ, Q, dg::DGSEM, eq::AbstractEquation, ::WeakDivOperator)
+    # Unpack
+    (; dofhandler, stdvec, physelem) = dg
+
+    for ireg in eachregion(dofhandler)
         std = stdvec[ireg]
         ndim = spatialdim(std)
 
         # Buffers
         Fb = @threadbuff Array{eltype(Q),3}(undef, ndim, nvariables(eq), ndofs(std))
         F̃b = @threadbuff Array{eltype(Q),3}(undef, ndofs(std), nvariables(eq), ndim)
-        @flouthreads for ieloc in eachelement(dh, ireg)
+        @flouthreads for ieloc in eachelement(dofhandler, ireg)
             F = Fb[Threads.threadid()]
             F̃ = F̃b[Threads.threadid()]
 
@@ -83,7 +95,7 @@ function volume_div_operator!(dQ, Q, dh, stdvec, physelem, eq, ::WeakDivOperator
             end
 
             # Contravariant fluxes
-            ie = reg2loc(dh, ireg, ieloc)
+            ie = reg2loc(dofhandler, ireg, ieloc)
             for ivar in eachvariable(eq)
                 for i in eachindex(std)
                     Ja = element(physelem, ie).Ja[i]
@@ -146,15 +158,18 @@ end
 
 struct StrongDivOperator <: AbstractDivOperator end
 
-function volume_div_operator!(dQ, Q, dh, stdvec, physelem, eq, ::StrongDivOperator)
-    for ireg in eachregion(dh)
+function volume_div_operator!(dQ, Q, dg::DGSEM, eq::AbstractEquation, ::StrongDivOperator)
+    # Unpack
+    (; dofhandler, stdvec, physelem) = dg
+
+    for ireg in eachregion(dofhandler)
         std = stdvec[ireg]
         ndim = spatialdim(std)
 
         # Buffers
         Fb = @threadbuff Array{eltype(Q),3}(undef, ndim, nvariables(eq), ndofs(std))
         F̃b = @threadbuff Array{eltype(Q),3}(undef, ndofs(std), nvariables(eq), ndim)
-        @flouthreads for ieloc in eachelement(dh, ireg)
+        @flouthreads for ieloc in eachelement(dofhandler, ireg)
             F = Fb[Threads.threadid()]
             F̃ = F̃b[Threads.threadid()]
 
@@ -164,7 +179,7 @@ function volume_div_operator!(dQ, Q, dh, stdvec, physelem, eq, ::StrongDivOperat
             end
 
             # Contravariant fluxes
-            ie = reg2loc(dh, ireg, ieloc)
+            ie = reg2loc(dofhandler, ireg, ieloc)
             for ivar in eachvariable(eq)
                 for i in eachindex(std)
                     Ja = element(physelem, ie).Ja[i]
@@ -237,8 +252,11 @@ end
 
 function twopointflux! end
 
-function volume_div_operator!(dQ, Q, dh, stdvec, physelem, eq, op::SplitDivOperator)
-    for ireg in eachregion(dh)
+function volume_div_operator!(dQ, Q, dg::DGSEM, eq::AbstractEquation, op::SplitDivOperator)
+    # Unpack
+    (; dofhandler, stdvec, physelem) = dg
+
+    for ireg in eachregion(dofhandler)
         std = stdvec[ireg]
         ndim = spatialdim(std)
         is_tensor_product(std) ||
@@ -254,7 +272,7 @@ function volume_div_operator!(dQ, Q, dh, stdvec, physelem, eq, op::SplitDivOpera
             )
             for idir in eachdirection(std)
         ]
-        @flouthreads for ieloc in eachelement(dh, ireg)
+        @flouthreads for ieloc in eachelement(dofhandler, ireg)
             F = Fb[Threads.threadid()]
             F̃ = MVector{ndim,eltype(Q)}(undef)
             F♯ = F♯b[Threads.threadid()]
@@ -266,7 +284,7 @@ function volume_div_operator!(dQ, Q, dh, stdvec, physelem, eq, op::SplitDivOpera
 
             # Indexing
             ci = CartesianIndices(std)
-            ie = reg2loc(dh, ireg, ieloc)
+            ie = reg2loc(dofhandler, ireg, ieloc)
 
             # Contravariant fluxes
             Ja = element(physelem, ie).Ja
@@ -395,8 +413,11 @@ end
 
 requires_subgrid(::SSFVDivOperator) = true
 
-function volume_div_operator!(dQ, Q, dh, stdvec, physelem, eq, op::SSFVDivOperator)
-    for ireg in eachregion(dh)
+function volume_div_operator!(dQ, Q, dg::DGSEM, eq::AbstractEquation, op::SSFVDivOperator)
+    # Unpack
+    (; dofhandler, stdvec, physelem) = dg
+
+    for ireg in eachregion(dofhandler)
         std = stdvec[ireg]
         ndim = spatialdim(std)
         is_tensor_product(std) ||
@@ -412,7 +433,7 @@ function volume_div_operator!(dQ, Q, dh, stdvec, physelem, eq, op::SSFVDivOperat
             for idir in eachdirection(std)
         ]
 
-        @flouthreads for ieloc in eachelement(dh, ireg)
+        @flouthreads for ieloc in eachelement(dofhandler, ireg)
             F̄ = F̄b[Threads.threadid()]
             F̄t = MVector{nvariables(eq),eltype(Q)}(undef)
             F̄v = MVector{nvariables(eq),eltype(Q)}(undef)
@@ -429,7 +450,7 @@ function volume_div_operator!(dQ, Q, dh, stdvec, physelem, eq, op::SSFVDivOperat
                 view(dQ[ireg], :, :, ieloc),
                 (size(std)..., size(dQ[ireg], 2)),
             )
-            ie = reg2loc(dh, ireg, ieloc)
+            ie = reg2loc(dofhandler, ireg, ieloc)
             Jar = reshape(element(physelem, ie).Ja, size(std))
             ns = elementgrid(physelem, ie).n
             ts = elementgrid(physelem, ie).t

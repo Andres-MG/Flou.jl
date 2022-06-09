@@ -1,9 +1,9 @@
-struct KPPEquation{NV,DV} <: AbstractHyperbolicEquation{NV}
-    div_operator::DV
+struct KPPEquation{NV,DV} <: HyperbolicEquation{NV}
+    operators::Tuple{DV}
 end
 
 function KPPEquation(div_operator)
-    KPPEquation{1,typeof(div_operator)}(div_operator)
+    KPPEquation{1,typeof(div_operator)}((div_operator,))
 end
 
 function Base.show(io::IO, m::MIME"text/plain", eq::KPPEquation)

@@ -1,9 +1,9 @@
-struct BurgersEquation{NV,DV} <: AbstractHyperbolicEquation{NV}
-    div_operator::DV
+struct BurgersEquation{NV,DV} <: HyperbolicEquation{NV}
+    operators::Tuple{DV}
 end
 
 function BurgersEquation(div_operator)
-    BurgersEquation{1,typeof(div_operator)}(div_operator)
+    BurgersEquation{1,typeof(div_operator)}((div_operator,))
 end
 
 function Base.show(io::IO, m::MIME"text/plain", eq::BurgersEquation)

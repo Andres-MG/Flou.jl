@@ -1,12 +1,12 @@
-struct EulerEquation{ND,NV,RT,DV} <: AbstractHyperbolicEquation{NV}
-    div_operator::DV
+struct EulerEquation{ND,NV,RT,DV} <: HyperbolicEquation{NV}
+    operators::Tuple{DV}
     γ::RT
 end
 
 function EulerEquation{ND}(div_operator, γ) where {ND}
     1 <= ND <= 3 ||
         throw(ArgumentError("The Euler equations are only implemented in 1D, 2D and 3D."))
-    EulerEquation{ND,ND + 2,typeof(γ),typeof(div_operator)}(div_operator, γ)
+    EulerEquation{ND,ND + 2,typeof(γ),typeof(div_operator)}((div_operator,), γ)
 end
 
 function Base.show(io::IO, m::MIME"text/plain", eq::EulerEquation)

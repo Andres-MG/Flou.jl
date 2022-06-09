@@ -17,7 +17,7 @@ end
 
 # Discretization
 Δt = 5e-5
-tf = 0.05
+tf = Δt # 0.05
 solver = ORK256(;williamson_condition=false)
 
 order = (5, 5)

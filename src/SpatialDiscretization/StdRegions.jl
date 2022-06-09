@@ -27,7 +27,14 @@ function is_tensor_product end
 
 function eachdirection end
 
+function nvertices end
+
+function massmatrix end
+
+function project2equispaced! end
+
 function slave2master end
+
 function master2slave end
 
 spatialdim(::AbstractStdRegion{ND}) where {ND} = ND

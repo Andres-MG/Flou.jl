@@ -5,13 +5,7 @@
 Wrapper around the 'ODEProblem' and 'solve' functions of the 'OrdinaryDiffEq.jl' module.
 Accepts the same keyword arguments, 'kwargs', as 'OrdinayrDiffEq.solve'.
 """
-function integrate(
-    Q0::StateVector,
-    disc::AbstractSpatialDiscretization,
-    solver::OrdinaryDiffEq.OrdinaryDiffEqAlgorithm,
-    tfinal::Number;
-    kwargs...
-)
+function integrate(Q0, disc, solver, tfinal; kwargs...)
     problem = ODEProblem(evaluate!, Q0.raw, tfinal, disc)
     exetime = @elapsed begin
         sol = try

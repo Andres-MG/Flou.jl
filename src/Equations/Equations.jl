@@ -1,47 +1,34 @@
+"""
+    AbstractEquation{NV}
+
+Must contain a field 'operators' containing the operators that it uses (iterable).
+"""
 abstract type AbstractEquation{NV} end
 
 nvariables(::AbstractEquation{NV}) where {NV} = NV
 eachvariable(e::AbstractEquation) = Base.Base.OneTo(nvariables(e))
-
-requires_subgrid(::AbstractEquation) = false
 
 function variablenames end
 
 function rotate2face! end
 function rotate2phys! end
 
-function evaluate! end
+"""
+    rhs!(dQ, Q, p::Tuple{<:AbstractEquation,<:AbstractSpatialDiscretization}, time)
 
-
-#==========================================================================================#
-#                                   Boundary Conditions                                    #
-
-abstract type AbstractBC end
-
-function state_BC! end
-
-function applyBC!(Qext, Qint, coords, n, t, b, time, eq, bc)
-    @boundscheck begin
-        size(Qext, 1) == size(Qint, 1) && size(Qext, 2) == size(Qint, 2) ||
-            throw(ArgumentError("Qext and Qint must have the same dimensions."))
-    end
-    for (i, Qi) in enumerate(eachrow(Qint))
-        copy!(view(Qext, i, :), Qi)
-        stateBC!(view(Qext, i, :), coords[i], n[i], t[i], b[i], time, eq, bc)
-    end
-    return nothing
-end
-
-struct DirichletBC{QF} <: AbstractBC
-    Q!::QF     # Q!(Q, x, n, t, b, time, eq)  in/out
-end
-
-function stateBC!(Q, x, n, t, b, time, eq, bc::DirichletBC)
-    bc.Q!(Q, x, n, t, b, time, eq)
-    return nothing
-end
+Evaluate the right-hand side (spatial term) of the ODE.
+"""
+function rhs! end
 
 #==========================================================================================#
-#                                     Equation Systems                                     #
+#                                   Hyperbolic equations                                   #
 
-include("Hyperbolic.jl")
+abstract type HyperbolicEquation{NV} <: AbstractEquation{NV} end
+
+requires_subgrid(e::HyperbolicEquation) = requires_subgrid(e.div_operator)
+
+include("Hyperbolic/Hyperbolic.jl")
+include("Hyperbolic/LinearAdvection.jl")
+include("Hyperbolic/Burgers.jl")
+include("Hyperbolic/Euler.jl")
+include("Hyperbolic/KPP.jl")

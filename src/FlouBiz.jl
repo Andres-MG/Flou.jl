@@ -1,14 +1,18 @@
+function save2csv end
+
+function save2vtkhdf end
+
 function save(filename, Q::StateVector, disc)
     ext = split(filename, ".")[end]
     if ext == "csv"
-        _save2csv(filename, Q, disc)
+        save2csv(filename, Q, disc)
     elseif ext == "hdf"
-        _save2vtkhdf(filename, Q, disc)
+        save2vtkhdf(filename, Q, disc)
     end
     return nothing
 end
 
-function _save2csv(filename, Q, disc)
+function save2csv(filename, Q, disc)
     open(filename, "w") do fh
         # Header
         dim = spatialdim(disc.mesh)
@@ -39,7 +43,7 @@ function _save2csv(filename, Q, disc)
     return nothing
 end
 
-function _save2vtkhdf(filename, Q, disc)
+function save2vtkhdf(filename, Q, disc)
     # Write to VTK HDF file (only one partition)
     HDF5.h5open(filename, "w") do fh
         # Unpack

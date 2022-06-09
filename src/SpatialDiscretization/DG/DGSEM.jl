@@ -47,7 +47,7 @@ function DGSEM(
     bcs = Tuple(bcs)
 
     # Physical elements
-    subgrid = requires_subgrid(equation)
+    subgrid = requires_subgrid.(equation.operators) |> any
     physelements, physfaces = compute_metric_terms(stdvec, dofhandler, mesh, subgrid)
 
     # Faces storage
@@ -113,9 +113,3 @@ function Base.show(io::IO, m::MIME"text/plain", dg::DGSEM{EQ,RT}) where {EQ,RT}
     show(io, m, dg.mesh)
     print(io, "\n=========================================================================")
 end
-
-abstract type AbstractOperator end
-
-requires_subgrid(::AbstractOperator) = false
-
-include("Divergence.jl")

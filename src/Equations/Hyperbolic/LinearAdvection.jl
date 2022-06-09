@@ -1,5 +1,5 @@
-struct LinearAdvection{ND,NV,RT,DV} <: AbstractHyperbolicEquation{NV}
-    div_operator::DV
+struct LinearAdvection{ND,NV,RT,DV} <: HyperbolicEquation{NV}
+    operators::Tuple{DV}
     a::SVector{ND,RT}
 end
 
@@ -8,7 +8,7 @@ function LinearAdvection(div_operator, velocity::RT...) where {RT}
     1 <= ndim <= 3 ||
         throw(ArgumentError("Linear advection is implemented in 1D, 2D and 3D."))
     LinearAdvection{ndim,1,RT,typeof(div_operator)}(
-        div_operator,
+        (div_operator,),
         SVector{ndim,RT}(velocity...),
     )
 end

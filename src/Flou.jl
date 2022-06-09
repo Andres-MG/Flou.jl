@@ -13,17 +13,19 @@ using DiffEqCallbacks: DiffEqCallbacks, PresetTimeCallback
 
 # Globals
 export FlouVersion, print_flou_header
+
 const FlouVersion = v"0.1.0"
+
 function print_flou_header(io::IO=stdout)
     @nospecialize
     # Taken from https://onlineasciitools.com/convert-text-to-ascii-art
     header =
-        raw"_______________"*"\n"*
-        raw"___  ____/__  /_________  __"*"\n"*
-        raw"__  /_   __  /_  __ \  / / /"*"\n"*
-        raw"_  __/   _  / / /_/ / /_/ /"*"\n"*
-        raw"/_/      /_/  \____/\__,_/ v."*
-        string(FlouVersion)
+        raw"_______________"               * "\n" *
+        raw"___  ____/__  /_________  __"  * "\n" *
+        raw"__  /_   __  /_  __ \  / / /"  * "\n" *
+        raw"_  __/   _  / / /_/ / /_/ /"   * "\n" *
+        raw"/_/      /_/  \____/\__,_/ v." * string(FlouVersion)
+
     println(io, "")
     println(io, header)
     println(io, "")
@@ -32,32 +34,17 @@ end
 # Utilities.jl
 export gaussian_bump
 
-# Mesh.jl
-export CartesianMesh
-export apply_periodicBCs!
-export spatialdim, coords
-export nelements, nboundaries, nfaces, nintfaces, nbdfaces, nperiodic, nvertices
-export elements, faces, intfaces, bdfaces, periodic, vertices
-export element, face, intface, bdface, vertex
-export eachelement, eachboundary, eachface, eachintface, eachbdface, eachvertex
-
-# StdRegions.jl
-export GaussQuadrature, GL, GaussLobattoQuadrature, GLL
-export ndofs, eachdirection
-export StdSegment, StdQuad
-
 # Containers.jl
 export StateVector, MortarStateVector
 export nregions, nvariables, eachregion, eachvariable
 
-# SpatialDiscretizations.jl
-export StdAverageNumericalFlux, LxFNumericalFlux
-export DGSEM
-export WeakDivOperator, StrongDivOperator, SplitDivOperator, SSFVDivOperator
+# FlouBiz.jl
+export save
 
 # Equations.jl
-export DirichletBC
-export evaluate!, variablenames
+export nvariables, eachvariable, variablenames
+export rotate2face!, rotate2phys!
+export rhs!
 
 export LinearAdvection
 export BurgersEquation
@@ -67,21 +54,46 @@ export ChandrasekharAverage, MatrixDissipation
 export EulerInflowBC, EulerOutflowBC, EulerSlipBC
 export KPPEquation, initial_whirl_KPP!
 
-# FlouBiz.jl
-export save
+# SpatialDiscretization.jl
+export CartesianMesh, MeshElement, MeshFace
+export apply_periodicBCs!
+export spatialdim, coords
+export nelements, nboundaries, nfaces, nintfaces, nbdfaces, nperiodic, nvertices
+export elements, faces, intfaces, bdfaces, periodic, vertices
+export element, face, intface, bdface, vertex
+export eachelement, eachboundary, eachface, eachintface, eachbdface, eachvertex
 
-# TimeIntegration.jl
+export GaussQuadrature, GL, GaussLobattoQuadrature, GLL
+export StdSegment, StdQuad
+export is_tensor_product, eachdirection, nvertices
+export spatialdim, ndofs, faces, face, quadratures, quadrature
+
+export DGSEM
+export StdAverageNumericalFlux, LxFNumericalFlux
+
+export nregions, nelements
+export eachregion, eachelement
+
+# Operators.jl
+export WeakDivOperator, StrongDivOperator, SplitDivOperator, SSFVDivOperator
+
+# TimeDiscretization.jl
 export integrate, get_save_callback
 
 include("Utilities.jl")
-include("Mesh/Mesh.jl")
-include("StdRegions.jl")
-include("DofHandler.jl")
 include("Containers.jl")
-include("SpatialDiscretizations/PhysicalRegions.jl")
-include("SpatialDiscretizations/SpatialDiscretizations.jl")
-include("Equations/Equations.jl")
 include("FlouBiz.jl")
-include("TimeIntegration.jl")
+
+# Equations
+include("Equations/Equations.jl")
+
+# Spatial discretizations
+include("SpatialDiscretization/SpatialDiscretization.jl")
+
+# Spatial operators
+include("Operators/Operators.jl")
+
+# Time discretizations
+include("TimeDiscretization/TimeDiscretization.jl")
 
 end # Flou

@@ -1,4 +1,4 @@
-struct DofHandler
+struct DofHandler <: AbstractDofHandler
     regoffsets::Vector{Int}
     reg2loc::Vector{Vector{Int}}
     loc2reg::Vector{Pair{Int,Int}}

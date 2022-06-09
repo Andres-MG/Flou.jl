@@ -147,8 +147,17 @@ function Base.similar(m::MortarStateVector)
     return MortarStateVector(data)
 end
 
+function MortarStateVector{RT}(value, dims) where {RT}
+    nfaces = length(dims)
+    data = Vector{Vector{Matrix{RT}}}(undef, nfaces)
+    for i in 1:nfaces
+        data[i] = [Matrix{RT}(value, d...) for d in dims[i]]
+    end
+    return MortarStateVector(data)
+end
+
 function MortarStateVector{RT}(value, mesh, stdvec, dh, nvars) where {RT}
-    data = Vector{Vector{Matrix{RT}}}(undef, nfaces(mesh))
+    dims = Vector{NTuple{2,NTuple{2,Int}}}(undef, nfaces(mesh))
     for i in eachface(mesh)
         elem = face(mesh, i).eleminds[1]
         reg, _ = loc2reg(dh, elem)
