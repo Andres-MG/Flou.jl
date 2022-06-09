@@ -1,6 +1,6 @@
 function Advection1D()
     Δt = 1e-3
-    tf = 1.0
+    tf = 0.5
     solver = ORK256(;williamson_condition=false)
 
     order = 4
@@ -13,7 +13,7 @@ function Advection1D()
 
     mesh = CartesianMesh{1,Float64}(0, 1, 20)
     apply_periodicBCs!(mesh, 1 => 2)
-    equation = LinearAdvection(div, 1.0)
+    equation = LinearAdvection(div, 2.0)
     DG = DGSEM(mesh, order + 1, qtype, equation, (), numflux)
 
     x0 = 0.5
@@ -36,7 +36,7 @@ end
 
 function Advection2D()
     Δt = 1e-3
-    tf = 1.0
+    tf = 0.5
     solver = ORK256(;williamson_condition=false)
 
     order = (4, 4)
@@ -47,13 +47,13 @@ function Advection2D()
         1.0,
     )
 
-    mesh = CartesianMesh{2,Float64}((0, 0), (3, 4), (20, 10))
+    mesh = CartesianMesh{2,Float64}((0, 0), (1.5, 2), (20, 10))
     apply_periodicBCs!(mesh, 1 => 2, 3 => 4)
     equation = LinearAdvection(div, 3.0, 4.0)
     DG = DGSEM(mesh, order .+ 1, qtype, equation, (), numflux)
 
-    x0, y0 = 1.5, 2.0
-    sx, sy = 0.3, 0.3
+    x0, y0 = 0.75, 1.0
+    sx, sy = 0.2, 0.2
     h = 1.0
     Q = StateVector{Float64}(undef, DG.dofhandler, DG.stdvec, nvariables(equation))
     for ie in eachelement(mesh)
