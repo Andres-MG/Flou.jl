@@ -1,5 +1,5 @@
 function gaussian_bump(x, y, z, x0, y0, z0, sx, sy, sz, h)
-    return h * exp(-(x-x0)^2/(2sx^2) - (y-y0)^2/(2sy^2)- (z-z0)^2/(2sz^2))
+    return h * exp(-(x-x0)^2/(2sx^2) - (y-y0)^2/(2sy^2) - (z-z0)^2/(2sz^2))
 end
 
 function logarithmic_mean(al, ar)
