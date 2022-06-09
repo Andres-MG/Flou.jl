@@ -70,6 +70,53 @@ function Advection2D()
     return sol
 end
 
+function SodTube1D()
+    Δt = 1e-4
+    tf = 0.018
+    solver = ORK256(;williamson_condition=false)
+
+    order = 3
+    qtype = GLL()
+    div = SplitDivOperator(
+        ChandrasekharAverage(),
+    )
+    numflux = MatrixDissipation(
+        ChandrasekharAverage(),
+        1.0,
+    )
+
+    mesh = CartesianMesh{1,Float64}(0, 1, 20)
+    function Q!(Q, x, n, t, b, time, eq)
+        P = if x[1] < 0.5
+            SVector{3}(1.0, 0.0, 100.0)
+        else
+            SVector{3}(0.125, 0.0, 10.0)
+        end
+        Q .= vars_prim2cons(P, eq)
+        return nothing
+    end
+    ∂Ω = [
+        1 => DirichletBC(Q!),
+        2 => DirichletBC(Q!),
+    ]
+    equation = EulerEquation{1}(div, 1.4)
+    DG = DGSEM(mesh, order + 1, qtype, equation, ∂Ω, numflux)
+
+    Q = StateVector{Float64}(undef, DG.dofhandler, DG.stdvec, nvariables(equation))
+    for ie in eachelement(mesh)
+        for i in eachindex(DG.stdvec[1])
+            x = coords(DG.physelem, ie)[i]
+            Q!(view(Q[1], i, :, ie), x, [], [], [], 0.0, equation)
+        end
+    end
+
+    sol, _ = integrate(
+        Q, DG, solver, tf;
+        saveat=(0, tf), adaptive=false, dt=Δt, alias_u0=true,
+    )
+    return sol
+end
+
 # https://www.math.ntnu.no/conservation/2001/049.pdf
 function Implosion2D()
     Δt = 1e-4

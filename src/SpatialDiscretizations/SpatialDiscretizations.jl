@@ -90,7 +90,7 @@ function project2faces!(Qf, Q, mesh, dh, stdvec, eq)
 end
 
 function applyBCs!(Qf, mesh, physface, time, eq, BCs)
-    for ibc in eachboundary(mesh)
+    @flouthreads for ibc in eachboundary(mesh)
         for iface in eachbdface(mesh, ibc)
             applyBC!(
                 Qf[iface][2],
