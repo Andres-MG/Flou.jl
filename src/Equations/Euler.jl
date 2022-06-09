@@ -71,14 +71,14 @@ end
 
 function rotate2face!(Qrot, Qf, n, t, b, ::EulerEquation{1})
     Qrot[1] = Qf[1]
-    Qrot[2] = Qf[2]
+    Qrot[2] = Qf[2] * n[1]
     Qrot[3] = Qf[3]
     return nothing
 end
 
 function rotate2phys!(Qf, Qrot, n, t, b, ::EulerEquation{1})
     Qf[1] = Qrot[1]
-    Qf[2] = Qrot[2]
+    Qf[2] = Qrot[2] * n[1]
     Qf[3] = Qrot[3]
     return nothing
 end
@@ -117,6 +117,13 @@ function rotate2phys!(Qf, Qrot, n, t, b, ::EulerEquation{3})
     return nothing
 end
 
+"""
+    pressure(Q, eq::EulerEquation)
+
+Compute the pressure from the *conservative* variables `Q`.
+"""
+function pressure end
+
 function pressure(Q, eq::EulerEquation{1})
     ρ, ρu, ρe = Q
     return (eq.γ-1) * (ρe - ρu^2 / 2ρ)
@@ -132,34 +139,69 @@ function pressure(Q, eq::EulerEquation{3})
     return (eq.γ-1) * (ρe - (ρu^2 + ρv^2 + ρw^2) / 2ρ)
 end
 
-function energy(Q, p, eq::EulerEquation{1})
-    ρ, ρu, _ = Q
-    return p / (eq.γ - 1) + ρu^2 / 2ρ
+"""
+    energy(Q, eq::EulerEquation)
+
+Compute the energy, `ρe`, from the *primitive* variables `Q`.
+"""
+function energy end
+
+function energy(Q, eq::EulerEquation{1})
+    ρ, u, p = Q
+    return p / (eq.γ - 1) + ρ * u^2 / 2
 end
 
-function energy(Q, p, eq::EulerEquation{2})
-    ρ, ρu, ρv, _ = Q
-    return p / (eq.γ - 1) + (ρu^2 + ρv^2) / 2ρ
+function energy(Q, eq::EulerEquation{2})
+    ρ, u, v, p = Q
+    return p / (eq.γ - 1) + ρ * (u^2 + v^2) / 2
 end
 
-function energy(Q, p, eq::EulerEquation{3})
-    ρ, ρu, ρv, ρw, _ = Q
-    return p / (eq.γ - 1) + (ρu^2 + ρv^2 + ρw^2) / 2ρ
+function energy(Q, eq::EulerEquation{3})
+    ρ, u, v, w, p = Q
+    return p / (eq.γ - 1) + ρ * (u^2 + v^2 + w^2) / 2
 end
 
-function soundvelocity(Q, eq::EulerEquation)
-    ρ = Q[1]
-    p = pressure(Q, eq)
+function soundvelocity(ρ, p, eq::EulerEquation)
     return √(eq.γ * p / ρ)
 end
 
-function entropyvariables!(W, Q, eq::EulerEquation{ND}) where {ND}
-    Wt = entropyvariables(Q, eq)
-    copy!(W, Wt)
-    return nothing
+function vars_cons2prim(Q, eq::EulerEquation{1})
+    ρ, ρu, _ = Q
+    p = pressure(Q, eq)
+    return SVector{3}(ρ, ρu/ρ, p)
 end
 
-function entropyvariables(Q, eq::EulerEquation{1})
+function vars_cons2prim(Q, eq::EulerEquation{2})
+    ρ, ρu, ρv, _ = Q
+    p = pressure(Q, eq)
+    return SVector{4}(ρ, ρu/ρ, ρv/ρ, p)
+end
+
+function vars_cons2prim(Q, eq::EulerEquation{3})
+    ρ, ρu, ρv, ρw, _ = Q
+    p = pressure(Q, eq)
+    return SVector{5}(ρ, ρu/ρ, ρv/ρ, ρw/ρ, p)
+end
+
+function vars_prim2cons(Q, eq::EulerEquation{1})
+    ρ, u, _ = Q
+    ρe = energy(Q, eq)
+    return SVector{3}(ρ, ρ * u, ρe)
+end
+
+function vars_prim2cons(Q, eq::EulerEquation{2})
+    ρ, u, v, _ = Q
+    ρe = energy(Q, eq)
+    return SVector{4}(ρ, ρ * u, ρ * v, ρe)
+end
+
+function vars_prim2cons(Q, eq::EulerEquation{3})
+    ρ, u, v, w, _ = Q
+    ρe = energy(Q, eq)
+    return SVector{5}(ρ, ρ * u, ρ * v, ρ * w, ρe)
+end
+
+function vars_cons2entropy(Q, eq::EulerEquation{1})
     ρ, ρu, _ = Q
     p = pressure(Q, eq)
     s = log(p) - eq.γ * log(ρ)
@@ -170,7 +212,7 @@ function entropyvariables(Q, eq::EulerEquation{1})
     )
 end
 
-function entropyvariables(Q, eq::EulerEquation{2})
+function vars_cons2entropy(Q, eq::EulerEquation{2})
     ρ, ρu, ρv, _ = Q
     p = pressure(Q, eq)
     s = log(p) - eq.γ * log(ρ)
@@ -182,7 +224,7 @@ function entropyvariables(Q, eq::EulerEquation{2})
     )
 end
 
-function entropyvariables(Q, eq::EulerEquation{3})
+function vars_cons2entropy(Q, eq::EulerEquation{3})
     ρ, ρu, ρv, ρw, _ = Q
     p = pressure(Q, eq)
     s = log(p) - eq.γ * log(ρ)
@@ -195,11 +237,37 @@ function entropyvariables(Q, eq::EulerEquation{3})
     )
 end
 
+"""
+    normal_shockwave(ρ0, u0, p0, eq::EulerEquation)
+
+Compute `ρ1`, `u1` and `p1` downstream of a normal shock-wave.
+"""
+function normal_shockwave(ρ0, u0, p0, eq::EulerEquation)
+    # Inflow
+    a = soundvelocity(ρ0, p0, eq)
+    M0 = u0 / a
+
+    # Outflow
+    ρ1 = ρ0 * M0^2 * (eq.γ + 1) / ((eq.γ - 1) * M0^2 + 2)
+    p1 = p0 * (2 * eq.γ * M0^2 - (eq.γ - 1)) / (eq.γ + 1)
+    M1 = ((eq.γ - 1) * M0^2 + 2) / (2 * eq.γ * M0^2 - (eq.γ - 1))
+    a = soundvelocity(ρ1, p1, eq)
+    u1 = M1 * a
+
+    return SVector{3}(ρ1, u1, p1)
+end
+
 #==========================================================================================#
 #                                   Boundary Conditions                                    #
 
-struct EulerInflowBC{RT} <: AbstractBC
-    Qext::Vector{RT}
+struct EulerInflowBC{RT,NV} <: AbstractBC
+    Qext::SVector{NV,RT}
+    function EulerInflowBC(Qext)
+        nvar = length(Qext)
+        3 <= nvar <= 5 ||
+            throw(ArgumentError("'Qext' must have a length of 3, 4 or 5."))
+        return new{eltype(Qext),nvar}(SVector{nvar}(Qext))
+    end
 end
 
 function stateBC!(Q, x, n, t, b, time, ::EulerEquation, bc::EulerInflowBC)
@@ -226,28 +294,75 @@ end
 #==========================================================================================#
 #                                     Numerical fluxes                                     #
 
-function numericalflux!(Fn, Ql, Qr, n, eq::EulerEquation, ::StdAverageNumericalFlux)
-    ρl, ρul, ρvl, ρel = Ql
-    ul = ρul/ρl
-    pl = pressure(Ql, eq)
-    ρr, ρur, ρvr, ρer = Qr
-    ur = ρur/ρr
-    pr = pressure(Qr, eq)
-    Fn[1] = (ρul + ρur) / 2
-    Fn[2] = (ρul * ul + pl + ρur * ur + pr) / 2
-    Fn[3] = (ρvl * ul + ρvr * ur) / 2
-    Fn[4] = ((ρel + pl) * ul + (ρer + pr) * ur) / 2
+function numericalflux!(
+    Fn,
+    Ql,
+    Qr,
+    n,
+    eq::EulerEquation{ND},
+    ::StdAverageNumericalFlux,
+) where {
+    ND,
+}
+    if ND == 1
+        _, ρul, ρel = Ql
+        _, ρur, ρer = Qr
+        _, ul, pl = vars_cons2prim(Ql, eq)
+        _, ur, pr = vars_cons2prim(Qr, eq)
+        Fn[1] = (ρul + ρur) / 2
+        Fn[2] = (ρul * ul + pl + ρur * ur + pr) / 2
+        Fn[3] = ((ρel + pl) * ul + (ρer + pr) * ur) / 2
+
+    elseif ND == 2
+        _, ρul, ρvl, ρel = Ql
+        _, ρur, ρvr, ρer = Qr
+        _, ul, _, pl = vars_cons2prim(Ql, eq)
+        _, ur, _, pr = vars_cons2prim(Qr, eq)
+        Fn[1] = (ρul + ρur) / 2
+        Fn[2] = (ρul * ul + pl + ρur * ur + pr) / 2
+        Fn[3] = (ρvl * ul + ρvr * ur) / 2
+        Fn[4] = ((ρel + pl) * ul + (ρer + pr) * ur) / 2
+
+    else # ND == 3
+        _, ρul, ρvl, ρwl, ρel = Ql
+        _, ρur, ρvr, ρwr, ρer = Qr
+        _, ul, _, _, pl = vars_cons2prim(Ql, eq)
+        _, ur, _, _, pr = vars_cons2prim(Qr, eq)
+        Fn[1] = (ρul + ρur) / 2
+        Fn[2] = (ρul * ul + pl + ρur * ur + pr) / 2
+        Fn[3] = (ρvl * ul + ρvr * ur) / 2
+        Fn[4] = (ρwl * ul + ρwr * ur) / 2
+        Fn[5] = ((ρel + pl) * ul + (ρer + pr) * ur) / 2
+    end
     return nothing
 end
 
-function numericalflux!(Fn, Ql, Qr, n, eq::EulerEquation, nf::LxFNumericalFlux)
+function numericalflux!(
+    Fn,
+    Ql,
+    Qr,
+    n,
+    eq::EulerEquation{ND},
+    nf::LxFNumericalFlux,
+) where {
+    ND,
+}
     # Average
     numericalflux!(Fn, Ql, Qr, n, eq, nf.avg)
 
     # Dissipation
-    ul, ur = Ql[2]/Ql[1], Qr[2]/Qr[1]
-    al = soundvelocity(Ql, eq)
-    ar = soundvelocity(Qr, eq)
+    if ND == 1
+        ρl, ul, pl = vars_cons2prim(Ql, eq)
+        ρr, ur, pr = vars_cons2prim(Qr, eq)
+    elseif ND == 2
+        ρl, ul, _, pl = vars_cons2prim(Ql, eq)
+        ρr, ur, _, pr = vars_cons2prim(Qr, eq)
+    else # ND == 3
+        ρl, ul, _, _, pl = vars_cons2prim(Ql, eq)
+        ρr, ur, _, _, pr = vars_cons2prim(Qr, eq)
+    end
+    al = soundvelocity(ρl, pl, eq)
+    ar = soundvelocity(ρr, pr, eq)
     λ = max(abs(ul) + al, abs(ur) + ar)
     @inbounds for ivar in eachvariable(eq)
         Fn[ivar] += λ * (Ql[ivar] - Qr[ivar]) / 2 * nf.intensity
@@ -257,30 +372,58 @@ end
 
 struct ChandrasekharAverage <: AbstractNumericalFlux end
 
-function numericalflux!(Fn, Ql, Qr, n, eq::EulerEquation, ::ChandrasekharAverage)
-    # Unpacking
-    ρl, ρul, ρvl, _ = Ql
-    ρr, ρur, ρvr, _ = Qr
-
+function numericalflux!(
+    Fn,
+    Ql,
+    Qr,
+    n,
+    eq::EulerEquation{ND},
+    ::ChandrasekharAverage,
+) where {
+    ND,
+}
     # Variables
-    ur, vr = ρur/ρr, ρvr/ρr
-    ul, vl = ρul/ρl, ρvl/ρl
-    pl = pressure(Ql, eq)
-    pr = pressure(Qr, eq)
-    βl, βr = ρl / 2pl, ρr / 2pr
+    if ND == 1
+        ρl, ul, pl = vars_cons2prim(Ql, eq)
+        ρr, ur, pr = vars_cons2prim(Qr, eq)
+        u = (ul + ur) / 2
+    elseif ND == 2
+        ρl, ul, vl, pl = vars_cons2prim(Ql, eq)
+        ρr, ur, vr, pr = vars_cons2prim(Qr, eq)
+        u, v = (ul + ur) / 2, (vl + vr) / 2
+    else # ND == 3
+        ρl, ul, vl, wl, pl = vars_cons2prim(Ql, eq)
+        ρr, ur, vr, wl, pr = vars_cons2prim(Qr, eq)
+        u, v, w = (ul + ur) / 2, (vl + vr) / 2, (wl + wr) / 2
+    end
 
     # Averages
+    βl, βr = ρl / 2pl, ρr / 2pr
     ρ = logarithmic_mean(ρl, ρr)
-    u, v = (ul + ur) / 2, (vl + vr) / 2
     p = (ρl + ρr) / (2 * (βl + βr))
     β = logarithmic_mean(βl, βr)
-    h = 1 / (2β * (eq.γ - 1)) - (ul^2 + vl^2 + ur^2 + vr^2) / 4 + p/ρ + u^2 + v^2
 
     # Fluxes
-    Fn[1] = ρ * u
-    Fn[2] = ρ * u^2 + p
-    Fn[3] = ρ * u * v
-    Fn[4] = ρ * u * h
+    if ND == 1
+        h = 1 / (2β * (eq.γ - 1)) - (ul^2 + ur^2) / 4 + p/ρ + u^2
+        Fn[1] = ρ * u
+        Fn[2] = ρ * u^2 + p
+        Fn[3] = ρ * u * h
+    elseif ND == 2
+        h = 1 / (2β * (eq.γ - 1)) - (ul^2 + vl^2 + ur^2 + vr^2) / 4 + p/ρ + u^2 + v^2
+        Fn[1] = ρ * u
+        Fn[2] = ρ * u^2 + p
+        Fn[3] = ρ * u * v
+        Fn[4] = ρ * u * h
+    else # ND == 3
+        h = 1 / (2β * (eq.γ - 1)) - (ul^2 + vl^2 + wl^2 + ur^2 + vr^2 + wl^2) / 4 +
+            p/ρ + u^2 + v^2 + w^2
+        Fn[1] = ρ * u
+        Fn[2] = ρ * u^2 + p
+        Fn[3] = ρ * u * v
+        Fn[4] = ρ * u * w
+        Fn[5] = ρ * u * h
+    end
     return nothing
 end
 
@@ -289,25 +432,40 @@ struct MatrixDissipation{T,RT} <: AbstractNumericalFlux
     intensity::RT
 end
 
-function numericalflux!(Fn, Ql, Qr, n, eq::EulerEquation, nf::MatrixDissipation)
-    # Unpacking
-    ρl, ρul, ρvl, _ = Ql
-    ρr, ρur, ρvr, _ = Qr
-
+function numericalflux!(
+    Fn,
+    Ql,
+    Qr,
+    n,
+    eq::EulerEquation{ND},
+    nf::MatrixDissipation,
+) where {
+    ND,
+}
     # Variables
-    ur, vr = ρur/ρr, ρvr/ρr
-    ul, vl = ρul/ρl, ρvl/ρl
-    pl = pressure(Ql, eq)
-    pr = pressure(Qr, eq)
-    βl, βr = ρl / 2pl, ρr / 2pr
+    if ND == 1
+        ρl, ul, pl = vars_cons2prim(Ql, eq)
+        ρr, ur, pr = vars_cons2prim(Qr, eq)
+        u = (ul + ur) / 2
+        v2 = 2 * u^2 - (ul^2 + ur^2) / 2
+    elseif ND == 2
+        ρl, ul, vl, pl = vars_cons2prim(Ql, eq)
+        ρr, ur, vr, pr = vars_cons2prim(Qr, eq)
+        u, v = (ul + ur) / 2, (vl + vr) / 2
+        v2 = 2 * (u^2 + v^2) - (ul^2 + vl^2 + ur^2 + vr^2) / 2
+    else # ND == 3
+        ρl, ul, vl, wl, pl = vars_cons2prim(Ql, eq)
+        ρr, ur, vr, wr, pr = vars_cons2prim(Qr, eq)
+        u, v, w = (ul + ur) / 2, (vl + vr) / 2, (wl + wr) / 2
+        v2 = 2 * (u^2 + v^2 + w^2) - (ul^2 + vl^2 + wl^2 + ur^2 + vr^2 + wr^2) / 2
+    end
 
     # Averages
+    βl, βr = ρl / 2pl, ρr / 2pr
     ρ = logarithmic_mean(ρl, ρr)
-    u, v = (ul + ur) / 2, (vl + vr) / 2
     p = (ρl + ρr) / (2 * (βl + βr))
     β = logarithmic_mean(βl, βr)
-    a = √(eq.γ * p / ρ)
-    v2 = 2 * (u^2 + v^2) - (ul^2 + vl^2 + ur^2 + vl^2) / 2
+    a = soundvelocity(ρ, p, eq)
     h = eq.γ / (eq.γ - 1) / 2β + v2 / 2
 
     # Averaging term
@@ -315,16 +473,37 @@ function numericalflux!(Fn, Ql, Qr, n, eq::EulerEquation, nf::MatrixDissipation)
 
     # Dissipative term
     rt = eltype(Fn)
-    Wl = entropyvariables(Ql, eq)
-    Wr = entropyvariables(Qr, eq)
-    Λ = SDiagonal{4}((u - a, u, u, u + a) .|> abs)
-    T = SDiagonal{4}((ρ / 2eq.γ, (eq.γ - 1) * ρ / eq.γ, p, ρ / 2eq.γ))
-    R = SMatrix{4,4}(
-        one(rt),  u - a,    v,       h - u * a,
-        one(rt),  u,        v,       v2 / 2,
-        zero(rt), zero(rt), one(rt), v,
-        one(rt),  u + a,    v,       h + u * a,
-    )
+    Wl = vars_cons2entropy(Ql, eq)
+    Wr = vars_cons2entropy(Qr, eq)
+
+    if ND == 1
+        Λ = SDiagonal{3}((u - a, u, u + a) .|> abs)
+        T = SDiagonal{3}((ρ / 2eq.γ, (eq.γ - 1) * ρ / eq.γ, ρ / 2eq.γ))
+        R = SMatrix{3,3}(
+            one(rt),  u - a, h - u * a,
+            one(rt),  u,     v2 / 2,
+            one(rt),  u + a, h + u * a,
+        )
+    elseif ND == 2
+        Λ = SDiagonal{4}((u - a, u, u, u + a) .|> abs)
+        T = SDiagonal{4}((ρ / 2eq.γ, (eq.γ - 1) * ρ / eq.γ, p, ρ / 2eq.γ))
+        R = SMatrix{4,4}(
+            one(rt),  u - a,    v,       h - u * a,
+            one(rt),  u,        v,       v2 / 2,
+            zero(rt), zero(rt), one(rt), v,
+            one(rt),  u + a,    v,       h + u * a,
+        )
+    else # ND == 3
+        Λ = SDiagonal{5}((u - a, u, u, u, u + a) .|> abs)
+        T = SDiagonal{5}((ρ / 2eq.γ, (eq.γ - 1) * ρ / eq.γ, p, p, ρ / 2eq.γ))
+        R = SMatrix{5,5}(
+            one(rt),  u - a,    v,        w,        h - u * a,
+            one(rt),  u,        v,        w,        v2 / 2,
+            zero(rt), zero(rt), one(rt),  zero(rt), v,
+            zero(rt), zero(rt), zero(rt), one(rt),  w,
+            one(rt),  u + a,    v,        w,        h + u * a,
+        )
+    end
     Fn .+= R * Λ * T * R' * (Wl .- Wr) ./ 2 .* nf.intensity
     return nothing
 end
@@ -332,30 +511,61 @@ end
 #==========================================================================================#
 #                                     Two-point fluxes                                     #
 
-function twopointflux!(F♯, Q1, Q2, Ja1, Ja2, eq::EulerEquation, ::ChandrasekharAverage)
-    # Unpacking
-    ρ1, ρu1, ρv1, _ = Q1
-    ρ2, ρu2, ρv2, _ = Q2
-
+function twopointflux!(
+    F♯,
+    Q1,
+    Q2,
+    Ja1,
+    Ja2,
+    eq::EulerEquation{ND},
+    ::ChandrasekharAverage,
+) where {
+    ND,
+}
     # Variables
-    u1, v1 = ρu1/ρ1, ρv1/ρ1
-    u2, v2 = ρu2/ρ2, ρv2/ρ2
-    p1 = pressure(Q1, eq)
-    p2 = pressure(Q2, eq)
-    β1, β2 = ρ1 / 2p1, ρ2 / 2p2
+    if ND == 1
+        ρ1, u1, p1 = vars_cons2prim(Q1, eq)
+        ρ2, u2, p2 = vars_cons2prim(Q2, eq)
+        u = (u1 + u2) / 2
+    elseif ND == 2
+        ρ1, u1, v1, p1 = vars_cons2prim(Q1, eq)
+        ρ2, u2, v2, p2 = vars_cons2prim(Q2, eq)
+        u, v = (u1 + u2) / 2, (v1 + v2) / 2
+    else # ND == 3
+        ρ1, u1, v1, w1, p1 = vars_cons2prim(Q1, eq)
+        ρ2, u2, v2, w2, p2 = vars_cons2prim(Q2, eq)
+        u, v, w = (u1 + u2) / 2, (v1 + v2) / 2, (w1 + w2) / 2
+    end
 
     # Averages
+    β1, β2 = ρ1 / 2p1, ρ2 / 2p2
     ρ = logarithmic_mean(ρ1, ρ2)
-    u, v = (u1 + u2) / 2, (v1 + v2) / 2
     p = (ρ1 + ρ2) / (2 * (β1 + β2))
     β = logarithmic_mean(β1, β2)
-    h = 1 / (2β * (eq.γ - 1)) - (u1^2 + v1^2 + u2^2 + v2^2) / 4 + p/ρ + u^2 + v^2
 
     # Fluxes
-    n = SVector{2}((Ja1 .+ Ja2) ./ 2)
-    F♯[1] = (ρ * u) * n[1] + (ρ * v) * n[2]
-    F♯[2] = (ρ * u^2 + p) * n[1] + (ρ * u * v) * n[2]
-    F♯[3] = (ρ * u * v) * n[1] + (ρ * v^2 + p) * n[2]
-    F♯[4] = (ρ * u * h) * n[1] + (ρ * v * h) * n[2]
+    if ND == 1
+        h = 1 / (2β * (eq.γ - 1)) - (u1^2 + u2^2) / 4 + p/ρ + u^2
+        n = (Ja1[1] + Ja2[1]) / 2
+        F♯[1] = (ρ * u) * n
+        F♯[2] = (ρ * u^2 + p) * n
+        F♯[3] = (ρ * u * h) * n
+    elseif ND == 2
+        h = 1 / (2β * (eq.γ - 1)) - (u1^2 + v1^2 + u2^2 + v2^2) / 4 + p/ρ + u^2 + v^2
+        n = SVector{2}((Ja1 .+ Ja2) ./ 2)
+        F♯[1] = (ρ * u) * n[1] + (ρ * v) * n[2]
+        F♯[2] = (ρ * u^2 + p) * n[1] + (ρ * u * v) * n[2]
+        F♯[3] = (ρ * u * v) * n[1] + (ρ * v^2 + p) * n[2]
+        F♯[4] = (ρ * u * h) * n[1] + (ρ * v * h) * n[2]
+    else # ND == 3
+        h = 1 / (2β * (eq.γ - 1)) - (u1^2 + v1^2 + w1^2 + u2^2 + v2^2 + w2^2) / 4 +
+            p/ρ + u^2 + v^2 + w^2
+        n = SVector{3}((Ja1 .+ Ja2) ./ 2)
+        F♯[1] = (ρ * u) * n[1] + (ρ * v) * n[2] + (ρ * w) * n[3]
+        F♯[2] = (ρ * u^2 + p) * n[1] + (ρ * u * v) * n[2] + (ρ * u * w) * n[3]
+        F♯[3] = (ρ * u * v) * n[1] + (ρ * v^2 + p) * n[2] + (ρ * v * w) * n[3]
+        F♯[4] = (ρ * u * w) * n[1] + (ρ * v * w) * n[2] + (ρ * w^2 + p) * n[3]
+        F♯[5] = (ρ * u * h) * n[1] + (ρ * v * h) * n[2] + (ρ * w * h) * n[3]
+    end
     return nothing
 end

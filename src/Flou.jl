@@ -61,7 +61,8 @@ export evaluate!, variablenames
 
 export LinearAdvection
 export BurgersEquation
-export EulerEquation, pressure, soundvelocity, entropyvariables, entropyvariables!
+export EulerEquation, pressure, soundvelocity
+export vars_cons2prim, vars_prim2cons, vars_cons2entropy
 export ChandrasekharAverage, MatrixDissipation
 export EulerInflowBC, EulerOutflowBC, EulerSlipBC
 export KPPEquation, initial_whirl_KPP!

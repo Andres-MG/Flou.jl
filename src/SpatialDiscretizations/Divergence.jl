@@ -304,7 +304,7 @@ function volume_div_operator!(dQ, Q, dh, stdvec, physelem, eq, op::SplitDivOpera
                         Jar[i],
                         Jar[l],
                         eq,
-                        eq.tpflux,
+                        op.tpflux,
                     )
                     @views copy!(F♯r[1][i, l, :], F♯r[1][l, i, :])
                 end
@@ -475,8 +475,8 @@ function volume_div_operator!(dQ, Q, dh, stdvec, physelem, eq, op::SSFVDivOperat
                     )
 
                     # Blending
-                    Wl = entropyvariables(view(Qr, (i - 1), :), eq)
-                    Wr = entropyvariables(view(Qr, i, :), eq)
+                    Wl = vars_cons2entropy(view(Qr, (i - 1), :), eq)
+                    Wr = vars_cons2entropy(view(Qr, i, :), eq)
                     b = dot(Wr - Wl, view(F̄r, i, :) - F̄v)
                     δ = sqrt(b^2 + op.blend)
                     δ = (δ - b) / δ
@@ -544,8 +544,8 @@ function volume_div_operator!(dQ, Q, dh, stdvec, physelem, eq, op::SSFVDivOperat
                         F̄v .*= Js[1][i, j]
 
                         # Blending
-                        Wl = entropyvariables(view(Qr, (i - 1), j, :), eq)
-                        Wr = entropyvariables(view(Qr, i, j, :), eq)
+                        Wl = vars_cons2entropy(view(Qr, (i - 1), j, :), eq)
+                        Wr = vars_cons2entropy(view(Qr, i, j, :), eq)
                         b = dot(Wr .- Wl, view(F̄r[1], i, j, :) .- F̄v)
                         δ = sqrt(b^2 + op.blend)
                         δ = (δ - b) / δ
@@ -606,8 +606,8 @@ function volume_div_operator!(dQ, Q, dh, stdvec, physelem, eq, op::SSFVDivOperat
                         F̄v .*= Js[2][j]
 
                         # Blending
-                        Wl = entropyvariables(view(Qr, i, (j - 1), :), eq)
-                        Wr = entropyvariables(view(Qr, i, j, :), eq)
+                        Wl = vars_cons2entropy(view(Qr, i, (j - 1), :), eq)
+                        Wr = vars_cons2entropy(view(Qr, i, j, :), eq)
                         b = dot(Wr .- Wl, view(F̄r[2], i, j, :) .- F̄v)
                         δ = sqrt(b^2 + op.blend)
                         δ = (δ - b) / δ
