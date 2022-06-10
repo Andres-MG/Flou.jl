@@ -12,7 +12,7 @@ end
 function Base.show(io::IO, m::MIME"text/plain", eq::EulerEquation)
     @nospecialize
     println(io, eq |> typeof, ":")
-    print(io, " Advection operator: "); show(io, m, eq.div_operator); println(io, "")
+    print(io, " Advection operator: "); show(io, m, eq.operators[1]); println(io, "")
     print(io, " γ: ", eq.γ)
 end
 

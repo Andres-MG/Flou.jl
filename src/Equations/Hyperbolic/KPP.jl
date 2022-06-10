@@ -9,7 +9,7 @@ end
 function Base.show(io::IO, m::MIME"text/plain", eq::KPPEquation)
     @nospecialize
     println(io, eq |> typeof, ":")
-    print(io, " Divergence operator: "); show(io, m, eq.div_operator); println(io, "")
+    print(io, " Divergence operator: "); show(io, m, eq.operators[1]); println(io, "")
 end
 
 function variablenames(::KPPEquation; unicode=false)
