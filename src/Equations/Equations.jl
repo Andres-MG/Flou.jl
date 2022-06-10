@@ -10,9 +10,6 @@ eachvariable(e::AbstractEquation) = Base.Base.OneTo(nvariables(e))
 
 function variablenames end
 
-function rotate2face! end
-function rotate2phys! end
-
 """
     rhs!(dQ, Q, p::Tuple{<:AbstractEquation,<:AbstractSpatialDiscretization}, time)
 

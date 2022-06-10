@@ -13,44 +13,31 @@ function rhs!(_dQ, _Q, p::Tuple{<:HyperbolicEquation,DGSEM}, time)
     fill!(dQ, zero(eltype(dQ)))
 
     # Volume flux
-    volume_contribution!(dQ, Q, dofhandler, stdvec, physelem, equation)
+    volume_contribution!(dQ, Q, dg, equation, equation.operators[1])
 
     # Project Q to faces
-    project2faces!(disc.Qf, Q, mesh, dofhandler, stdvec, equation)
+    project2faces!(dg.Qf, Q, dg, equation)
 
     # Boundary conditions
-    applyBCs!(disc.Qf, mesh, physface, time, equation, disc.BCs)
+    applyBCs!(dg.Qf, dg, time, equation)
 
     # Interface fluxes
     interface_fluxes!(
-        disc.Fn,
-        disc.Qf,
-        mesh,
-        dofhandler,
-        stdvec,
-        physface,
+        dg.Fn,
+        dg.Qf,
+        dg,
         equation,
-        disc.riemannsolver,
+        dg.riemannsolver,
     )
 
     # Surface contribution
-    surface_contribution!(dQ, disc.Fn, mesh, dofhandler, stdvec, equation)
+    surface_contribution!(dQ, dg.Fn, dg, equation, equation.operators[1])
 
     # Apply mass matrix
-    apply_massmatrix!(dQ, dofhandler, physelem)
+    apply_massmatrix!(dQ, dg)
 
     # Add source term
-    apply_sourceterm!(dQ, Q, disc.source!, dofhandler, physelem, time)
+    apply_sourceterm!(dQ, Q, dg, time)
 
-    return nothing
-end
-
-function volume_contribution!(dQ, Q, dh, stdvec, physelem, eq)
-    volume_div_operator!(dQ, Q, dh, stdvec, physelem, eq, eq.div_operator)
-    return nothing
-end
-
-function surface_contribution!(dQ, Fn, mesh, dh, stdvec, eq)
-    surface_div_operator!(dQ, Fn, mesh, dh, stdvec, eq, eq.div_operator)
     return nothing
 end

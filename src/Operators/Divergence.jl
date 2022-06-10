@@ -1,9 +1,6 @@
 abstract type AbstractDivOperator <: AbstractOperator end
 
-function volume_div_operator!  end
-function surface_div_operator!  end
-
-function surface_div_operator!(
+function surface_contribution!(
     dQ,
     Fn,
     dg::DGSEM,
@@ -74,7 +71,7 @@ end
 
 struct WeakDivOperator <: AbstractDivOperator end
 
-function volume_div_operator!(dQ, Q, dg::DGSEM, eq::AbstractEquation, ::WeakDivOperator)
+function volume_contribution!(dQ, Q, dg::DGSEM, eq::AbstractEquation, ::WeakDivOperator)
     # Unpack
     (; dofhandler, stdvec, physelem) = dg
 
@@ -158,7 +155,7 @@ end
 
 struct StrongDivOperator <: AbstractDivOperator end
 
-function volume_div_operator!(dQ, Q, dg::DGSEM, eq::AbstractEquation, ::StrongDivOperator)
+function volume_contribution!(dQ, Q, dg::DGSEM, eq::AbstractEquation, ::StrongDivOperator)
     # Unpack
     (; dofhandler, stdvec, physelem) = dg
 
@@ -252,7 +249,7 @@ end
 
 function twopointflux! end
 
-function volume_div_operator!(dQ, Q, dg::DGSEM, eq::AbstractEquation, op::SplitDivOperator)
+function volume_contribution!(dQ, Q, dg::DGSEM, eq::AbstractEquation, op::SplitDivOperator)
     # Unpack
     (; dofhandler, stdvec, physelem) = dg
 
@@ -413,7 +410,7 @@ end
 
 requires_subgrid(::SSFVDivOperator) = true
 
-function volume_div_operator!(dQ, Q, dg::DGSEM, eq::AbstractEquation, op::SSFVDivOperator)
+function volume_contribution!(dQ, Q, dg::DGSEM, eq::AbstractEquation, op::SSFVDivOperator)
     # Unpack
     (; dofhandler, stdvec, physelem) = dg
 

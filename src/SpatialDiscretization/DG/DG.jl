@@ -2,27 +2,6 @@ abstract type DiscontinuousGalerkin{EQ,RT} <: AbstractSpatialDiscretization{EQ,R
 
 include("DofHandler.jl")
 
-function applyBC!(Qext, Qint, coords, n, t, b, time, eq, bc)
-    @boundscheck begin
-        size(Qext, 1) == size(Qint, 1) && size(Qext, 2) == size(Qint, 2) ||
-            throw(ArgumentError("Qext and Qint must have the same dimensions."))
-    end
-    for (i, Qi) in enumerate(eachrow(Qint))
-        copy!(view(Qext, i, :), Qi)
-        stateBC!(view(Qext, i, :), coords[i], n[i], t[i], b[i], time, eq, bc)
-    end
-    return nothing
-end
-
-struct DirichletBC{QF} <: AbstractBC
-    Q!::QF     # Q!(Q, x, n, t, b, time, eq)  in/out
-end
-
-function stateBC!(Q, x, n, t, b, time, eq, bc::DirichletBC)
-    bc.Q!(Q, x, n, t, b, time, eq)
-    return nothing
-end
-
 abstract type AbstractNumericalFlux end
 
 struct StdAverageNumericalFlux <: AbstractNumericalFlux end
@@ -34,13 +13,20 @@ end
 
 function numericalflux! end
 
+function rotate2face! end
+
+function rotate2phys! end
+
 # TODO: maybe move to StdRegions.jl??
-function project2faces!(Qf, Q, mesh, dh, stdvec, eq)
+function project2faces!(Qf, Q, dg::DiscontinuousGalerkin, eq)
+    # Unpack
+    (; mesh, dofhandler, stdvec) = dg
+
     ndim = spatialdim(mesh)
-    for ireg in eachregion(dh)
+    for ireg in eachregion(dofhandler)
         std = stdvec[ireg]
-        @flouthreads for ieloc in eachelement(dh, ireg)
-            ie = reg2loc(dh, ireg, ieloc)
+        @flouthreads for ieloc in eachelement(dofhandler, ireg)
+            ie = reg2loc(dofhandler, ireg, ieloc)
             iface = element(mesh, ie).faceinds
             facepos = element(mesh, ie).facepos
 
@@ -102,10 +88,11 @@ function project2faces!(Qf, Q, mesh, dh, stdvec, eq)
     return nothing
 end
 
-function applyBCs!(Qf, mesh, physface, time, eq, BCs)
+function applyBCs!(Qf, dg::DiscontinuousGalerkin, time, eq)
+    (; mesh, physface, bcs) = dg
     @flouthreads for ibc in eachboundary(mesh)
         for iface in eachbdface(mesh, ibc)
-            applyBC!(
+            _dg_applyBC!(
                 Qf[iface][2],
                 Qf[iface][1],
                 coords(physface, iface),
@@ -114,14 +101,15 @@ function applyBCs!(Qf, mesh, physface, time, eq, BCs)
                 face(physface, iface).b,
                 time,
                 eq,
-                BCs[ibc],
+                bcs[ibc],
             )
         end
     end
     return nothing
 end
 
-function interface_fluxes!(Fn, Qf, mesh, dh, stdvec, physface, eq, riemannsolver)
+function interface_fluxes!(Fn, Qf, dg::DiscontinuousGalerkin, eq, riemannsolver)
+    (; mesh, dofhandler, stdvec, physface) = dg
     @flouthreads for iface in eachface(mesh)
         (; eleminds, elempos, orientation) = face(mesh, iface)
         n = face(physface, iface).n
@@ -133,7 +121,7 @@ function interface_fluxes!(Fn, Qf, mesh, dh, stdvec, physface, eq, riemannsolver
         Fni = MVector{nvariables(eq),eltype(Fn)}(undef)
         Ql = Qf[iface][1]
         Qr = Qf[iface][2]
-        ireg = loc2reg(dh, eleminds[1]).first
+        ireg = loc2reg(dofhandler, eleminds[1]).first
         std = face(stdvec[ireg], elempos[1])
         @inbounds for i in eachindex(std)
             j = slave2master(i, orientation, std)
@@ -150,9 +138,10 @@ function interface_fluxes!(Fn, Qf, mesh, dh, stdvec, physface, eq, riemannsolver
     return nothing
 end
 
-function apply_massmatrix!(dQ, dh, physelem)
-    @flouthreads for ie in eachelement(dh)
-        ireg, ieloc = loc2reg(dh, ie)
+function apply_massmatrix!(dQ, dg::DiscontinuousGalerkin)
+    (; dofhahdler, physelem) = dg
+    @flouthreads for ie in eachelement(dofhahdler)
+        ireg, ieloc = loc2reg(dofhahdler, ie)
         ldiv!(
             element(physelem, ie).M,
             view(dQ[ireg], :, :, ieloc),
@@ -161,13 +150,27 @@ function apply_massmatrix!(dQ, dh, physelem)
     return nothing
 end
 
-function apply_sourceterm!(dQ, Q, source!, dh, physelem, time)
-    for ie in eachelement(dh)
-        ireg, ieloc = loc2reg(dh, ie)
+function apply_sourceterm!(dQ, Q, dg::DiscontinuousGalerkin, time)
+    (; dofhandler, physelem, source!) = dg
+    for ie in eachelement(dofhandler)
+        ireg, ieloc = loc2reg(dofhandler, ie)
         x = coords(physelem, ie)
         source!(view(dQ[ireg], :, :, ieloc), view(Q[ireg], :, :, ieloc), x, time, ireg)
     end
     return nothing
 end
+
+function _dg_applyBC!(Qext, Qint, coords, n, t, b, time, eq, bc)
+    @boundscheck begin
+        size(Qext, 1) == size(Qint, 1) && size(Qext, 2) == size(Qint, 2) ||
+            throw(ArgumentError("Qext and Qint must have the same dimensions."))
+    end
+    for (i, Qi) in enumerate(eachrow(Qint))
+        copy!(view(Qext, i, :), Qi)
+        stateBC!(view(Qext, i, :), coords[i], n[i], t[i], b[i], time, eq, bc)
+    end
+    return nothing
+end
+
 
 include("DGSEM.jl")

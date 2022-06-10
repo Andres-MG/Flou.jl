@@ -3,12 +3,12 @@ struct DGSEM{EQ,RT,NF,MT,ST,PE,PF,BCT,FT} <: DiscontinuousGalerkin{EQ,RT}
     riemannsolver::NF
     mesh::MT
     stdvec::ST
-    dofhandler::DofHandler
+    dofhandler::DofHandlerDG
     physelem::PE
     physface::PF
     Qf::MortarStateVector{RT}
     Fn::MortarStateVector{RT}
-    BCs::BCT
+    bcs::BCT
     source!::FT
 end
 
@@ -17,7 +17,7 @@ function DGSEM(
     nq,
     qtype,
     equation,
-    BCs,
+    bcs,
     riemannsolver,
     source=nothing,
 ) where {
@@ -33,14 +33,14 @@ function DGSEM(
         error("Not implemented yet!")
     end
     stdvec = (std,)  # TODO: single-region discretization
-    dofhandler = DofHandler([nelements(mesh)])
+    dofhandler = DofHandlerDG([nelements(mesh)])
 
     # Boundary conditions
     nbounds = nboundaries(mesh)
-    length(BCs) == nbounds ||
+    length(bcs) == nbounds ||
         throw(ArgumentError("The number of BCs does not match the number of boundaries."))
     bcs = Vector{Any}(undef, nbounds)
-    for (key, values) in BCs
+    for (key, values) in bcs
         i = mesh.bdmap[key]
         bcs[i] = values
     end

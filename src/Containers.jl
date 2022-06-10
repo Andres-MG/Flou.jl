@@ -87,7 +87,7 @@ function StateVector(
     return StateVector(raw, data)
 end
 
-function StateVector(raw, dh::DofHandler, stdvec, nvars)
+function StateVector(raw, dh::DofHandlerDG, stdvec, nvars)
     nd = [ndofs.(stdvec)...]
     nelems = [nelements(dh, i) for i in eachregion(dh)]
     return StateVector(raw, nd, nelems, nvars)
@@ -95,7 +95,7 @@ end
 
 function StateVector{RT}(
     value::Union{UndefInitializer,Missing,Nothing},
-    dh::DofHandler,
+    dh::DofHandlerDG,
     stdvec,
     nvars,
 ) where {
