@@ -2,6 +2,9 @@ abstract type DiscontinuousGalerkin{EQ,RT} <: AbstractSpatialDiscretization{EQ,R
 
 include("DofHandler.jl")
 
+#==========================================================================================#
+#                                      Containers.jl                                       #
+
 function StateVector(raw, dh::DofHandlerDG, stdvec, nvars)
     nd = [ndofs.(stdvec)...]
     nelems = [nelements(dh, i) for i in eachregion(dh)]
@@ -39,6 +42,9 @@ function MortarStateVector{RT}(value, mesh, stdvec, dh::DofHandlerDG, nvars) whe
     end
     MortarStateVector{RT}(value, dims)
 end
+
+#==========================================================================================#
+#                                        FlouBiz.jl                                        #
 
 function save2csv(filename, Q, dg)
     open(filename, "w") do fh
@@ -143,6 +149,9 @@ function save2vtkhdf(filename, Q, dg)
         HDF5.write(root, "CellData/region", regions)
     end
 end
+
+#==========================================================================================#
+#                                        DG methods                                        #
 
 abstract type AbstractNumericalFlux end
 
