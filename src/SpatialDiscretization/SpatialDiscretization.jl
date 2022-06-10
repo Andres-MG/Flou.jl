@@ -2,7 +2,7 @@ include("Mesh.jl")
 include("StdRegions.jl")
 include("PhysicalRegions.jl")
 
-abstract type AbstractSpatialDiscretization{EQ,RT} end
+abstract type AbstractSpatialDiscretization{EQ<:AbstractEquation,RT<:Real} end
 
 abstract type AbstractDofHandler end
 

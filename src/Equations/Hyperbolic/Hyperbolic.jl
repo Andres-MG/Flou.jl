@@ -1,9 +1,9 @@
 #==========================================================================================#
 #                                           DGSEM                                          #
 
-function rhs!(_dQ, _Q, p::Tuple{<:HyperbolicEquation,DGSEM}, time)
+function rhs!(_dQ, _Q, dg::DGSEM{<:HyperbolicEquation}, time)
     # Unpacking
-    equation, dg = p
+    (; equation) = dg
 
     # Wrap solution and its derivative
     Q = StateVector(_Q, dg.dofhandler, dg.stdvec, nvariables(equation))
@@ -13,25 +13,19 @@ function rhs!(_dQ, _Q, p::Tuple{<:HyperbolicEquation,DGSEM}, time)
     fill!(dQ, zero(eltype(dQ)))
 
     # Volume flux
-    volume_contribution!(dQ, Q, dg, equation, equation.operators[1])
+    volume_contribution!(dQ, Q, dg, equation.operators[1])
 
     # Project Q to faces
-    project2faces!(dg.Qf, Q, dg, equation)
+    project2faces!(dg.Qf, Q, dg)
 
     # Boundary conditions
-    applyBCs!(dg.Qf, dg, time, equation)
+    applyBCs!(dg.Qf, dg, time)
 
     # Interface fluxes
-    interface_fluxes!(
-        dg.Fn,
-        dg.Qf,
-        dg,
-        equation,
-        dg.riemannsolver,
-    )
+    interface_fluxes!(dg.Fn, dg.Qf, dg, dg.riemannsolver)
 
     # Surface contribution
-    surface_contribution!(dQ, dg.Fn, dg, equation, equation.operators[1])
+    surface_contribution!(dQ, dg.Fn, dg, equation.operators[1])
 
     # Apply mass matrix
     apply_massmatrix!(dQ, dg)

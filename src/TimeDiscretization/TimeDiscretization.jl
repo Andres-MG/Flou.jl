@@ -6,7 +6,7 @@ Wrapper around the 'ODEProblem' and 'solve' functions of the 'OrdinaryDiffEq.jl'
 Accepts the same keyword arguments, 'kwargs', as 'OrdinayrDiffEq.solve'.
 """
 function integrate(Q0, disc, solver, tfinal; kwargs...)
-    problem = ODEProblem(evaluate!, Q0.raw, tfinal, disc)
+    problem = ODEProblem(rhs!, Q0.raw, tfinal, disc)
     exetime = @elapsed begin
         sol = try
             solve(problem, solver; kwargs...)

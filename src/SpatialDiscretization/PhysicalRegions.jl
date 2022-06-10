@@ -226,3 +226,16 @@ function contravariant!(F̃, F, Ja::SMatrix{3,3})
     F̃[3] = F[1] * Ja[1, 3] + F[2] * Ja[2, 3] + F[3] * Ja[3, 3]
     return nothing
 end
+
+function covariant!(F, F̃, Ja::SMatrix{1,1})
+    F[1] = F̃ / Ja[1, 1]
+    return nothing
+end
+
+function covariant!(F, F̃, Ja::SMatrix{2,2})
+    error("Not implemented yet!")
+end
+
+function covariant!(F, F̃, Ja::SMatrix{3,3})
+    error("Not implemented yet!")
+end

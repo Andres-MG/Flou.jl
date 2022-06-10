@@ -66,6 +66,7 @@ for ie in eachelement(mesh)
     end
 end
 
+display(equation)
 display(DG)
 
 sb = get_save_callback("../results/solution", 0:0.01:tf)

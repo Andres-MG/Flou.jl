@@ -39,12 +39,12 @@ function DGSEM(
     nbounds = nboundaries(mesh)
     length(bcs) == nbounds ||
         throw(ArgumentError("The number of BCs does not match the number of boundaries."))
-    bcs = Vector{Any}(undef, nbounds)
+    _bcs = Vector{Any}(undef, nbounds)
     for (key, values) in bcs
         i = mesh.bdmap[key]
-        bcs[i] = values
+        _bcs[i] = values
     end
-    bcs = Tuple(bcs)
+    _bcs = Tuple(_bcs)
 
     # Physical elements
     subgrid = requires_subgrid.(equation.operators) |> any
@@ -71,7 +71,7 @@ function DGSEM(
         physfaces,
         Qf,
         Fn,
-        bcs,
+        _bcs,
         sourceterm,
     )
 end

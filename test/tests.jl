@@ -23,7 +23,7 @@ function Advection1D()
     for ie in eachelement(mesh)
         for i in eachindex(DG.stdvec[1])
             x = coords(DG.physelem, ie)[i][1]
-            Q[1][i, 1, ie] = gaussian_bump(x, 0.0, 0.0, x0, 0.0, 0.0, sx, 1.0, 1.0, h)
+            Q[1][i, 1, ie] = Flou.gaussian_bump(x, 0.0, 0.0, x0, 0.0, 0.0, sx, 1.0, 1.0, h)
         end
     end
 
@@ -59,7 +59,7 @@ function Advection2D()
     for ie in eachelement(mesh)
         for i in eachindex(DG.stdvec[1])
             x, y = coords(DG.physelem, ie)[i]
-            Q[1][i, 1, ie] = gaussian_bump(x, y, 0.0, x0, y0, 0.0, sx, sy, 1.0, h)
+            Q[1][i, 1, ie] = Flou.gaussian_bump(x, y, 0.0, x0, y0, 0.0, sx, sy, 1.0, h)
         end
     end
 

@@ -1,7 +1,5 @@
 abstract type AbstractQuadrature end
 
-Base.length(::AbstractQuadrature) = 1
-
 struct GaussQuadrature <: AbstractQuadrature end
 struct GaussLobattoQuadrature <: AbstractQuadrature end
 
@@ -26,8 +24,6 @@ Return `true` if `std` is a tensor-product standard region, and `false` otherwis
 function is_tensor_product end
 
 function eachdirection end
-
-function nvertices end
 
 function massmatrix end
 
@@ -217,6 +213,14 @@ function master2slave(i, orientation, std::StdSegment)
     end
 end
 
+_VTK_type(::StdSegment) = UInt8(68)
+
+function _VTK_connectivities(s::StdSegment)
+    conns = [1, length(s)]
+    append!(conns, 2:(length(s) - 1))
+    return conns .- 1
+end
+
 #==========================================================================================#
 #                                       Standard quad                                      #
 
@@ -374,6 +378,20 @@ function master2slave(i, orientation, shape::Vararg{<:Integer,1})
     error("Not implemented yet!")
 end
 
+_VTK_type(::StdQuad) = UInt8(70)
+
+function _VTK_connectivities(s::StdQuad)
+    nx, ny = size(s)
+    li = LinearIndices(s)
+    conns = [
+        li[1, 1], li[nx, 1], li[nx, ny], li[1, ny],
+        li[2:(end - 1), 1]..., li[nx, 2:(end - 1)]...,
+        li[2:(end - 1), ny]..., li[1, 2:(end - 1)]...,
+        li[2:(end - 1), 2:(end - 1)]...,
+    ]
+    return conns .- 1
+end
+
 #==========================================================================================#
 #                                     Standard triangle                                    #
 
@@ -388,6 +406,12 @@ function slave2master(i, orientation, std::StdTri)
 end
 
 function master2slave(i, orientation, std::StdTri)
+    error("Not implemented yet!")
+end
+
+_VTK_type(::StdTri) = UInt8(69)
+
+function _VTK_connectivities(::StdTri)
     error("Not implemented yet!")
 end
 

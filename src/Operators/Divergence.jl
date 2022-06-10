@@ -3,12 +3,11 @@ abstract type AbstractDivOperator <: AbstractOperator end
 function surface_contribution!(
     dQ,
     Fn,
-    dg::DGSEM,
-    eq::AbstractEquation,
+    dg::DiscontinuousGalerkin,
     ::AbstractDivOperator,
 )
     # Unpack
-    (; mesh, dofhandler, stdvec) = dg
+    (; mesh, dofhandler, stdvec, equation) = dg
 
     ndim = spatialdim(mesh)
     for ireg in eachregion(dofhandler)
@@ -28,7 +27,7 @@ function surface_contribution!(
 
                 # 1D
                 if ndim == 1
-                    @inbounds for v in eachvariable(eq)
+                    @inbounds for v in eachvariable(equation)
                         for i in eachindex(std)
                             dQr[i, v] -= std.lω[1][i] * Fn[iface[1]][facepos[1]][1, v]
                             dQr[i, v] -= std.lω[2][i] * Fn[iface[2]][facepos[2]][1, v]
@@ -37,7 +36,7 @@ function surface_contribution!(
 
                 # 2D
                 elseif ndim == 2
-                    @inbounds for v in eachvariable(eq), j in eachindex(std, 2)
+                    @inbounds for v in eachvariable(equation), j in eachindex(std, 2)
                         for i in eachindex(std, 1)
                             dQr[i, j, v] -= std.lω[1][i, j] * Fn[iface[1]][facepos[1]][j, v]
                             dQr[i, j, v] -= std.lω[2][i, j] * Fn[iface[2]][facepos[2]][j, v]
@@ -53,7 +52,7 @@ function surface_contribution!(
 
             # Non-tensor-product elements
             else
-                @inbounds for v in eachvariable
+                @inbounds for v in eachvariable(equation)
                     for s in eachindex(iface, facepos), i in eachindex(std)
                         for k in eachindex(std)
                             dQ[ireg][i, v, ieloc] -= std.lω[s][i, k] *
@@ -71,29 +70,29 @@ end
 
 struct WeakDivOperator <: AbstractDivOperator end
 
-function volume_contribution!(dQ, Q, dg::DGSEM, eq::AbstractEquation, ::WeakDivOperator)
+function volume_contribution!(dQ, Q, dg::DiscontinuousGalerkin, ::WeakDivOperator)
     # Unpack
-    (; dofhandler, stdvec, physelem) = dg
+    (; dofhandler, stdvec, physelem, equation) = dg
 
     for ireg in eachregion(dofhandler)
         std = stdvec[ireg]
         ndim = spatialdim(std)
 
         # Buffers
-        Fb = @threadbuff Array{eltype(Q),3}(undef, ndim, nvariables(eq), ndofs(std))
-        F̃b = @threadbuff Array{eltype(Q),3}(undef, ndofs(std), nvariables(eq), ndim)
+        Fb = @threadbuff Array{eltype(Q),3}(undef, ndim, nvariables(equation), ndofs(std))
+        F̃b = @threadbuff Array{eltype(Q),3}(undef, ndofs(std), nvariables(equation), ndim)
         @flouthreads for ieloc in eachelement(dofhandler, ireg)
             F = Fb[Threads.threadid()]
             F̃ = F̃b[Threads.threadid()]
 
             # Volume fluxes
             @inbounds for i in eachindex(std)
-                @views volumeflux!(F[:, :, i], Q[ireg][i, :, ieloc], eq)
+                @views volumeflux!(F[:, :, i], Q[ireg][i, :, ieloc], equation)
             end
 
             # Contravariant fluxes
             ie = reg2loc(dofhandler, ireg, ieloc)
-            for ivar in eachvariable(eq)
+            for ivar in eachvariable(equation)
                 for i in eachindex(std)
                     Ja = element(physelem, ie).Ja[i]
                     @views contravariant!(F̃[i, ivar, :], F[:, ivar, i], Ja)
@@ -111,7 +110,7 @@ function volume_contribution!(dQ, Q, dg::DGSEM, eq::AbstractEquation, ::WeakDivO
 
                 # 1D
                 if ndim == 1
-                    @inbounds for v in eachvariable(eq)
+                    @inbounds for v in eachvariable(equation)
                         for k in eachindex(std), i in eachindex(std)
                             dQr[i, v] += std.K[1][i, k] * F̃r[k, v, 1]
                         end
@@ -119,7 +118,7 @@ function volume_contribution!(dQ, Q, dg::DGSEM, eq::AbstractEquation, ::WeakDivO
 
                 # 2D
                 elseif ndim == 2
-                    @inbounds for v in eachvariable(eq)
+                    @inbounds for v in eachvariable(equation)
                         for j in eachindex(std, 2), i in eachindex(std, 1)
                             for k in eachindex(std, 1)
                                 dQr[i, j, v] += std.K[1][i, j, k] * F̃r[k, j, v, 1]
@@ -138,7 +137,7 @@ function volume_contribution!(dQ, Q, dg::DGSEM, eq::AbstractEquation, ::WeakDivO
             # Non-tensor-product element
             else
                 @inbounds for s in eachindex(std.K)
-                    for v in eachvariable(eq), i in eachindex(std)
+                    for v in eachvariable(equation), i in eachindex(std)
                         for k in eachindex(std)
                             dQ[ireg][i, v, ieloc] += std.K[s][i, k] * F̃[k, v, s]
                         end
@@ -155,29 +154,29 @@ end
 
 struct StrongDivOperator <: AbstractDivOperator end
 
-function volume_contribution!(dQ, Q, dg::DGSEM, eq::AbstractEquation, ::StrongDivOperator)
+function volume_contribution!(dQ, Q, dg::DiscontinuousGalerkin, ::StrongDivOperator)
     # Unpack
-    (; dofhandler, stdvec, physelem) = dg
+    (; dofhandler, stdvec, physelem, equation) = dg
 
     for ireg in eachregion(dofhandler)
         std = stdvec[ireg]
         ndim = spatialdim(std)
 
         # Buffers
-        Fb = @threadbuff Array{eltype(Q),3}(undef, ndim, nvariables(eq), ndofs(std))
-        F̃b = @threadbuff Array{eltype(Q),3}(undef, ndofs(std), nvariables(eq), ndim)
+        Fb = @threadbuff Array{eltype(Q),3}(undef, ndim, nvariables(equation), ndofs(std))
+        F̃b = @threadbuff Array{eltype(Q),3}(undef, ndofs(std), nvariables(equation), ndim)
         @flouthreads for ieloc in eachelement(dofhandler, ireg)
             F = Fb[Threads.threadid()]
             F̃ = F̃b[Threads.threadid()]
 
             # Volume fluxes
             @inbounds for i in eachindex(std)
-                @views volumeflux!(F[:, :, i], Q[ireg][i, :, ieloc], eq)
+                @views volumeflux!(F[:, :, i], Q[ireg][i, :, ieloc], equation)
             end
 
             # Contravariant fluxes
             ie = reg2loc(dofhandler, ireg, ieloc)
-            for ivar in eachvariable(eq)
+            for ivar in eachvariable(equation)
                 for i in eachindex(std)
                     Ja = element(physelem, ie).Ja[i]
                     @views contravariant!(F̃[i, ivar, :], F[:, ivar, i], Ja)
@@ -195,7 +194,7 @@ function volume_contribution!(dQ, Q, dg::DGSEM, eq::AbstractEquation, ::StrongDi
 
                 # 1D
                 if ndim == 1
-                    @inbounds for v in eachvariable(eq)
+                    @inbounds for v in eachvariable(equation)
                         for k in eachindex(std), i in eachindex(std)
                             dQr[i, v] += std.Ks[1][i, k] * F̃r[k, v, 1]
                         end
@@ -203,7 +202,7 @@ function volume_contribution!(dQ, Q, dg::DGSEM, eq::AbstractEquation, ::StrongDi
 
                 # 2D
                 elseif ndim == 2
-                    @inbounds for v in eachvariable(eq)
+                    @inbounds for v in eachvariable(equation)
                         for j in eachindex(std, 2), i in eachindex(std, 1)
                             for k in eachindex(std, 1)
                                 dQr[i, j, v] += std.Ks[1][i, j, k] * F̃r[k, j, v, 1]
@@ -222,7 +221,7 @@ function volume_contribution!(dQ, Q, dg::DGSEM, eq::AbstractEquation, ::StrongDi
             # Non-tensor-product element
             else
                 @inbounds for s in eachindex(std.K)
-                    for v in eachvariable(eq), i in eachindex(std)
+                    for v in eachvariable(equation), i in eachindex(std)
                         for k in eachindex(std)
                             dQ[ireg][i, v, ieloc] += std.Ks[s][i, k] * F̃[k, v, s]
                         end
@@ -249,9 +248,9 @@ end
 
 function twopointflux! end
 
-function volume_contribution!(dQ, Q, dg::DGSEM, eq::AbstractEquation, op::SplitDivOperator)
+function volume_contribution!(dQ, Q, dg::DiscontinuousGalerkin, op::SplitDivOperator)
     # Unpack
-    (; dofhandler, stdvec, physelem) = dg
+    (; dofhandler, stdvec, physelem, equation) = dg
 
     for ireg in eachregion(dofhandler)
         std = stdvec[ireg]
@@ -262,10 +261,10 @@ function volume_contribution!(dQ, Q, dg::DGSEM, eq::AbstractEquation, op::SplitD
             throw(ArgumentError("Only GLL nodes admit a split-form formulation."))
 
         # Buffers
-        Fb = @threadbuff Array{eltype(Q),3}(undef, ndim, nvariables(eq), ndofs(std))
+        Fb = @threadbuff Array{eltype(Q),3}(undef, ndim, nvariables(equation), ndofs(std))
         F♯b = @threadbuff [
             Array{eltype(Q),3}(
-                undef, size(std, idir), ndofs(std), nvariables(eq)
+                undef, size(std, idir), ndofs(std), nvariables(equation)
             )
             for idir in eachdirection(std)
         ]
@@ -276,7 +275,7 @@ function volume_contribution!(dQ, Q, dg::DGSEM, eq::AbstractEquation, op::SplitD
 
             # Volume fluxes
             @inbounds for i in eachindex(std)
-                @views volumeflux!(F[:, :, i], Q[ireg][i, :, ieloc], eq)
+                @views volumeflux!(F[:, :, i], Q[ireg][i, :, ieloc], equation)
             end
 
             # Indexing
@@ -285,7 +284,7 @@ function volume_contribution!(dQ, Q, dg::DGSEM, eq::AbstractEquation, op::SplitD
 
             # Contravariant fluxes
             Ja = element(physelem, ie).Ja
-            for ivar in eachvariable(eq)
+            for ivar in eachvariable(equation)
                 for i in eachindex(std)
                     contravariant!(F̃, view(F, :, ivar, i), Ja[i])
                     for idir in eachdirection(std)
@@ -318,7 +317,7 @@ function volume_contribution!(dQ, Q, dg::DGSEM, eq::AbstractEquation, op::SplitD
                         view(Qr, l, :),
                         Jar[i],
                         Jar[l],
-                        eq,
+                        equation,
                         op.tpflux,
                     )
                     @views copy!(F♯r[1][i, l, :], F♯r[1][l, i, :])
@@ -334,7 +333,7 @@ function volume_contribution!(dQ, Q, dg::DGSEM, eq::AbstractEquation, op::SplitD
                             view(Qr, l, j, :),
                             view(Jar[i, j], :, 1),
                             view(Jar[l, j], :, 1),
-                            eq,
+                            equation,
                             op.tpflux,
                         )
                         @views copy!(F♯r[1][i, l, j, :], F♯r[1][l, i, j, :])
@@ -346,7 +345,7 @@ function volume_contribution!(dQ, Q, dg::DGSEM, eq::AbstractEquation, op::SplitD
                             view(Qr, i, l, :),
                             view(Jar[i, j], :, 2),
                             view(Jar[i, l], :, 2),
-                            eq,
+                            equation,
                             op.tpflux,
                         )
                         @views copy!(F♯r[2][j, i, l, :], F♯r[2][l, i, j, :])
@@ -361,7 +360,7 @@ function volume_contribution!(dQ, Q, dg::DGSEM, eq::AbstractEquation, op::SplitD
             # Strong derivative
             # 1D
             if ndim == 1
-                @inbounds for v in eachvariable(eq), i in eachindex(std)
+                @inbounds for v in eachvariable(equation), i in eachindex(std)
                     for k in eachindex(std)
                         dQr[i, v] += std.K♯[1][i, k] * F♯r[1][k, i, v]
                     end
@@ -369,7 +368,7 @@ function volume_contribution!(dQ, Q, dg::DGSEM, eq::AbstractEquation, op::SplitD
 
             # 2D
             elseif ndim == 2
-                @inbounds for v in eachvariable(eq)
+                @inbounds for v in eachvariable(equation)
                     for j in eachindex(std, 2), i in eachindex(std, 1)
                         for k in eachindex(std, 1)
                             dQr[i, j, v] += std.K♯[1][i, j, k] * F♯r[1][k, i, j, v]
@@ -410,9 +409,9 @@ end
 
 requires_subgrid(::SSFVDivOperator) = true
 
-function volume_contribution!(dQ, Q, dg::DGSEM, eq::AbstractEquation, op::SSFVDivOperator)
+function volume_contribution!(dQ, Q, dg::DiscontinuousGalerkin, op::SSFVDivOperator)
     # Unpack
-    (; dofhandler, stdvec, physelem) = dg
+    (; dofhandler, stdvec, physelem, equation) = dg
 
     for ireg in eachregion(dofhandler)
         std = stdvec[ireg]
@@ -425,18 +424,18 @@ function volume_contribution!(dQ, Q, dg::DGSEM, eq::AbstractEquation, op::SSFVDi
         # Buffers
         F̄b = @threadbuff [
             Matrix{eltype(Q)}(
-                undef, ndofs(std) + ndofs(std) ÷ size(std, idir), nvariables(eq)
+                undef, ndofs(std) + ndofs(std) ÷ size(std, idir), nvariables(equation)
             )
             for idir in eachdirection(std)
         ]
 
         @flouthreads for ieloc in eachelement(dofhandler, ireg)
             F̄ = F̄b[Threads.threadid()]
-            F̄t = MVector{nvariables(eq),eltype(Q)}(undef)
-            F̄v = MVector{nvariables(eq),eltype(Q)}(undef)
-            Qln = MVector{nvariables(eq),eltype(Q)}(undef)
-            Qrn = MVector{nvariables(eq),eltype(Q)}(undef)
-            Fn = MVector{nvariables(eq),eltype(Q)}(undef)
+            F̄t = MVector{nvariables(equation),eltype(Q)}(undef)
+            F̄v = MVector{nvariables(equation),eltype(Q)}(undef)
+            Qln = MVector{nvariables(equation),eltype(Q)}(undef)
+            Qrn = MVector{nvariables(equation),eltype(Q)}(undef)
+            Fn = MVector{nvariables(equation),eltype(Q)}(undef)
 
             # Fluxes at the subcell interfaces
             Qr = reshape(
@@ -474,10 +473,10 @@ function volume_contribution!(dQ, Q, dg::DGSEM, eq::AbstractEquation, op::SSFVDi
                             view(Qr, k, :),
                             Ja[l],
                             Ja[k],
-                            eq,
+                            equation,
                             op.tpflux,
                         )
-                        for v in eachvariable(eq)
+                        for v in eachvariable(equation)
                             F̄r[i, v] += 2 * std.Q[1][l, k] * F̄t[v]
                         end
                     end
@@ -488,13 +487,13 @@ function volume_contribution!(dQ, Q, dg::DGSEM, eq::AbstractEquation, op::SSFVDi
                         view(Qr, (i - 1), :),
                         view(Qr, i, :),
                         ns[1][i],
-                        eq,
+                        equation,
                         op.fvflux,
                     )
 
                     # Blending
-                    Wl = vars_cons2entropy(view(Qr, (i - 1), :), eq)
-                    Wr = vars_cons2entropy(view(Qr, i, :), eq)
+                    Wl = vars_cons2entropy(view(Qr, (i - 1), :), equation)
+                    Wr = vars_cons2entropy(view(Qr, i, :), equation)
                     b = dot(Wr - Wl, view(F̄r, i, :) - F̄v)
                     δ = sqrt(b^2 + op.blend)
                     δ = (δ - b) / δ
@@ -525,10 +524,10 @@ function volume_contribution!(dQ, Q, dg::DGSEM, eq::AbstractEquation, op::SSFVDi
                                 view(Qr, k, j, :),
                                 view(Jar[l, j], :, 1),
                                 view(Jar[k, j], :, 1),
-                                eq,
+                                equation,
                                 op.tpflux,
                             )
-                            for v in eachvariable(eq)
+                            for v in eachvariable(equation)
                                 F̄r[1][i, j, v] += 2 * std.Q[1][l, k] * F̄t[v]
                             end
                         end
@@ -540,7 +539,7 @@ function volume_contribution!(dQ, Q, dg::DGSEM, eq::AbstractEquation, op::SSFVDi
                             ns[1][i, j],
                             ts[1][i, j],
                             bs[1][i, j],
-                            eq,
+                            equation,
                         )
                         rotate2face!(
                             Qrn,
@@ -548,22 +547,22 @@ function volume_contribution!(dQ, Q, dg::DGSEM, eq::AbstractEquation, op::SSFVDi
                             ns[1][i, j],
                             ts[1][i, j],
                             bs[1][i, j],
-                            eq,
+                            equation,
                         )
                         numericalflux!(
                             Fn,
                             Qln,
                             Qrn,
                             ns[1][i, j],
-                            eq,
+                            equation,
                             op.fvflux,
                         )
-                        rotate2phys!(F̄v, Fn, ns[1][i, j], ts[1][i, j], bs[1][i, j], eq)
+                        rotate2phys!(F̄v, Fn, ns[1][i, j], ts[1][i, j], bs[1][i, j], equation)
                         F̄v .*= Js[1][i, j]
 
                         # Blending
-                        Wl = vars_cons2entropy(view(Qr, (i - 1), j, :), eq)
-                        Wr = vars_cons2entropy(view(Qr, i, j, :), eq)
+                        Wl = vars_cons2entropy(view(Qr, (i - 1), j, :), equation)
+                        Wr = vars_cons2entropy(view(Qr, i, j, :), equation)
                         b = dot(Wr .- Wl, view(F̄r[1], i, j, :) .- F̄v)
                         δ = sqrt(b^2 + op.blend)
                         δ = (δ - b) / δ
@@ -587,10 +586,10 @@ function volume_contribution!(dQ, Q, dg::DGSEM, eq::AbstractEquation, op::SSFVDi
                                 view(Qr, i, k, :),
                                 view(Jar[i, l], :, 2),
                                 view(Jar[i, k], :, 2),
-                                eq,
+                                equation,
                                 op.tpflux,
                             )
-                            for v in eachvariable(eq)
+                            for v in eachvariable(equation)
                                 F̄r[2][i, j, v] += 2 * std.Q[2][l, k] * F̄t[v]
                             end
                         end
@@ -602,7 +601,7 @@ function volume_contribution!(dQ, Q, dg::DGSEM, eq::AbstractEquation, op::SSFVDi
                             ns[2][j],
                             ts[2][j],
                             bs[2][j],
-                            eq,
+                            equation,
                         )
                         rotate2face!(
                             Qrn,
@@ -610,22 +609,22 @@ function volume_contribution!(dQ, Q, dg::DGSEM, eq::AbstractEquation, op::SSFVDi
                             ns[2][j],
                             ts[2][j],
                             bs[2][j],
-                            eq,
+                            equation,
                         )
                         numericalflux!(
                             Fn,
                             Qln,
                             Qrn,
                             ns[2][j],
-                            eq,
+                            equation,
                             op.fvflux,
                         )
-                        rotate2phys!(F̄v, Fn, ns[2][j], ts[2][j], bs[2][j], eq)
+                        rotate2phys!(F̄v, Fn, ns[2][j], ts[2][j], bs[2][j], equation)
                         F̄v .*= Js[2][j]
 
                         # Blending
-                        Wl = vars_cons2entropy(view(Qr, i, (j - 1), :), eq)
-                        Wr = vars_cons2entropy(view(Qr, i, j, :), eq)
+                        Wl = vars_cons2entropy(view(Qr, i, (j - 1), :), equation)
+                        Wr = vars_cons2entropy(view(Qr, i, j, :), equation)
                         b = dot(Wr .- Wl, view(F̄r[2], i, j, :) .- F̄v)
                         δ = sqrt(b^2 + op.blend)
                         δ = (δ - b) / δ
@@ -641,7 +640,7 @@ function volume_contribution!(dQ, Q, dg::DGSEM, eq::AbstractEquation, op::SSFVDi
             # Strong derivative
             # 1D
             if ndim == 1
-                @inbounds for v in eachvariable(eq)
+                @inbounds for v in eachvariable(equation)
                     for i in eachindex(std)
                         dQr[i, v] += F̄r[1][i, v] - F̄r[1][(i + 1), v]
                     end
@@ -649,7 +648,7 @@ function volume_contribution!(dQ, Q, dg::DGSEM, eq::AbstractEquation, op::SSFVDi
 
             # 2D
             elseif ndim == 2
-                @inbounds for v in eachvariable(eq)
+                @inbounds for v in eachvariable(equation)
                     for j in eachindex(std, 2), i in eachindex(std, 1)
                         dQr[i, j, v] += (F̄r[1][i, j, v] - F̄r[1][(i + 1), j, v]) *
                                         face(std, 2).M[j, j]

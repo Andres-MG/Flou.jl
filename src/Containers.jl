@@ -87,27 +87,6 @@ function StateVector(
     return StateVector(raw, data)
 end
 
-function StateVector(raw, dh::DofHandlerDG, stdvec, nvars)
-    nd = [ndofs.(stdvec)...]
-    nelems = [nelements(dh, i) for i in eachregion(dh)]
-    return StateVector(raw, nd, nelems, nvars)
-end
-
-function StateVector{RT}(
-    value::Union{UndefInitializer,Missing,Nothing},
-    dh::DofHandlerDG,
-    stdvec,
-    nvars,
-) where {
-    RT,
-}
-    nd = [ndofs.(stdvec)...]
-    nelems = [nelements(dh, i) for i in eachregion(dh)]
-    rawlen = sum(nd .* nvars .* nelems)
-    raw = Vector{RT}(value, rawlen)
-    return StateVector(raw, nd, nelems, nvars)
-end
-
 function Base.show(io::IO, ::MIME"text/plain", s::StateVector{RT}) where {RT}
     @nospecialize
     nvars = nvariables(s)
@@ -154,20 +133,6 @@ function MortarStateVector{RT}(value, dims) where {RT}
         data[i] = [Matrix{RT}(value, d...) for d in dims[i]]
     end
     return MortarStateVector(data)
-end
-
-function MortarStateVector{RT}(value, mesh, stdvec, dh, nvars) where {RT}
-    dims = Vector{NTuple{2,NTuple{2,Int}}}(undef, nfaces(mesh))
-    for i in eachface(mesh)
-        elem = face(mesh, i).eleminds[1]
-        reg, _ = loc2reg(dh, elem)
-        std = stdvec[reg]
-        pos = face(mesh, i).elempos[1]
-        idir = (pos - 1) ÷ 2 + 1
-        ndof = ndofs(std) ÷ size(std, idir)
-        data[i] = [Matrix{RT}(value, ndof, nvars) for _ in 1:2]
-    end
-    MortarStateVector{RT}(data)
 end
 
 function Base.show(io::IO, ::MIME"text/plain", m::MortarStateVector{RT}) where {RT}

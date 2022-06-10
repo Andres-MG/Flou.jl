@@ -31,9 +31,6 @@ function print_flou_header(io::IO=stdout)
     println(io, "")
 end
 
-# Utilities.jl
-export gaussian_bump
-
 # Containers.jl
 export StateVector, MortarStateVector
 export nregions, nvariables, eachregion, eachvariable
@@ -41,18 +38,8 @@ export nregions, nvariables, eachregion, eachvariable
 # FlouBiz.jl
 export save
 
-# Equations.jl
+# EquationsInterface.jl
 export nvariables, eachvariable, variablenames
-export rotate2face!, rotate2phys!
-export rhs!
-
-export LinearAdvection
-export BurgersEquation
-export EulerEquation, pressure, soundvelocity
-export vars_cons2prim, vars_prim2cons, vars_cons2entropy
-export ChandrasekharAverage, MatrixDissipation
-export EulerInflowBC, EulerOutflowBC, EulerSlipBC
-export KPPEquation, initial_whirl_KPP!
 
 # SpatialDiscretization.jl
 export CartesianMesh, MeshElement, MeshFace
@@ -65,17 +52,29 @@ export eachelement, eachboundary, eachface, eachintface, eachbdface, eachvertex
 
 export GaussQuadrature, GL, GaussLobattoQuadrature, GLL
 export StdSegment, StdQuad
-export is_tensor_product, eachdirection, nvertices
-export spatialdim, ndofs, faces, face, quadratures, quadrature
+export ndofs, is_tensor_product, eachdirection, ndofs, quadratures, quadrature
+
+export DirichletBC
 
 export DGSEM
 export StdAverageNumericalFlux, LxFNumericalFlux
+export rotate2face!, rotate2phys!
 
 export nregions, nelements
 export eachregion, eachelement
 
 # Operators.jl
 export WeakDivOperator, StrongDivOperator, SplitDivOperator, SSFVDivOperator
+
+# Equations.jl
+export LinearAdvection
+export BurgersEquation
+export EulerEquation, pressure, soundvelocity
+export vars_cons2prim, vars_prim2cons, vars_cons2entropy
+export ChandrasekharAverage, MatrixDissipation
+export EulerInflowBC, EulerOutflowBC, EulerSlipBC
+export KPPEquation, initial_whirl_KPP!
+
 
 # TimeDiscretization.jl
 export integrate, get_save_callback
@@ -84,14 +83,17 @@ include("Utilities.jl")
 include("Containers.jl")
 include("FlouBiz.jl")
 
-# Equations
-include("Equations/Equations.jl")
+# Equations interface
+include("Equations/EquationsInterface.jl")
 
 # Spatial discretizations
 include("SpatialDiscretization/SpatialDiscretization.jl")
 
 # Spatial operators
 include("Operators/Operators.jl")
+
+# Equation implementations
+include("Equations/Equations.jl")
 
 # Time discretizations
 include("TimeDiscretization/TimeDiscretization.jl")
