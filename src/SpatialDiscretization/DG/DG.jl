@@ -160,7 +160,7 @@ function rotate2face! end
 function rotate2phys! end
 
 # TODO: maybe move to StdRegions.jl??
-function project2faces!(Qf, Q, dg::DiscontinuousGalerkin)
+function project2faces!(Qf::MortarStateVector, Q::StateVector, dg::DiscontinuousGalerkin)
     # Unpack
     (; mesh, dofhandler, stdvec, equation) = dg
 

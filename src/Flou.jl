@@ -75,7 +75,6 @@ export ChandrasekharAverage, MatrixDissipation
 export EulerInflowBC, EulerOutflowBC, EulerSlipBC
 export KPPEquation, initial_whirl_KPP!
 
-
 # TimeDiscretization.jl
 export integrate, get_save_callback
 
