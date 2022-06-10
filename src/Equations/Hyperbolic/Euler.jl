@@ -168,44 +168,44 @@ end
 function vars_cons2prim(Q, eq::EulerEquation{1})
     ρ, ρu, _ = Q
     p = pressure(Q, eq)
-    return SVector{3}(ρ, ρu/ρ, p)
+    return SVector(ρ, ρu/ρ, p)
 end
 
 function vars_cons2prim(Q, eq::EulerEquation{2})
     ρ, ρu, ρv, _ = Q
     p = pressure(Q, eq)
-    return SVector{4}(ρ, ρu/ρ, ρv/ρ, p)
+    return SVector(ρ, ρu/ρ, ρv/ρ, p)
 end
 
 function vars_cons2prim(Q, eq::EulerEquation{3})
     ρ, ρu, ρv, ρw, _ = Q
     p = pressure(Q, eq)
-    return SVector{5}(ρ, ρu/ρ, ρv/ρ, ρw/ρ, p)
+    return SVector(ρ, ρu/ρ, ρv/ρ, ρw/ρ, p)
 end
 
 function vars_prim2cons(Q, eq::EulerEquation{1})
     ρ, u, _ = Q
     ρe = energy(Q, eq)
-    return SVector{3}(ρ, ρ * u, ρe)
+    return SVector(ρ, ρ * u, ρe)
 end
 
 function vars_prim2cons(Q, eq::EulerEquation{2})
     ρ, u, v, _ = Q
     ρe = energy(Q, eq)
-    return SVector{4}(ρ, ρ * u, ρ * v, ρe)
+    return SVector(ρ, ρ * u, ρ * v, ρe)
 end
 
 function vars_prim2cons(Q, eq::EulerEquation{3})
     ρ, u, v, w, _ = Q
     ρe = energy(Q, eq)
-    return SVector{5}(ρ, ρ * u, ρ * v, ρ * w, ρe)
+    return SVector(ρ, ρ * u, ρ * v, ρ * w, ρe)
 end
 
 function vars_cons2entropy(Q, eq::EulerEquation{1})
     ρ, ρu, _ = Q
     p = pressure(Q, eq)
     s = log(p) - eq.γ * log(ρ)
-    return SVector{3}(
+    return SVector(
         (eq.γ - s) / (eq.γ - 1) - ρu^2 / ρ / 2p,
         ρu / p,
         -ρ / p,
@@ -216,7 +216,7 @@ function vars_cons2entropy(Q, eq::EulerEquation{2})
     ρ, ρu, ρv, _ = Q
     p = pressure(Q, eq)
     s = log(p) - eq.γ * log(ρ)
-    return SVector{4}(
+    return SVector(
         (eq.γ - s) / (eq.γ - 1) - (ρu^2 + ρv^2) / ρ / 2p,
         ρu / p,
         ρv / p,
@@ -228,7 +228,7 @@ function vars_cons2entropy(Q, eq::EulerEquation{3})
     ρ, ρu, ρv, ρw, _ = Q
     p = pressure(Q, eq)
     s = log(p) - eq.γ * log(ρ)
-    return SVector{5}(
+    return SVector(
         (eq.γ - s) / (eq.γ - 1) - (ρu^2 + ρv^2 + ρw^2) / ρ / 2p,
         ρu / p,
         ρv / p,
@@ -254,7 +254,7 @@ function normal_shockwave(ρ0, u0, p0, eq::EulerEquation)
     a = soundvelocity(ρ1, p1, eq)
     u1 = M1 * a
 
-    return SVector{3}(ρ1, u1, p1)
+    return SVector(ρ1, u1, p1)
 end
 
 #==========================================================================================#
@@ -552,7 +552,7 @@ function twopointflux!(
         F♯[3] = (ρ * u * h) * n
     elseif ND == 2
         h = 1 / (2β * (eq.γ - 1)) - (u1^2 + v1^2 + u2^2 + v2^2) / 4 + p/ρ + u^2 + v^2
-        n = SVector{2}((Ja1 .+ Ja2) ./ 2)
+        n = SVector((Ja1 .+ Ja2) ./ 2)
         F♯[1] = (ρ * u) * n[1] + (ρ * v) * n[2]
         F♯[2] = (ρ * u^2 + p) * n[1] + (ρ * u * v) * n[2]
         F♯[3] = (ρ * u * v) * n[1] + (ρ * v^2 + p) * n[2]
@@ -560,7 +560,7 @@ function twopointflux!(
     else # ND == 3
         h = 1 / (2β * (eq.γ - 1)) - (u1^2 + v1^2 + w1^2 + u2^2 + v2^2 + w2^2) / 4 +
             p/ρ + u^2 + v^2 + w^2
-        n = SVector{3}((Ja1 .+ Ja2) ./ 2)
+        n = SVector((Ja1 .+ Ja2) ./ 2)
         F♯[1] = (ρ * u) * n[1] + (ρ * v) * n[2] + (ρ * w) * n[3]
         F♯[2] = (ρ * u^2 + p) * n[1] + (ρ * u * v) * n[2] + (ρ * u * w) * n[3]
         F♯[3] = (ρ * u * v) * n[1] + (ρ * v^2 + p) * n[2] + (ρ * v * w) * n[3]

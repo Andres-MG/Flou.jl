@@ -62,9 +62,9 @@ end
 
 function PhysicalSubgrid(std, mesh::CartesianMesh{1,RT}, ie) where {RT}
     nx = length(std) + 1
-    n = (fill(SVector{1}(one(RT)), nx),)
-    t = (fill(SVector{1}(zero(RT)), nx),)
-    b = (fill(SVector{1}(zero(RT)), nx),)
+    n = (fill(SVector(one(RT)), nx),)
+    t = (fill(SVector(zero(RT)), nx),)
+    b = (fill(SVector(zero(RT)), nx),)
     Jf = (fill(one(RT), nx))
     return PhysicalSubgrid(n, t, b, Jf)
 end
@@ -73,16 +73,16 @@ function PhysicalSubgrid(std, mesh::CartesianMesh{2,RT}, ie) where {RT}
     (; Δx) = mesh
     nx, ny = size(std)
     n = (
-        fill(SVector{2}(one(RT), zero(RT)), nx + 1, ny),
-        fill(SVector{2}(zero(RT), one(RT)), nx, ny + 1),
+        fill(SVector(one(RT), zero(RT)), nx + 1, ny),
+        fill(SVector(zero(RT), one(RT)), nx, ny + 1),
     )
     t = (
-        fill(SVector{2}(zero(RT), one(RT)), nx + 1, ny),
-        fill(SVector{2}(-one(RT), zero(RT)), nx, ny + 1),
+        fill(SVector(zero(RT), one(RT)), nx + 1, ny),
+        fill(SVector(-one(RT), zero(RT)), nx, ny + 1),
     )
     b = (
-        fill(SVector{2}(zero(RT), zero(RT)), nx + 1, ny),
-        fill(SVector{2}(zero(RT), zero(RT)), nx, ny + 1),
+        fill(SVector(zero(RT), zero(RT)), nx + 1, ny),
+        fill(SVector(zero(RT), zero(RT)), nx, ny + 1),
     )
     Jf = (
         fill(Δx[2] / 2, nx + 1, ny),
@@ -111,13 +111,13 @@ function PhysicalFace(std, mesh::CartesianMesh{1,RT}, iface) where {RT}
     x = [vertex(mesh, nind)]
     J = [one(RT)]
     if pos == 1
-        n = [SVector{1}(-one(RT))]
-        t = [SVector{1}(zero(RT))]
-        b = [SVector{1}(zero(RT))]
+        n = [SVector(-one(RT))]
+        t = [SVector(zero(RT))]
+        b = [SVector(zero(RT))]
     else # pos == 2
-        n = [SVector{1}(one(RT))]
-        t = [SVector{1}(zero(RT))]
-        b = [SVector{1}(zero(RT))]
+        n = [SVector(one(RT))]
+        t = [SVector(zero(RT))]
+        b = [SVector(zero(RT))]
     end
     M = SMatrix{1,1}(zero(RT))
     surf = one(RT)
@@ -136,13 +136,13 @@ function PhysicalFace(std, mesh::CartesianMesh{2,RT}, iface) where {RT}
         J = fill(Δx[2] / 2, ndofs(fstd))
         xy = [coords(ξ, nodes, mapping) for ξ in fstd.ξ]
         if pos == 1
-            n = [SVector{2}(-one(RT), zero(RT)) for _ in eachindex(fstd)]
-            t = [SVector{2}(zero(RT), -one(RT)) for _ in eachindex(fstd)]
-            b = [SVector{2}(zero(RT), zero(RT)) for _ in eachindex(fstd)]
+            n = [SVector(-one(RT), zero(RT)) for _ in eachindex(fstd)]
+            t = [SVector(zero(RT), -one(RT)) for _ in eachindex(fstd)]
+            b = [SVector(zero(RT), zero(RT)) for _ in eachindex(fstd)]
         else # pos == 2
-            n = [SVector{2}(one(RT), zero(RT)) for _ in eachindex(fstd)]
-            t = [SVector{2}(zero(RT), one(RT)) for _ in eachindex(fstd)]
-            b = [SVector{2}(zero(RT), zero(RT)) for _ in eachindex(fstd)]
+            n = [SVector(one(RT), zero(RT)) for _ in eachindex(fstd)]
+            t = [SVector(zero(RT), one(RT)) for _ in eachindex(fstd)]
+            b = [SVector(zero(RT), zero(RT)) for _ in eachindex(fstd)]
         end
 
     else  # pos == 3 || pos == 4  # Horizontal
@@ -150,13 +150,13 @@ function PhysicalFace(std, mesh::CartesianMesh{2,RT}, iface) where {RT}
         J = fill(Δx[1] / 2, ndofs(fstd))
         xy = [coords(ξ, nodes, mapping) for ξ in fstd.ξ]
         if pos == 3
-            n = [SVector{2}(zero(RT), -one(RT)) for _ in eachindex(fstd)]
-            t = [SVector{2}(one(RT), zero(RT)) for _ in eachindex(fstd)]
-            b = [SVector{2}(zero(RT), zero(RT)) for _ in eachindex(fstd)]
+            n = [SVector(zero(RT), -one(RT)) for _ in eachindex(fstd)]
+            t = [SVector(one(RT), zero(RT)) for _ in eachindex(fstd)]
+            b = [SVector(zero(RT), zero(RT)) for _ in eachindex(fstd)]
         else # pos == 4
-            n = [SVector{2}(zero(RT), one(RT)) for _ in eachindex(fstd)]
-            t = [SVector{2}(-one(RT), zero(RT)) for _ in eachindex(fstd)]
-            b = [SVector{2}(zero(RT), zero(RT)) for _ in eachindex(fstd)]
+            n = [SVector(zero(RT), one(RT)) for _ in eachindex(fstd)]
+            t = [SVector(-one(RT), zero(RT)) for _ in eachindex(fstd)]
+            b = [SVector(zero(RT), zero(RT)) for _ in eachindex(fstd)]
         end
     end
 

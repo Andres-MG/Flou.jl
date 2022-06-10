@@ -79,7 +79,7 @@ function coords(ξ::AbstractVector, nodes::AbstractVector, ::SegmentMapping)
 end
 
 function coords(ξ::AbstractVector, nodes::AbstractVector, ::QuadLinearMapping)
-    ξrel = SVector{2}((ξ .+ 1) ./ 2)
+    ξrel = SVector((ξ .+ 1) ./ 2)
     x = nodes[1] .* (1 - ξrel[1]) .* (1 - ξrel[2]) .+
         nodes[2] .* ξrel[1] .* (1 - ξrel[2]) .+
         nodes[3] .* ξrel[1] .* ξrel[2] .+

@@ -88,9 +88,9 @@ function SodTube1D()
     mesh = CartesianMesh{1,Float64}(0, 1, 20)
     function Q!(Q, x, n, t, b, time, eq)
         P = if x[1] < 0.5
-            SVector{3}(1.0, 0.0, 100.0)
+            SVector(1.0, 0.0, 100.0)
         else
-            SVector{3}(0.125, 0.0, 10.0)
+            SVector(0.125, 0.0, 10.0)
         end
         Q .= vars_prim2cons(P, eq)
         return nothing

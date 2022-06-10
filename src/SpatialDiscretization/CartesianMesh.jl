@@ -31,7 +31,7 @@ function CartesianMesh{ND,RT}(start, finish, nxyz) where {ND,RT<:Real}
     xyz = range.(start, finish, (nxyz .+ 1))
     if ND == 1
         nodes = vec([
-            SVector{1}(
+            SVector(
                 convert(RT, px)
             )
             for px in xyz
@@ -40,7 +40,7 @@ function CartesianMesh{ND,RT}(start, finish, nxyz) where {ND,RT<:Real}
 
     elseif ND == 2
         nodes = vec([
-            SVector{2}(
+            SVector(
                 convert(RT, px), convert(RT, py)
             )
             for px in xyz[1], py in xyz[2]
@@ -49,7 +49,7 @@ function CartesianMesh{ND,RT}(start, finish, nxyz) where {ND,RT<:Real}
 
     else # ND == 3
         nodes = vec([
-            SVector{3}(
+            SVector(
                 convert(RT, px), convert(RT, py), convert(RT, pz)
             )
             for px in xyz[1], py in xyz[2], pz in xyz[3]
