@@ -2,8 +2,8 @@
     solve(rhs::Function, Q0::StateVector, disc::AbstractSpatialDiscretization,
           tfinal::Number; kwargs)
 
-Wrapper around the 'ODEProblem' and 'solve' functions of the 'OrdinaryDiffEq.jl' module.
-Accepts the same keyword arguments, 'kwargs', as 'OrdinayrDiffEq.solve'.
+Wrapper around the `ODEProblem` and `solve` functions of the `OrdinaryDiffEq.jl` module.
+Accepts the same keyword arguments, `kwargs`, as `OrdinayrDiffEq.solve`.
 """
 function integrate(Q0, disc, solver, tfinal; kwargs...)
     problem = ODEProblem(rhs!, Q0.raw, tfinal, disc)

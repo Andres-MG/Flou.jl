@@ -162,7 +162,7 @@ function energy(Q, eq::EulerEquation{3})
 end
 
 function soundvelocity(ρ, p, eq::EulerEquation)
-    return √(eq.γ * p / ρ)
+    return sqrt(eq.γ * p / ρ)
 end
 
 function vars_cons2prim(Q, eq::EulerEquation{1})
@@ -250,7 +250,7 @@ function normal_shockwave(ρ0, u0, p0, eq::EulerEquation)
     # Outflow
     ρ1 = ρ0 * M0^2 * (eq.γ + 1) / ((eq.γ - 1) * M0^2 + 2)
     p1 = p0 * (2 * eq.γ * M0^2 - (eq.γ - 1)) / (eq.γ + 1)
-    M1 = ((eq.γ - 1) * M0^2 + 2) / (2 * eq.γ * M0^2 - (eq.γ - 1))
+    M1 = sqrt(((eq.γ - 1) * M0^2 + 2) / (2 * eq.γ * M0^2 - (eq.γ - 1)))
     a = soundvelocity(ρ1, p1, eq)
     u1 = M1 * a
 
