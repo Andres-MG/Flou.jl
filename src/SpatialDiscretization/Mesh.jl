@@ -96,3 +96,4 @@ function coords(ξ::AbstractVector, nodes::AbstractVector, ::HexLinearMapping)
 end
 
 include("CartesianMesh.jl")
+include("StepMesh.jl")
