@@ -34,7 +34,7 @@ function get_save_callback(basename, tstops)
         Q = StateVector(integrator.u, dofhandler, stdvec, nvariables(equation))
         filename = @sprintf("%s_%010d.hdf", basename, integrator.iter)
         save(filename, Q, integrator.p)
-        @info "Saved solution at t=$(integrator.t) in '$(filename)'"
+        @info "Saved solution at t=$(integrator.t) in `$(filename)`"
         return nothing
     end
     return PresetTimeCallback(tstops, f)

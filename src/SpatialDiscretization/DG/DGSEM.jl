@@ -37,8 +37,9 @@ function DGSEM(
 
     # Boundary conditions
     nbounds = nboundaries(mesh)
-    length(bcs) == nbounds ||
-        throw(ArgumentError("The number of BCs does not match the number of boundaries."))
+    length(bcs) == nbounds || throw(ArgumentError(
+        "The number of BCs does not match the number of boundaries."
+    ))
     _bcs = Vector{Any}(undef, nbounds)
     for (key, values) in bcs
         i = mesh.bdmap[key]

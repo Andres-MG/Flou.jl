@@ -18,13 +18,13 @@ function CartesianMesh{ND,RT}(start, finish, nxyz) where {ND,RT<:Real}
         "The mesh can only have 1, 2 or 3 dimensions."
     ))
     length(start) == ND || throw(ArgumentError(
-        "The 'start' point must have $(ND) coordinates."
+        "The `start` point must have $(ND) coordinates."
     ))
     length(finish) == ND || throw(ArgumentError(
-        "The 'finish' point must have $(ND) coordinates."
+        "The `finish` point must have $(ND) coordinates."
     ))
     length(nxyz) == ND || throw(ArgumentError(
-        "The number of elements in all directions must be given.'"
+    all(start .< finish) || throw(ArgumentError(
     ))
 
     # Construct nodes
@@ -110,10 +110,7 @@ function apply_periodicBCs!(mesh::CartesianMesh, BCs::Pair{Int,Int}...)
     faces2del = Int[]
     for bc in BCs
         # Check pair
-        bc.second % 2 == 0 && bc.first + 1 == bc.second ||
-            throw(ArgumentError("Boundaries $(bc) cannot be made periodic."))
-        bc.first in keys(mesh.bdmap) && bc.second in keys(mesh.bdmap) ||
-            throw(ArgumentError("Boundaries $(bc) are already periodic."))
+        bc.second % 2 == 0 && bc.first + 1 == bc.second || throw(ArgumentError(
 
         # Update connectivities
         bdind = mesh.bdmap[bc.first] => mesh.bdmap[bc.second]

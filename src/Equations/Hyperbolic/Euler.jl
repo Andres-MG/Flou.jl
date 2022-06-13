@@ -4,8 +4,9 @@ struct EulerEquation{ND,NV,RT,DV} <: HyperbolicEquation{NV}
 end
 
 function EulerEquation{ND}(div_operator, γ) where {ND}
-    1 <= ND <= 3 ||
-        throw(ArgumentError("The Euler equations are only implemented in 1D, 2D and 3D."))
+    1 <= ND <= 3 || throw(ArgumentError(
+        "The Euler equations are only implemented in 1D, 2D and 3D."
+    ))
     EulerEquation{ND,ND + 2,typeof(γ),typeof(div_operator)}((div_operator,), γ)
 end
 
@@ -264,8 +265,7 @@ struct EulerInflowBC{RT,NV} <: AbstractBC
     Qext::SVector{NV,RT}
     function EulerInflowBC(Qext)
         nvar = length(Qext)
-        3 <= nvar <= 5 ||
-            throw(ArgumentError("'Qext' must have a length of 3, 4 or 5."))
+        3 <= nvar <= 5 || throw(ArgumentError("`Qext` must have a length of 3, 4 or 5."))
         return new{eltype(Qext),nvar}(SVector{nvar}(Qext))
     end
 end
