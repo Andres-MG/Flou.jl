@@ -56,7 +56,7 @@ function apply_periodicBCs! end
 abstract type AbstractMapping end
 
 struct PointMapping <: AbstractMapping end
-struct SegmentMapping <: AbstractMapping end
+struct SegmentLinearMapping <: AbstractMapping end
 struct TriLinearMapping <: AbstractMapping end
 struct QuadLinearMapping <: AbstractMapping end
 struct HexLinearMapping <: AbstractMapping end
@@ -72,7 +72,7 @@ function coords(ξ::AbstractVector, nodes::AbstractVector, ::PointMapping)
     return SVector{length(nodes[1])}(nodes[1])
 end
 
-function coords(ξ::AbstractVector, nodes::AbstractVector, ::SegmentMapping)
+function coords(ξ::AbstractVector, nodes::AbstractVector, ::SegmentLinearMapping)
     ξrel = (ξ[1] + 1) / 2
     x = nodes[1] .* (1 - ξrel) .+ nodes[2] .* ξrel
     return x |> SVector{length(nodes[1])}
