@@ -190,9 +190,10 @@ function massmatrix(std::StdSegment{QT}, J) where {QT}
     return Diagonal(J) * std.M
 end
 
-function project2equispaced!(Qe, Q, s::StdSegment)
-    @boundscheck length(Qe) == length(Q) ||
-        throw(DimensionMismatch("'Qe' and 'Q' must have the same length (== ndofs)."))
+@inline function project2equispaced!(Qe, Q, s::StdSegment)
+    @boundscheck length(Qe) == length(Q) || throw(DimensionMismatch(
+        "`Qe` and `Q` must have the same length (== ndofs)."
+    ))
     @inbounds Qe .= s._n2e * Q
     return nothing
 end
@@ -359,9 +360,10 @@ function massmatrix(std::StdQuad{QT1,QT2}, J) where {QT1,QT2}
     return Diagonal(J) * std.M
 end
 
-function project2equispaced!(Qe, Q, s::StdQuad)
-    @boundscheck length(Qe) == length(Q) == ndofs(s) ||
-        throw(DimensionMismatch("'Qe' and 'Q' must have the same length (== ndofs)."))
+@inline function project2equispaced!(Qe, Q, s::StdQuad)
+    @boundscheck length(Qe) == length(Q) == ndofs(s) || throw(DimensionMismatch(
+        "`Qe` and `Q` must have the same length (== ndofs)."
+    ))
     @inbounds begin
         Qr = reshape(Q, size(s))
         Qer = reshape(Qe, size(s))

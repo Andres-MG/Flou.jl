@@ -302,7 +302,7 @@ function apply_sourceterm!(dQ, Q, dg::DiscontinuousGalerkin, time)
     return nothing
 end
 
-function _dg_applyBC!(Qext, Qint, coords, n, t, b, time, eq, bc)
+@inline function _dg_applyBC!(Qext, Qint, coords, n, t, b, time, eq, bc)
     @boundscheck begin
         size(Qext, 1) == size(Qint, 1) && size(Qext, 2) == size(Qint, 2) ||
             throw(ArgumentError("Qext and Qint must have the same dimensions."))
