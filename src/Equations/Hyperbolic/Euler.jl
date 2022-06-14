@@ -4,15 +4,16 @@ struct EulerEquation{ND,NV,RT,DV} <: HyperbolicEquation{NV}
 end
 
 function EulerEquation{ND}(div_operator, γ) where {ND}
-    1 <= ND <= 3 ||
-        throw(ArgumentError("The Euler equations are only implemented in 1D, 2D and 3D."))
+    1 <= ND <= 3 || throw(ArgumentError(
+        "The Euler equations are only implemented in 1D, 2D and 3D."
+    ))
     EulerEquation{ND,ND + 2,typeof(γ),typeof(div_operator)}((div_operator,), γ)
 end
 
 function Base.show(io::IO, m::MIME"text/plain", eq::EulerEquation)
     @nospecialize
     println(io, eq |> typeof, ":")
-    print(io, " Advection operator: "); show(io, m, eq.div_operator); println(io, "")
+    print(io, " Advection operator: "); show(io, m, eq.operators[1]); println(io, "")
     print(io, " γ: ", eq.γ)
 end
 
@@ -162,50 +163,50 @@ function energy(Q, eq::EulerEquation{3})
 end
 
 function soundvelocity(ρ, p, eq::EulerEquation)
-    return √(eq.γ * p / ρ)
+    return sqrt(eq.γ * p / ρ)
 end
 
 function vars_cons2prim(Q, eq::EulerEquation{1})
     ρ, ρu, _ = Q
     p = pressure(Q, eq)
-    return SVector{3}(ρ, ρu/ρ, p)
+    return SVector(ρ, ρu/ρ, p)
 end
 
 function vars_cons2prim(Q, eq::EulerEquation{2})
     ρ, ρu, ρv, _ = Q
     p = pressure(Q, eq)
-    return SVector{4}(ρ, ρu/ρ, ρv/ρ, p)
+    return SVector(ρ, ρu/ρ, ρv/ρ, p)
 end
 
 function vars_cons2prim(Q, eq::EulerEquation{3})
     ρ, ρu, ρv, ρw, _ = Q
     p = pressure(Q, eq)
-    return SVector{5}(ρ, ρu/ρ, ρv/ρ, ρw/ρ, p)
+    return SVector(ρ, ρu/ρ, ρv/ρ, ρw/ρ, p)
 end
 
 function vars_prim2cons(Q, eq::EulerEquation{1})
     ρ, u, _ = Q
     ρe = energy(Q, eq)
-    return SVector{3}(ρ, ρ * u, ρe)
+    return SVector(ρ, ρ * u, ρe)
 end
 
 function vars_prim2cons(Q, eq::EulerEquation{2})
     ρ, u, v, _ = Q
     ρe = energy(Q, eq)
-    return SVector{4}(ρ, ρ * u, ρ * v, ρe)
+    return SVector(ρ, ρ * u, ρ * v, ρe)
 end
 
 function vars_prim2cons(Q, eq::EulerEquation{3})
     ρ, u, v, w, _ = Q
     ρe = energy(Q, eq)
-    return SVector{5}(ρ, ρ * u, ρ * v, ρ * w, ρe)
+    return SVector(ρ, ρ * u, ρ * v, ρ * w, ρe)
 end
 
 function vars_cons2entropy(Q, eq::EulerEquation{1})
     ρ, ρu, _ = Q
     p = pressure(Q, eq)
     s = log(p) - eq.γ * log(ρ)
-    return SVector{3}(
+    return SVector(
         (eq.γ - s) / (eq.γ - 1) - ρu^2 / ρ / 2p,
         ρu / p,
         -ρ / p,
@@ -216,7 +217,7 @@ function vars_cons2entropy(Q, eq::EulerEquation{2})
     ρ, ρu, ρv, _ = Q
     p = pressure(Q, eq)
     s = log(p) - eq.γ * log(ρ)
-    return SVector{4}(
+    return SVector(
         (eq.γ - s) / (eq.γ - 1) - (ρu^2 + ρv^2) / ρ / 2p,
         ρu / p,
         ρv / p,
@@ -228,7 +229,7 @@ function vars_cons2entropy(Q, eq::EulerEquation{3})
     ρ, ρu, ρv, ρw, _ = Q
     p = pressure(Q, eq)
     s = log(p) - eq.γ * log(ρ)
-    return SVector{5}(
+    return SVector(
         (eq.γ - s) / (eq.γ - 1) - (ρu^2 + ρv^2 + ρw^2) / ρ / 2p,
         ρu / p,
         ρv / p,
@@ -250,11 +251,11 @@ function normal_shockwave(ρ0, u0, p0, eq::EulerEquation)
     # Outflow
     ρ1 = ρ0 * M0^2 * (eq.γ + 1) / ((eq.γ - 1) * M0^2 + 2)
     p1 = p0 * (2 * eq.γ * M0^2 - (eq.γ - 1)) / (eq.γ + 1)
-    M1 = ((eq.γ - 1) * M0^2 + 2) / (2 * eq.γ * M0^2 - (eq.γ - 1))
+    M1 = sqrt(((eq.γ - 1) * M0^2 + 2) / (2 * eq.γ * M0^2 - (eq.γ - 1)))
     a = soundvelocity(ρ1, p1, eq)
     u1 = M1 * a
 
-    return SVector{3}(ρ1, u1, p1)
+    return SVector(ρ1, u1, p1)
 end
 
 #==========================================================================================#
@@ -264,8 +265,7 @@ struct EulerInflowBC{RT,NV} <: AbstractBC
     Qext::SVector{NV,RT}
     function EulerInflowBC(Qext)
         nvar = length(Qext)
-        3 <= nvar <= 5 ||
-            throw(ArgumentError("'Qext' must have a length of 3, 4 or 5."))
+        3 <= nvar <= 5 || throw(ArgumentError("`Qext` must have a length of 3, 4 or 5."))
         return new{eltype(Qext),nvar}(SVector{nvar}(Qext))
     end
 end
@@ -552,7 +552,7 @@ function twopointflux!(
         F♯[3] = (ρ * u * h) * n
     elseif ND == 2
         h = 1 / (2β * (eq.γ - 1)) - (u1^2 + v1^2 + u2^2 + v2^2) / 4 + p/ρ + u^2 + v^2
-        n = SVector{2}((Ja1 .+ Ja2) ./ 2)
+        n = SVector((Ja1 .+ Ja2) ./ 2)
         F♯[1] = (ρ * u) * n[1] + (ρ * v) * n[2]
         F♯[2] = (ρ * u^2 + p) * n[1] + (ρ * u * v) * n[2]
         F♯[3] = (ρ * u * v) * n[1] + (ρ * v^2 + p) * n[2]
@@ -560,7 +560,7 @@ function twopointflux!(
     else # ND == 3
         h = 1 / (2β * (eq.γ - 1)) - (u1^2 + v1^2 + w1^2 + u2^2 + v2^2 + w2^2) / 4 +
             p/ρ + u^2 + v^2 + w^2
-        n = SVector{3}((Ja1 .+ Ja2) ./ 2)
+        n = SVector((Ja1 .+ Ja2) ./ 2)
         F♯[1] = (ρ * u) * n[1] + (ρ * v) * n[2] + (ρ * w) * n[3]
         F♯[2] = (ρ * u^2 + p) * n[1] + (ρ * u * v) * n[2] + (ρ * u * w) * n[3]
         F♯[3] = (ρ * u * v) * n[1] + (ρ * v^2 + p) * n[2] + (ρ * v * w) * n[3]

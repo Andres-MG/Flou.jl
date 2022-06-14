@@ -42,7 +42,7 @@ export save
 export nvariables, eachvariable, variablenames
 
 # SpatialDiscretization.jl
-export CartesianMesh, MeshElement, MeshFace
+export CartesianMesh, StepMesh
 export apply_periodicBCs!
 export spatialdim, coords
 export nelements, nboundaries, nfaces, nintfaces, nbdfaces, nperiodic, nvertices
@@ -69,8 +69,7 @@ export WeakDivOperator, StrongDivOperator, SplitDivOperator, SSFVDivOperator
 # Equations.jl
 export LinearAdvection
 export BurgersEquation
-export EulerEquation, pressure, soundvelocity
-export vars_cons2prim, vars_prim2cons, vars_cons2entropy
+export EulerEquation, pressure, energy, soundvelocity
 export ChandrasekharAverage, MatrixDissipation
 export EulerInflowBC, EulerOutflowBC, EulerSlipBC
 export KPPEquation, initial_whirl_KPP!

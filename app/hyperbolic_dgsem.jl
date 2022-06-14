@@ -16,60 +16,53 @@ if Threads.nthreads() > 1
 end
 
 # Discretization
-Δt = 5e-5
-tf = Δt # 0.05
+Δt = 1e-4
+tf = 1.0
 solver = ORK256(;williamson_condition=false)
 
-order = (5, 5)
-qtype = (GLL(), GLL())
-# div = SplitDivOperator(
-#     ChandrasekharAverage(),
-# )
+std = StdQuad{Float64}((6, 6), (GLL(), GLL()))
 div = SSFVDivOperator(
     ChandrasekharAverage(),
     LxFNumericalFlux(
         StdAverageNumericalFlux(),
         1.0,
     ),
-    1e-10,
+    1e+0,
 )
 numflux = MatrixDissipation(
     ChandrasekharAverage(),
     1.0,
 )
 
-mesh = CartesianMesh{2,Float64}((0, 0), (0.3, 0.3), (100, 100))
+mesh = StepMesh{Float64}((0,0), (3, 1), 0.6, 0.2, ((8, 4), (8, 12), (16, 12)))
+
+equation = EulerEquation{2}(div, 1.4)
+
+M0 = 3.0
+a0 = soundvelocity(1.0, 1.0, equation)
+Q0 = Flou.vars_prim2cons((1.0, M0*a0, 0.0, 1.0), equation)
 ∂Ω = [
-    1 => EulerSlipBC(),
-    2 => EulerSlipBC(),
+    1 => EulerInflowBC(Q0),
+    2 => EulerOutflowBC(),
     3 => EulerSlipBC(),
     4 => EulerSlipBC(),
+    5 => EulerSlipBC(),
+    6 => EulerSlipBC(),
 ]
-equation = EulerEquation{2}(div, 1.4)
-DG = DGSEM(mesh, order .+ 1, qtype, equation, ∂Ω, numflux)
+DG = DGSEM(mesh, std, equation, ∂Ω, numflux)
 
 Q = StateVector{Float64}(undef, DG.dofhandler, DG.stdvec, nvariables(equation))
 for ie in eachelement(mesh)
     for i in eachindex(DG.stdvec[1])
-        x, y = coords(DG.physelem, ie)[i]
-        if x <= 0.15 && y <= 0.15 - x
-            Q[1][i, 1, ie] = 0.125
-            Q[1][i, 2, ie] = 0.0
-            Q[1][i, 3, ie] = 0.0
-            Q[1][i, 4, ie] = 0.14 / 0.4
-        else
-            Q[1][i, 1, ie] = 1.0
-            Q[1][i, 2, ie] = 0.0
-            Q[1][i, 3, ie] = 0.0
-            Q[1][i, 4, ie] = 1.0 / 0.4
-        end
+        xy = coords(DG.physelem, ie)[i]
+        Q[1][i, :, ie] .= Q0
     end
 end
 
-display(equation)
 display(DG)
+println()
 
-sb = get_save_callback("../results/solution", 0:0.01:tf)
+sb = get_save_callback("../results/solution", range(0, tf, 20))
 
 @info "Starting simulation..."
 

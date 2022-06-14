@@ -12,6 +12,11 @@ abstract type AbstractBC end
 
 function stateBC! end
 
+"""
+    DirichletBC(Q!::Function)
+
+Dirichlet boundary condition where `Q!(Q, x, n, t, b, time, equation)`.
+"""
 struct DirichletBC{QF} <: AbstractBC
     Q!::QF     # Q!(Q, x, n, t, b, time, eq)  in/out
 end

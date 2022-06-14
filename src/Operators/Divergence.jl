@@ -255,10 +255,12 @@ function volume_contribution!(dQ, Q, dg::DiscontinuousGalerkin, op::SplitDivOper
     for ireg in eachregion(dofhandler)
         std = stdvec[ireg]
         ndim = spatialdim(std)
-        is_tensor_product(std) ||
-            throw(ArgumentError("All the standard regions must be tensor-products."))
-        all(isa.(quadratures(std), GaussLobattoQuadrature)) ||
-            throw(ArgumentError("Only GLL nodes admit a split-form formulation."))
+        is_tensor_product(std) || throw(ArgumentError(
+            "All the standard regions must be tensor-products."
+        ))
+        all(isa.(quadratures(std), GaussLobattoQuadrature)) || throw(ArgumentError(
+            "Only GLL nodes admit a split-form formulation."
+        ))
 
         # Buffers
         Fb = @threadbuff Array{eltype(Q),3}(undef, ndim, nvariables(equation), ndofs(std))
@@ -416,10 +418,12 @@ function volume_contribution!(dQ, Q, dg::DiscontinuousGalerkin, op::SSFVDivOpera
     for ireg in eachregion(dofhandler)
         std = stdvec[ireg]
         ndim = spatialdim(std)
-        is_tensor_product(std) ||
-            throw(ArgumentError("All the standard regions must be tensor-products."))
-        all(isa.(quadratures(std), GaussLobattoQuadrature)) ||
-            throw(ArgumentError("Only GLL nodes admit a split-form formulation."))
+        is_tensor_product(std) || throw(ArgumentError(
+            "All the standard regions must be tensor-products."
+        ))
+        all(isa.(quadratures(std), GaussLobattoQuadrature)) || throw(ArgumentError(
+            "Only GLL nodes admit a split-form formulation."
+        ))
 
         # Buffers
         F̄b = @threadbuff [

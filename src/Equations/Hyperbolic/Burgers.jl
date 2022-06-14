@@ -9,7 +9,7 @@ end
 function Base.show(io::IO, m::MIME"text/plain", eq::BurgersEquation)
     @nospecialize
     print(io, eq |> typeof, ":")
-    print(io, " Advection operator: "); show(io, m, eq.div_operator)
+    print(io, " Advection operator: "); show(io, m, eq.operators[1])
 end
 
 function variablenames(::BurgersEquation; unicode=false)

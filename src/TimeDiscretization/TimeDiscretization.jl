@@ -2,8 +2,8 @@
     solve(rhs::Function, Q0::StateVector, disc::AbstractSpatialDiscretization,
           tfinal::Number; kwargs)
 
-Wrapper around the 'ODEProblem' and 'solve' functions of the 'OrdinaryDiffEq.jl' module.
-Accepts the same keyword arguments, 'kwargs', as 'OrdinayrDiffEq.solve'.
+Wrapper around the `ODEProblem` and `solve` functions of the `OrdinaryDiffEq.jl` module.
+Accepts the same keyword arguments, `kwargs`, as `OrdinayrDiffEq.solve`.
 """
 function integrate(Q0, disc, solver, tfinal; kwargs...)
     problem = ODEProblem(rhs!, Q0.raw, tfinal, disc)
@@ -34,7 +34,7 @@ function get_save_callback(basename, tstops)
         Q = StateVector(integrator.u, dofhandler, stdvec, nvariables(equation))
         filename = @sprintf("%s_%010d.hdf", basename, integrator.iter)
         save(filename, Q, integrator.p)
-        @info "Saved solution at t=$(integrator.t) in '$(filename)'"
+        @info "Saved solution at t=$(integrator.t) in `$(filename)`"
         return nothing
     end
     return PresetTimeCallback(tstops, f)

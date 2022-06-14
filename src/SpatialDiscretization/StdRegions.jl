@@ -109,11 +109,11 @@ function StdSegment{RT}(np, qtype) where {RT<:Real}
         throw(ArgumentError("Only Gauss and Gauss-Lobatto quadratures are implemented."))
     end
     _ξ, ω = convert.(RT, _ξ), convert.(RT, ω)
-    ξ = [SVector{1}(ξi) for ξi in _ξ]
+    ξ = [SVector(ξi) for ξi in _ξ]
 
     # Equispaced nodes
     _ξe = convert.(RT, range(-1, 1, np))
-    ξe = [SVector{1}(ξ) for ξ in _ξe]
+    ξe = [SVector(ξ) for ξ in _ξe]
 
     cindices = CartesianIndices((np,)) |> collect
     lindices = LinearIndices((np,)) |> collect
@@ -190,9 +190,10 @@ function massmatrix(std::StdSegment{QT}, J) where {QT}
     return Diagonal(J) * std.M
 end
 
-function project2equispaced!(Qe, Q, s::StdSegment)
-    @boundscheck length(Qe) == length(Q) ||
-        throw(DimensionMismatch("'Qe' and 'Q' must have the same length (== ndofs)."))
+@inline function project2equispaced!(Qe, Q, s::StdSegment)
+    @boundscheck length(Qe) == length(Q) || throw(DimensionMismatch(
+        "`Qe` and `Q` must have the same length (== ndofs)."
+    ))
     @inbounds Qe .= s._n2e * Q
     return nothing
 end
@@ -258,11 +259,11 @@ function StdQuad{RT}(np, qtype) where {RT<:Real}
         StdSegment{RT}(np[1], qtype[1]),
         StdSegment{RT}(np[2], qtype[2]),
     )
-    ξ = vec([SVector{2}(ξx[1], ξy[1]) for ξx in fstd[1].ξ, ξy in fstd[2].ξ])
+    ξ = vec([SVector(ξx[1], ξy[1]) for ξx in fstd[1].ξ, ξy in fstd[2].ξ])
     ω = vec([ωx * ωy for ωx in fstd[1].ω, ωy in fstd[2].ω])
 
     # Equispaced nodes
-    ξe = vec([SVector{2}(ξx[1], ξy[1]) for ξx in fstd[1].ξe, ξy in fstd[2].ξe])
+    ξe = vec([SVector(ξx[1], ξy[1]) for ξx in fstd[1].ξe, ξy in fstd[2].ξe])
 
     cindices = CartesianIndices((np...,)) |> collect
     lindices = LinearIndices((np...,)) |> collect
@@ -359,9 +360,10 @@ function massmatrix(std::StdQuad{QT1,QT2}, J) where {QT1,QT2}
     return Diagonal(J) * std.M
 end
 
-function project2equispaced!(Qe, Q, s::StdQuad)
-    @boundscheck length(Qe) == length(Q) == ndofs(s) ||
-        throw(DimensionMismatch("'Qe' and 'Q' must have the same length (== ndofs)."))
+@inline function project2equispaced!(Qe, Q, s::StdQuad)
+    @boundscheck length(Qe) == length(Q) == ndofs(s) || throw(DimensionMismatch(
+        "`Qe` and `Q` must have the same length (== ndofs)."
+    ))
     @inbounds begin
         Qr = reshape(Q, size(s))
         Qer = reshape(Qe, size(s))

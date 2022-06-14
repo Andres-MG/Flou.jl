@@ -1,7 +1,7 @@
 """
     AbstractEquation{NV}
 
-Must contain a field 'operators' containing the operators that it uses (iterable).
+Must contain a field `operators` containing the operators that it uses (iterable).
 """
 abstract type AbstractEquation{NV} end
 
