@@ -53,6 +53,40 @@ function PhysicalElement(std, mesh::CartesianMesh{ND,RT}, ie, sub=false) where {
     return PhysicalElement(xyz, M, Mfac, Ja, vol, subgrid)
 end
 
+function PhysicalElement(std, mesh::StepMesh{RT}, ie, sub=false) where {RT}
+    (; Δx) = mesh
+    ireg = region(mesh, ie)
+
+    # Coordinates
+    xy = [coords(ξ, mesh, ie) for ξ in std.ξ]
+
+    # Jacobian and dual basis
+    J = fill(prod(Δx[ireg]) / 4, ndofs(std))
+    Ja = fill(
+        SMatrix{2,2}(
+            Δx[ireg][2]/2, 0,
+            0, Δx[ireg][1]/2,
+        ),
+        ndofs(std),
+    )
+
+    # Mass matrix
+    M = massmatrix(std, J)
+    Mfac = M |> factorize
+
+    # Volume
+    vol = sum(M)
+
+    # Subgrid
+    subgrid = if sub
+        PhysicalSubgrid(std, mesh, ie)
+    else
+        nothing
+    end
+
+    return PhysicalElement(xy, M, Mfac, Ja, vol, subgrid)
+end
+
 struct PhysicalSubgrid{ND,RT}
     n::NTuple{ND,Array{SVector{ND,RT},ND}}
     t::NTuple{ND,Array{SVector{ND,RT},ND}}
@@ -60,7 +94,7 @@ struct PhysicalSubgrid{ND,RT}
     Jf::NTuple{ND,Array{RT,ND}}
 end
 
-function PhysicalSubgrid(std, mesh::CartesianMesh{1,RT}, ie) where {RT}
+function PhysicalSubgrid(std, ::CartesianMesh{1,RT}, _) where {RT}
     nx = length(std) + 1
     n = (fill(SVector(one(RT)), nx),)
     t = (fill(SVector(zero(RT)), nx),)
@@ -69,7 +103,7 @@ function PhysicalSubgrid(std, mesh::CartesianMesh{1,RT}, ie) where {RT}
     return PhysicalSubgrid(n, t, b, Jf)
 end
 
-function PhysicalSubgrid(std, mesh::CartesianMesh{2,RT}, ie) where {RT}
+function PhysicalSubgrid(std, mesh::CartesianMesh{2,RT}, _) where {RT}
     (; Δx) = mesh
     nx, ny = size(std)
     n = (
@@ -91,8 +125,31 @@ function PhysicalSubgrid(std, mesh::CartesianMesh{2,RT}, ie) where {RT}
     return PhysicalSubgrid(n, t, b, Jf)
 end
 
-function PhysicalSubgrid(std, mesh::CartesianMesh{3,RT}, ie) where {RT}
+function PhysicalSubgrid(std, mesh::CartesianMesh{3,RT}, _) where {RT}
     error("Not implemented yet!")
+end
+
+function PhysicalSubgrid(std, mesh::StepMesh{RT}, ie) where {RT}
+    (; Δx) = mesh
+    ireg = region(mesh, ie)
+    nx, ny = size(std)
+    n = (
+        fill(SVector(one(RT), zero(RT)), nx + 1, ny),
+        fill(SVector(zero(RT), one(RT)), nx, ny + 1),
+    )
+    t = (
+        fill(SVector(zero(RT), one(RT)), nx + 1, ny),
+        fill(SVector(-one(RT), zero(RT)), nx, ny + 1),
+    )
+    b = (
+        fill(SVector(zero(RT), zero(RT)), nx + 1, ny),
+        fill(SVector(zero(RT), zero(RT)), nx, ny + 1),
+    )
+    Jf = (
+        fill(Δx[ireg][2] / 2, nx + 1, ny),
+        fill(Δx[ireg][1] / 2, nx, ny + 1),
+    )
+    return PhysicalSubgrid(n, t, b, Jf)
 end
 
 struct PhysicalFace{ND,RT,MM}
@@ -105,7 +162,7 @@ struct PhysicalFace{ND,RT,MM}
     surface::RT
 end
 
-function PhysicalFace(std, mesh::CartesianMesh{1,RT}, iface) where {RT}
+function PhysicalFace(_, mesh::CartesianMesh{1,RT}, iface) where {RT}
     pos = face(mesh, iface).elempos[1]
     nind = face(mesh, iface).nodeinds[1]
     x = [vertex(mesh, nind)]
@@ -124,8 +181,9 @@ function PhysicalFace(std, mesh::CartesianMesh{1,RT}, iface) where {RT}
     return PhysicalFace(x, n, t, b, J, M, surf)
 end
 
-function PhysicalFace(std, mesh::CartesianMesh{2,RT}, iface) where {RT}
+function PhysicalFace(stdvec, mesh::CartesianMesh{2,RT}, iface) where {RT}
     (; Δx) = mesh
+    std = stdvec[1]
     pos = face(mesh, iface).elempos[1]
     ninds = face(mesh, iface).nodeinds
     nodes = [vertex(mesh, i) for i in ninds]
@@ -165,8 +223,52 @@ function PhysicalFace(std, mesh::CartesianMesh{2,RT}, iface) where {RT}
     return PhysicalFace(xy, n, t, b, J, M, surf)
 end
 
-function PhysicalFace(std, mesh::CartesianMesh{3,RT}, iface) where {RT}
+function PhysicalFace(stdvec, mesh::CartesianMesh{3,RT}, iface) where {RT}
     error("Not implemented yet!")
+end
+
+function PhysicalFace(stdvec, mesh::StepMesh{RT}, iface) where {RT}
+    (; Δx) = mesh
+    ie = face(mesh, iface).eleminds[1]
+    ireg = region(mesh, ie)
+    std = stdvec[1]
+    pos = face(mesh, iface).elempos[1]
+    ninds = face(mesh, iface).nodeinds
+    nodes = [vertex(mesh, i) for i in ninds]
+    mapping = mesh.mappings[face(mesh, iface).mapind]
+
+    if pos == 1 || pos == 2  # Vertical
+        fstd = face(std, 2)
+        J = fill(Δx[ireg][2] / 2, ndofs(fstd))
+        xy = [coords(ξ, nodes, mapping) for ξ in fstd.ξ]
+        if pos == 1
+            n = [SVector(-one(RT), zero(RT)) for _ in eachindex(fstd)]
+            t = [SVector(zero(RT), -one(RT)) for _ in eachindex(fstd)]
+            b = [SVector(zero(RT), zero(RT)) for _ in eachindex(fstd)]
+        else # pos == 2
+            n = [SVector(one(RT), zero(RT)) for _ in eachindex(fstd)]
+            t = [SVector(zero(RT), one(RT)) for _ in eachindex(fstd)]
+            b = [SVector(zero(RT), zero(RT)) for _ in eachindex(fstd)]
+        end
+
+    else  # pos == 3 || pos == 4  # Horizontal
+        fstd = face(std, 1)
+        J = fill(Δx[ireg][1] / 2, ndofs(fstd))
+        xy = [coords(ξ, nodes, mapping) for ξ in fstd.ξ]
+        if pos == 3
+            n = [SVector(zero(RT), -one(RT)) for _ in eachindex(fstd)]
+            t = [SVector(one(RT), zero(RT)) for _ in eachindex(fstd)]
+            b = [SVector(zero(RT), zero(RT)) for _ in eachindex(fstd)]
+        else # pos == 4
+            n = [SVector(zero(RT), one(RT)) for _ in eachindex(fstd)]
+            t = [SVector(-one(RT), zero(RT)) for _ in eachindex(fstd)]
+            b = [SVector(zero(RT), zero(RT)) for _ in eachindex(fstd)]
+        end
+    end
+
+    M = massmatrix(fstd, J)
+    surf = sum(M)
+    return PhysicalFace(xy, n, t, b, J, M, surf)
 end
 
 function compute_metric_terms(stdvec, dh, mesh, subgrid=false)
@@ -185,11 +287,12 @@ function compute_metric_terms(stdvec, dh, mesh, subgrid=false)
     # Face geometry
     facevec = []
     for iface in eachface(mesh)
-        ielem = face(mesh, iface).eleminds[1]
-        ireg = loc2reg(dh, ielem).first
+        ie1, ie2 = face(mesh, iface).eleminds
+        ir1 = loc2reg(dh, ie1).first
+        ir2 = ie2 != 0 ? loc2reg(dh, ie2).first : ir1
         push!(
             facevec,
-            PhysicalFace(stdvec[ireg], mesh, iface),
+            PhysicalFace((stdvec[ir1], stdvec[ir2]), mesh, iface),
         )
     end
     fv = StructVector([facevec...])

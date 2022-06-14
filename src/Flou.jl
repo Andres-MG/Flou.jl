@@ -42,7 +42,7 @@ export save
 export nvariables, eachvariable, variablenames
 
 # SpatialDiscretization.jl
-export CartesianMesh, MeshElement, MeshFace
+export CartesianMesh, StepMesh
 export apply_periodicBCs!
 export spatialdim, coords
 export nelements, nboundaries, nfaces, nintfaces, nbdfaces, nperiodic, nvertices

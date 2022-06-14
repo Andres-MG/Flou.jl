@@ -14,8 +14,7 @@ end
 
 function DGSEM(
     mesh::AbstractMesh{ND,RT},
-    nq,
-    qtype,
+    stdvec,
     equation,
     bcs,
     riemannsolver,
@@ -24,16 +23,22 @@ function DGSEM(
     ND,
     RT,
 }
-    # Standard element
-    std = if ND == 1
-        StdSegment{RT}(nq, qtype)
-    elseif ND == 2
-        StdQuad{RT}(nq, qtype)
-    elseif ND == 3
-        error("Not implemented yet!")
+    # Standard elements
+    (isa(stdvec, AbstractStdRegion) || length(stdvec) == nregions(mesh)) || throw(
+        ArgumentError(
+            "The mesh has $(nregions(mesh)) region(s) but " *
+            "$(length(stdvec)) quadratures were given."
+        )
+    )
+    _stdvec = tuple(stdvec)
+
+    # Dof handler
+    if length(_stdvec) == 1
+        dofhandler = DofHandlerDG([nelements(mesh)])
+    else
+        nelems = (nelements(mesh, i) for i in eachregion(mesh))
+        dofhandler = DofHandlerDG(nelems)
     end
-    stdvec = (std,)  # TODO: single-region discretization
-    dofhandler = DofHandlerDG([nelements(mesh)])
 
     # Boundary conditions
     nbounds = nboundaries(mesh)
@@ -49,11 +54,11 @@ function DGSEM(
 
     # Physical elements
     subgrid = requires_subgrid.(equation.operators) |> any
-    physelements, physfaces = compute_metric_terms(stdvec, dofhandler, mesh, subgrid)
+    physelements, physfaces = compute_metric_terms(_stdvec, dofhandler, mesh, subgrid)
 
     # Faces storage
-    Qf = MortarStateVector{RT}(undef, mesh, stdvec, dofhandler, nvariables(equation))
-    Fn = MortarStateVector{RT}(undef, mesh, stdvec, dofhandler, nvariables(equation))
+    Qf = MortarStateVector{RT}(undef, mesh, _stdvec, dofhandler, nvariables(equation))
+    Fn = MortarStateVector{RT}(undef, mesh, _stdvec, dofhandler, nvariables(equation))
 
     # Source term
     sourceterm = if isnothing(source)
@@ -66,7 +71,7 @@ function DGSEM(
         equation,
         riemannsolver,
         mesh,
-        stdvec,
+        _stdvec,
         dofhandler,
         physelements,
         physfaces,
