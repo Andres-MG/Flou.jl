@@ -92,7 +92,7 @@ function SodTube1D()
         else
             SVector(0.125, 0.0, 10.0)
         end
-        Q .= vars_prim2cons(P, eq)
+        Q .= Flou.vars_prim2cons(P, eq)
         return nothing
     end
     ∂Ω = [
@@ -107,6 +107,64 @@ function SodTube1D()
         for i in eachindex(DG.stdvec[1])
             x = coords(DG.physelem, ie)[i]
             Q!(view(Q[1], i, :, ie), x, [], [], [], 0.0, equation)
+        end
+    end
+
+    sol, _ = integrate(
+        Q, DG, solver, tf;
+        saveat=(0, tf), adaptive=false, dt=Δt, alias_u0=true,
+    )
+    return sol
+end
+
+function Shockwave2D()
+    Δt = 1e-2
+    tf = 1.0
+    solver = ORK256(;williamson_condition=false)
+
+    order = (5, 5)
+    qtype = (GLL(), GLL())
+    div = SSFVDivOperator(
+        ChandrasekharAverage(),
+        LxFNumericalFlux(
+            StdAverageNumericalFlux(),
+            1.0,
+        ),
+        1e+0,
+    )
+    numflux = MatrixDissipation(
+        ChandrasekharAverage(),
+        1.0,
+    )
+
+    mesh = CartesianMesh{2,Float64}((-1, 0), (1, 1), (11, 3))
+    apply_periodicBCs!(mesh, 3 => 4)
+
+    equation = EulerEquation{2}(div, 1.4)
+
+    ρ0, M0, p0 = 1.0, 2.0, 1.0
+    a0 = Flou.soundvelocity(ρ0, p0, equation)
+    u0 = M0 * a0
+    ρ1, u1, p1 = Flou.normal_shockwave(ρ0, u0, p0, equation)
+    Q0 = Flou.vars_prim2cons((ρ0, u0, 0.0, p0), equation)
+    Q1 = Flou.vars_prim2cons((ρ1, u1, 0.0, p1), equation)
+
+    function Q!(Q, xy, n, t, b, time, equation)
+        x = xy[1]
+        Q .= (x < 0) ? Q0 : Q1
+        return nothing
+    end
+    ∂Ω = [
+        1 => DirichletBC(Q!),
+        2 => DirichletBC(Q!),
+    ]
+    DG = DGSEM(mesh, order .+ 1, qtype, equation, ∂Ω, numflux)
+
+    Q = StateVector{Float64}(undef, DG.dofhandler, DG.stdvec, nvariables(equation))
+    for ie in eachelement(mesh)
+        for i in eachindex(DG.stdvec[1])
+            xy = coords(DG.physelem, ie)[i]
+            Q!(view(Q[1], i, :, ie), xy, [], [], [], 0.0, equation)
         end
     end
 
