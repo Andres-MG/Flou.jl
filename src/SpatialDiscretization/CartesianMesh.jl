@@ -15,6 +15,7 @@ nregions(::CartesianMesh) = 1
 region(::CartesianMesh, i) = 1
 eachregion(m::CartesianMesh) = Base.OneTo(nregions(m))
 
+nelements(m::CartesianMesh, _) = nelements(m)
 nelements_dir(m::CartesianMesh, dir) = m.nelements[dir]
 
 function CartesianMesh{ND,RT}(start, finish, nxyz) where {ND,RT<:Real}
@@ -57,7 +58,7 @@ function CartesianMesh{ND,RT}(start, finish, nxyz) where {ND,RT<:Real}
     intfaces, bdfaces, faces = _cartesian_face_connectivities(Val(ND), nxyz)
 
     # Boundary indices map
-    bdmap = Dict([(i, i) for i in 1:2ND])
+    bdmap = Dict((i, i) for i in 1:2ND)
 
     return CartesianMesh(
             Tuple(nxyz),

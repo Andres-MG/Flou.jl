@@ -22,13 +22,18 @@ struct StepMesh{RT,FV,EV,MT} <: AbstractMesh{2,RT}
     intfaces::Vector{Int}
     bdfaces::Vector{Vector{Int}}
     periodic::Dict{Int,Int}
+    bdmap::Dict{Int,Int}
     regionmap::Vector{Int}
     mappings::MT
+    step_offset::RT
+    step_height::RT
 end
 
 nregions(::StepMesh) = 3
 region(m::StepMesh, i) = m.regionmap[i]
 eachregion(m::StepMesh) = Base.OneTo(nregions(m))
+
+nelements(m::StepMesh, i) = count(==(i), m.regionmap)
 
 function StepMesh{RT}(start, finish, offset, height, nxy) where {RT}
     length(start) == 2 || throw(ArgumentError(
@@ -65,13 +70,35 @@ function StepMesh{RT}(start, finish, offset, height, nxy) where {RT}
     xf = finish
     mesh3 = CartesianMesh{2,RT}(x0, xf, nxy[3])
 
-    return _step_merge_meshes(mesh1, mesh2, mesh3)
+    return _step_merge_meshes(mesh1, mesh2, mesh3, offset, height)
+end
+
+function Base.show(io::IO, ::MIME"text/plain", m::StepMesh{RT}) where {RT}
+    @nospecialize
+    # Header
+    println(io, "2D StepMesh{", RT, "}:")
+
+    # Box limits
+    lims = (first(vertices(m)), last(vertices(m)))
+    print(io, " Domain: x ∈ [", lims[1][1], ", ", lims[2][1], "],")
+    println(io, " y ∈ [", lims[1][2], ", ", lims[2][2], "]")
+
+    # Step size
+    print(io, " Step of height ", m.step_height)
+    println(io, " with an offset of ", m.step_offset)
+
+    # Number of elements
+    print(io, " Number of elements: ", nelements(m))
+
+    return nothing
 end
 
 function _step_merge_meshes(
     mesh1::CartesianMesh{ND,RT},
     mesh2::CartesianMesh{ND,RT},
     mesh3::CartesianMesh{ND,RT},
+    offset,
+    height,
 ) where {
     ND,
     RT,
@@ -100,8 +127,8 @@ function _step_merge_meshes(
     for (i1, i2) in zip(li1[:, end], li2[:, 1])
         nodemap[2][i2] = nodemap[1][i1]
     end
-    for i in li2[:, 2:end]
-        nodemap[2][i] = nnodes1 + i
+    for (i0, i) in enumerate(li2[:, 2:end])
+        nodemap[2][i] = nnodes1 + i0
     end
 
     nvfaces1 = (nx1 + 1) * ny1
@@ -226,13 +253,17 @@ function _step_merge_meshes(
 
     for i in eachbdface(mesh2, 3)
         iface = facemap[2][i]
-        faces.eleminds[iface][2] = elemmap[2][bdmap[2][i]]
+        ielem = elemmap[2][bdmap[2][i]]
+        faces.eleminds[iface][2] = ielem
         faces.elempos[iface][2] = 3
+        elements.facepos[ielem][3] = 2
     end
     for i in eachbdface(mesh3, 1)
         iface = facemap[3][i]
-        faces.eleminds[iface][2] = elemmap[3][bdmap[3][i]]
+        ielem = elemmap[3][bdmap[3][i]]
+        faces.eleminds[iface][2] = ielem
         faces.elempos[iface][2] = 1
+        elements.facepos[ielem][1] = 2
     end
 
     # List of interior and boundary faces
@@ -241,12 +272,19 @@ function _step_merge_meshes(
     for i in eachintface(mesh1)
         push!(intfaces, facemap[1][i])
     end
+    for i in eachbdface(mesh1, 4)
+        push!(intfaces, facemap[1][i])
+    end
     for i in eachintface(mesh2)
+        push!(intfaces, facemap[2][i])
+    end
+    for i in eachbdface(mesh2, 2)
         push!(intfaces, facemap[2][i])
     end
     for i in eachintface(mesh3)
         push!(intfaces, facemap[3][i])
     end
+    sort!(intfaces)
 
     bdfaces = [Int[] for _ in 1:6]
     for i in eachbdface(mesh1, 1)
@@ -273,7 +311,9 @@ function _step_merge_meshes(
     for i in eachbdface(mesh3, 3)
         push!(bdfaces[6], facemap[3][i])
     end
+    sort!.(bdfaces)
 
+    bdmap = Dict((i, i) for i in 1:6)
     regionmap = fill(1, nelems1)
     append!(regionmap, fill(2, nelems2))
     append!(regionmap, fill(3, nelems3))
@@ -288,7 +328,10 @@ function _step_merge_meshes(
         intfaces,
         bdfaces,
         Dict{Int,Int}(),
+        bdmap,
         regionmap,
         mappings,
+        offset,
+        height,
     )
 end
