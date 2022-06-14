@@ -16,12 +16,11 @@ if Threads.nthreads() > 1
 end
 
 # Discretization
-Δt = 1e-2
-tf = 3.0
+Δt = 1e-4
+tf = 1.0
 solver = ORK256(;williamson_condition=false)
 
-order = (5, 5)
-qtype = (GLL(), GLL())
+std = StdQuad{Float64}((6, 6), (GLL(), GLL()))
 div = SSFVDivOperator(
     ChandrasekharAverage(),
     LxFNumericalFlux(
@@ -35,42 +34,35 @@ numflux = MatrixDissipation(
     1.0,
 )
 
-mesh = CartesianMesh{2,Float64}((-1, 0), (1, 1), (11, 3))
-apply_periodicBCs!(mesh, 3 => 4)
+mesh = StepMesh{Float64}((0,0), (3, 1), 0.6, 0.2, ((8, 4), (8, 12), (16, 12)))
 
 equation = EulerEquation{2}(div, 1.4)
 
-ρ0, M0, p0 = 1.0, 2.0, 1.0
-a0 = Flou.soundvelocity(ρ0, p0, equation)
-u0 = M0 * a0
-ρ1, u1, p1 = Flou.normal_shockwave(ρ0, u0, p0, equation)
-const Q0 = Flou.vars_prim2cons((ρ0, u0, 0.0, p0), equation)
-const Q1 = Flou.vars_prim2cons((ρ1, u1, 0.0, p1), equation)
-
-function Q!(Q, xy, n, t, b, time, equation)
-    x = xy[1]
-    Q .= (x < 0) ? Q0 : Q1
-    return nothing
-end
+M0 = 3.0
+a0 = soundvelocity(1.0, 1.0, equation)
+Q0 = Flou.vars_prim2cons((1.0, M0*a0, 0.0, 1.0), equation)
 ∂Ω = [
-    1 => DirichletBC(Q!),
-    2 => DirichletBC(Q!),
-    # 3 => DirichletBC(Q!),
-    # 4 => DirichletBC(Q!),
+    1 => EulerInflowBC(Q0),
+    2 => EulerOutflowBC(),
+    3 => EulerSlipBC(),
+    4 => EulerSlipBC(),
+    5 => EulerSlipBC(),
+    6 => EulerSlipBC(),
 ]
-DG = DGSEM(mesh, order .+ 1, qtype, equation, ∂Ω, numflux)
+DG = DGSEM(mesh, std, equation, ∂Ω, numflux)
 
 Q = StateVector{Float64}(undef, DG.dofhandler, DG.stdvec, nvariables(equation))
 for ie in eachelement(mesh)
     for i in eachindex(DG.stdvec[1])
         xy = coords(DG.physelem, ie)[i]
-        Q!(view(Q[1], i, :, ie), xy, [], [], [], 0.0, equation)
+        Q[1][i, :, ie] .= Q0
     end
 end
 
 display(DG)
+println()
 
-sb = get_save_callback("../results/solution", 0:0.05:tf)
+sb = get_save_callback("../results/solution", range(0, tf, 20))
 
 @info "Starting simulation..."
 
