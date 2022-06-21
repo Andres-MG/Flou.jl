@@ -74,13 +74,12 @@ export ChandrasekharAverage, MatrixDissipation
 export EulerInflowBC, EulerOutflowBC, EulerSlipBC
 export KPPEquation, initial_whirl_KPP!
 
-
 # TimeDiscretization.jl
 export integrate, get_save_callback
 
+# Basic utilities
 include("Utilities.jl")
 include("Containers.jl")
-include("FlouBiz.jl")
 
 # Equations interface
 include("Equations/EquationsInterface.jl")
@@ -96,5 +95,8 @@ include("Equations/Equations.jl")
 
 # Time discretizations
 include("TimeDiscretization/TimeDiscretization.jl")
+
+# Visualization
+include("FlouBiz.jl")
 
 end # Flou

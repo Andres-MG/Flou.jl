@@ -40,108 +40,94 @@ function MortarStateVector{RT}(value, mesh, stdvec, dh::DofHandlerDG, nvars) whe
     MortarStateVector{RT}(value, dims)
 end
 
-function save2csv(filename, Q, dg)
-    open(filename, "w") do fh
-        # Header
-        dim = spatialdim(dg.mesh)
-        if dim == 1
-            print(fh, "x,")
-        elseif dim == 2
-            print(fh, "x,y,")
-        else # dim == 3
-            print(fh, "x,y,z,")
-        end
-        join(fh, variablenames(dg.equation), ",")
-        println(fh)
-
-        # Print format
-        f = "%.7e" * ",%.7e" ^ (dim - 1 + nvariables(dg.equation)) |> Printf.Format
-
-        # Data
-        dh = dg.dofhandler
-        for ireg in eachregion(dh), ieloc in eachelement(dh, ireg)
-            ie = reg2loc(dh, ireg, ieloc)
-            X = coords(dg.physelem, ie)
-            for i in eachindex(X)
-                Printf.format(fh, f, X[i]..., Q[ireg][i, :, ie]...)
-                println(fh)
-            end
-        end
-    end
-    return nothing
-end
-
 function _VTK_type end
 
 function _VTK_connectivities end
 
-function save2vtkhdf(filename, Q, dg)
-    # Write to VTK HDF file (only one partition)
-    HDF5.h5open(filename, "w") do fh
-        # Unpack
-        (; mesh, stdvec, dofhandler, equation) = dg
+function open_for_write!(file::HDF5.File, dg::DiscontinuousGalerkin{EQ,RT}) where {EQ,RT}
+    # Unpack
+    (; mesh, stdvec, dofhandler) = dg
 
-        #VTKHDF group
-        root = HDF5.create_group(fh, "/VTKHDF")
-        HDF5.attributes(root)["Version"] = [1, 0]
+    #VTKHDF group
+    root = HDF5.create_group(file, "/VTKHDF")
+    HDF5.attributes(root)["Version"] = [1, 0]
 
-        points = eltype(Q)[]
-        solution = [eltype(Q)[] for _ in eachvariable(equation)]
-        connectivities = Int[]
-        offsets = Int[0]
-        types = UInt8[]
-        regions = Int[]
-        for ir in eachregion(dofhandler)
-            std = stdvec[ir]
-            Qt = similar(Q, ndofs(std))
-            for ieloc in eachelement(dofhandler, ir)
-                # Point coordinates
-                ie = reg2loc(dofhandler, ir, ieloc)
-                padding = zeros(SVector{3 - spatialdim(mesh),eltype(points)})
-                for ξ in std.ξe
-                    append!(points, coords(ξ, mesh, ie))
-                    append!(points, padding)
-                end
-
-                # Point values
-                for iv in eachvariable(equation)
-                    project2equispaced!(Qt, view(Q[ir], :, iv, ieloc), std)
-                    append!(solution[iv], Qt)
-                end
-
-                # Connectivities
-                conns = _VTK_connectivities(std) .+ last(offsets)
-                append!(connectivities, conns)
-
-                # Offsets
-                push!(offsets, ndofs(std) + last(offsets))
-
-                # Types
-                push!(types, _VTK_type(std))
-
-                # Regions
-                push!(regions, ir)
+    points = RT[]
+    connectivities = Int[]
+    offsets = Int[0]
+    types = UInt8[]
+    regions = Int[]
+    for ir in eachregion(dofhandler)
+        std = stdvec[ir]
+        for ieloc in eachelement(dofhandler, ir)
+            # Point coordinates
+            ie = reg2loc(dofhandler, ir, ieloc)
+            padding = zeros(SVector{3 - spatialdim(mesh),eltype(points)})
+            for ξ in std.ξe
+                append!(points, coords(ξ, mesh, ie))
+                append!(points, padding)
             end
+
+            # Connectivities
+            conns = _VTK_connectivities(std) .+ last(offsets)
+            append!(connectivities, conns)
+
+            # Offsets
+            push!(offsets, ndofs(std) + last(offsets))
+
+            # Types
+            push!(types, _VTK_type(std))
+
+            # Regions
+            push!(regions, ir)
         end
-
-        points = reshape(points, (3, :))
-        HDF5.write(root, "NumberOfPoints", [size(points, 2)])
-        HDF5.write(root, "Points", points)
-
-        HDF5.write(root, "NumberOfConnectivityIds", [length(connectivities)])
-        HDF5.write(root, "Connectivity", connectivities)
-
-        HDF5.write(root, "NumberOfCells", [length(types)])
-        HDF5.write(root, "Types", types)
-        HDF5.write(root, "Offsets", offsets)
-
-        for iv in eachvariable(equation)
-            vname = variablenames(equation)[iv]
-            HDF5.write(root, "PointData/$(vname)", solution[iv])
-        end
-
-        HDF5.write(root, "CellData/region", regions)
     end
+
+    points = reshape(points, (3, :))
+    HDF5.write(root, "NumberOfPoints", [size(points, 2)])
+    HDF5.write(root, "Points", points)
+
+    HDF5.write(root, "NumberOfConnectivityIds", [length(connectivities)])
+    HDF5.write(root, "Connectivity", connectivities)
+
+    HDF5.write(root, "NumberOfCells", [length(types)])
+    HDF5.write(root, "Types", types)
+    HDF5.write(root, "Offsets", offsets)
+
+    HDF5.write(root, "CellData/Region", regions)
+    return nothing
+end
+
+function pointdata2VTKHDF(data, dg::DiscontinuousGalerkin)
+    npoints = ndofs(dg)
+    datavec = eltype(data)[]
+    sizehint!(datavec, npoints)
+    for ir in eachregion(dg.dofhandler)
+        std = dg.stdvec[ir]
+        tmp = Vector{eltype(data)}(undef, ndofs(std))
+        for ie in eachelement(dh.dofhandler, ir)
+            project2equispaced!(tmp, view(data[ir], :, ie), std)
+            append!(datavec, tmp)
+        end
+    end
+    return datavec
+end
+
+function solution2VTKHDF(Q, dg::DiscontinuousGalerkin)
+    npoints = ndofs(dg)
+    Qe = [eltype(Q)[] for _ in eachvariable(dg.equation)]
+    for i in eachindex(Q)
+        sizehint!(Qe[i], npoints)
+    end
+    for ir in eachregion(dg.dofhandler)
+        std = dg.stdvec[ir]
+        tmp = Vector{eltype(Q)}(undef, ndofs(std))
+        for ie in eachelement(dg.dofhandler, ir), iv in eachvariable(dg.equation)
+            project2equispaced!(tmp, view(Q[ir], :, iv, ie), std)
+            append!(Qe[iv], tmp)
+        end
+    end
+    return Qe
 end
 
 abstract type AbstractNumericalFlux end

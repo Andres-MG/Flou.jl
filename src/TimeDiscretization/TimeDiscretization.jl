@@ -30,10 +30,17 @@ end
 
 function get_save_callback(basename, tstops)
     f = function save_callback(integrator)
-        (; dofhandler, stdvec, equation) = integrator.p
-        Q = StateVector(integrator.u, dofhandler, stdvec, nvariables(equation))
+        disc = integrator.p
+        (; dofhandler, stdvec, equation) = disc
+
         filename = @sprintf("%s_%010d.hdf", basename, integrator.iter)
-        save(filename, Q, integrator.p)
+        file = open_for_write(filename, disc)
+        add_fielddata!(file, [integrator.t], "Time")
+
+        Q = StateVector(integrator.u, dofhandler, stdvec, nvariables(equation))
+        add_solution!(file, Q, disc)
+
+        close_file!(file)
         @info "Saved solution at t=$(integrator.t) in `$(filename)`"
         return nothing
     end
