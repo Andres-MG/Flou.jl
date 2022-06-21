@@ -13,11 +13,10 @@ Flou is a solver for hyperbolic partial differential equations, using a *Discont
 
 ## Roadmap
 
-- Add test cases
-- Add orientation of faces
-- Add periodic boundary conditions
+- Add RBF quadratures
 - Add elliptic equations
-- Add multi-process support
+- Add hyperboli-elliptic equations
+- Add unstructured mesh reader
 
 ## Hyperbolic equations
 
