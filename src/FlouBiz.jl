@@ -45,4 +45,5 @@ end
 
 function close_file!(file::SolutionFile)
     close(file.handler)
+    return nothing
 end
