@@ -1,9 +1,9 @@
 module Flou
 
 using LinearAlgebra: LinearAlgebra, dot, mul!, Diagonal, diagm, factorize, ldiv!
-using StaticArrays: StaticArrays, SVector, MVector, SMatrix, SDiagonal
+using StaticArrays: StaticArrays, SVector, MVector, SMatrix, MArray, SDiagonal
 using StructArrays: StructArrays, StructVector, LazyRows, LazyRow
-using FastGaussQuadrature:FastGaussQuadrature, gausslegendre, gausslobatto
+using FastGaussQuadrature: FastGaussQuadrature, gausslegendre, gausslobatto
 using Polynomials: Polynomials, Polynomial, derivative
 using SpecialPolynomials: SpecialPolynomials, Lagrange
 using Printf: Printf, @printf, @sprintf
@@ -52,7 +52,7 @@ export eachelement, eachboundary, eachface, eachintface, eachbdface, eachvertex
 
 export GaussQuadrature, GL, GaussLobattoQuadrature, GLL
 export StdSegment, StdQuad
-export ndofs, is_tensor_product, eachdirection, ndofs, quadratures, quadrature
+export ndofs, is_tensor_product, ndirections, eachdirection, ndofs, quadratures, quadrature
 
 export DirichletBC
 

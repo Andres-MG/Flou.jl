@@ -6,11 +6,11 @@ struct GaussLobattoQuadrature <: AbstractQuadrature end
 const GL = GaussQuadrature
 const GLL = GaussLobattoQuadrature
 
-abstract type AbstractStdRegion{ND} end
+abstract type AbstractStdRegion{ND,Dims} end
 
-Base.size(s::AbstractStdRegion) = s.qsize
-Base.size(s::AbstractStdRegion, i) = s.qsize[i]
-Base.length(s::AbstractStdRegion) = s.qlength
+Base.size(::AbstractStdRegion{ND,Dims}) where {ND,Dims} = Dims
+Base.size(::AbstractStdRegion{ND,Dims}, i) where {ND,Dims} = Dims[i]
+Base.length(::AbstractStdRegion{ND,Dims}) where {ND,Dims} = prod(Dims)
 Base.eachindex(s::AbstractStdRegion, i) = Base.OneTo(size(s, i))
 Base.eachindex(s::AbstractStdRegion) = Base.OneTo(length(s))
 Base.LinearIndices(s::AbstractStdRegion) = s.lindices
@@ -23,7 +23,7 @@ Return `true` if `std` is a tensor-product standard region, and `false` otherwis
 """
 function is_tensor_product end
 
-function eachdirection end
+function ndirections end
 
 function massmatrix end
 
@@ -39,45 +39,40 @@ faces(s::AbstractStdRegion{ND}) where {ND} = 1 <= ND <= 3 ? s.fstd : nothing
 face(s::AbstractStdRegion{ND}, i) where {ND} = 1 <= ND <= 3 ? s.fstd[i] : nothing
 quadratures(s::AbstractStdRegion) = s.quad
 quadrature(s::AbstractStdRegion, i) = s.quad[i]
+eachdirection(s::AbstractStdRegion) = Base.OneTo(ndirections(s))
 
 #==========================================================================================#
 #                                      Standard point                                      #
 
-struct StdPoint{CI,LI} <: AbstractStdRegion{0}
-    qsize::Tuple{Int}
-    qlength::Int
+struct StdPoint{Dims,CI,LI} <: AbstractStdRegion{0,Dims}
     cindices::CI
     lindices::LI
 end
 
 function StdPoint()
-    return StdPoint(
-        (1,),
-        1,
-        CartesianIndices((1,)) |> collect ,
-        LinearIndices((1,)) |> collect,
-    )
+    dim = (1,)
+    ci = CartesianIndices(dim) |> collect
+    li = LinearIndices(dim) |> collect
+    return StdPoint{dim,typeof(ci),typeof(li)}(ci, li)
 end
 
 is_tensor_product(::StdPoint) = true
-eachdirection(::StdPoint) = Base.OneTo(1)
+ndirections(::StdPoint) = 1
 nvertices(::StdPoint) = 1
 
-function slave2master(i, orientation, std::StdPoint)
+function slave2master(i, _, ::StdPoint)
     return i
 end
 
-function master2slave(i, orientation, std::StdPoint)
+function master2slave(i, _, ::StdPoint)
     return i
 end
 
 #==========================================================================================#
 #                                     Standard segment                                     #
 
-struct StdSegment{QT,RT,MM,CI,LI,FS1,FS2} <: AbstractStdRegion{1}
+struct StdSegment{Dims,QT,RT,MM,CI,LI,FS1,FS2} <: AbstractStdRegion{1,Dims}
     quad::Tuple{QT}
-    qsize::Tuple{Int}
-    qlength::Int
     fstd::Tuple{FS1,FS2}
     cindices::CI
     lindices::LI
@@ -96,7 +91,7 @@ struct StdSegment{QT,RT,MM,CI,LI,FS1,FS2} <: AbstractStdRegion{1}
 end
 
 is_tensor_product(::StdSegment) = true
-eachdirection(::StdSegment) = Base.OneTo(1)
+ndirections(::StdSegment) = 1
 nvertices(::StdSegment) = 2
 
 function StdSegment{RT}(np, qtype) where {RT<:Real}
@@ -151,10 +146,17 @@ function StdSegment{RT}(np, qtype) where {RT<:Real}
     @. Ks = -Ks + B
     @. K♯ = -K♯ + B
 
-    return StdSegment(
+    return StdSegment{
+        Tuple(np),
+        typeof(qtype),
+        eltype(ω),
+        typeof(M),
+        typeof(cindices),
+        typeof(lindices),
+        typeof(fstd[1]),
+        typeof(fstd[2]),
+    }(
         (qtype,),
-        (np,),
-        np,
         fstd,
         cindices,
         lindices,
@@ -173,7 +175,7 @@ function StdSegment{RT}(np, qtype) where {RT<:Real}
     )
 end
 
-function Base.show(io::IO, ::MIME"text/plain", s::StdSegment{QT,RT}) where {QT,RT}
+function Base.show(io::IO, ::MIME"text/plain", s::StdSegment{D,QT,RT}) where {D,QT,RT}
     @nospecialize
     print(io, "StdSegment{", RT, "}: ")
     if QT == GaussQuadrature
@@ -186,7 +188,7 @@ function Base.show(io::IO, ::MIME"text/plain", s::StdSegment{QT,RT}) where {QT,R
     return nothing
 end
 
-function massmatrix(std::StdSegment{QT}, J) where {QT}
+function massmatrix(std::StdSegment, J)
     return Diagonal(J) * std.M
 end
 
@@ -225,10 +227,8 @@ end
 #==========================================================================================#
 #                                       Standard quad                                      #
 
-struct StdQuad{QT1,QT2,RT,MM,CI,LI,FS1,FS2} <: AbstractStdRegion{2}
+struct StdQuad{Dims,QT1,QT2,RT,MM,CI,LI,FS1,FS2} <: AbstractStdRegion{2,Dims}
     quad::Tuple{QT1,QT2}
-    qsize::Tuple{Int,Int}
-    qlength::Int
     fstd::Tuple{FS1,FS2}
     cindices::CI
     lindices::LI
@@ -247,14 +247,13 @@ struct StdQuad{QT1,QT2,RT,MM,CI,LI,FS1,FS2} <: AbstractStdRegion{2}
 end
 
 is_tensor_product(::StdQuad) = true
-eachdirection(::StdQuad) = Base.OneTo(2)
+ndirections(::StdQuad) = 2
 nvertices(::StdQuad) = 4
 faces(s::StdQuad) = (s.fstd[1], s.fstd[1], s.fstd[2], s.fstd[2])
-face(s::StdQuad, i) = (i - 1) ÷ 2 == 0 ? s.fstd[1] : s.fstd[2]
+face(s::StdQuad, i) = s.fstd[(i - 1) ÷ 2 + 1]
 
 function StdQuad{RT}(np, qtype) where {RT<:Real}
     # Quadratures
-    npts = prod(np)
     fstd = (
         StdSegment{RT}(np[1], qtype[1]),
         StdSegment{RT}(np[2], qtype[2]),
@@ -314,10 +313,18 @@ function StdQuad{RT}(np, qtype) where {RT<:Real}
         fstd[2].l[2] * fstd[1].ω',
     )
 
-    return StdQuad(
-        Tuple(qtype),
+    return StdQuad{
         Tuple(np),
-        npts,
+        typeof(qtype[1]),
+        typeof(qtype[2]),
+        eltype(ω),
+        typeof(M),
+        typeof(cindices),
+        typeof(lindices),
+        typeof(fstd[1]),
+        typeof(fstd[2]),
+    }(
+        Tuple(qtype),
         fstd,
         cindices,
         lindices,
@@ -336,19 +343,19 @@ function StdQuad{RT}(np, qtype) where {RT<:Real}
     )
 end
 
-function Base.show(io::IO, ::MIME"text/plain", s::StdQuad{QT1,QT2,RT}) where {QT1,QT2,RT}
+function Base.show(io::IO, ::MIME"text/plain", s::StdQuad{D,Q1,Q2,RT}) where {D,Q1,Q2,RT}
     @nospecialize
     println(io, "StdRegion{", RT, "}: ")
-    if QT1 == GaussQuadrature
+    if Q1 == GaussQuadrature
         println(io, " ξ: Gauss quadrature with ", size(s, 1), " nodes")
-    elseif QT1 == GaussLobattoQuadrature
+    elseif Q1 == GaussLobattoQuadrature
         println(io, " ξ: Gauss-Lobatto quadrature with ", size(s, 1), " nodes")
     else
         @assert false "[StdRegion.show] You shouldn't be here..."
     end
-    if QT2 == GaussQuadrature
+    if Q2 == GaussQuadrature
         print(io, " η: Gauss quadrature with ", size(s, 2), " nodes")
-    elseif QT2 == GaussLobattoQuadrature
+    elseif Q2 == GaussLobattoQuadrature
         print(io, " η: Gauss-Lobatto quadrature with ", size(s, 2), " nodes")
     else
         @assert false "[StdRegion.show] You shouldn't be here..."
@@ -356,7 +363,7 @@ function Base.show(io::IO, ::MIME"text/plain", s::StdQuad{QT1,QT2,RT}) where {QT
     return nothing
 end
 
-function massmatrix(std::StdQuad{QT1,QT2}, J) where {QT1,QT2}
+function massmatrix(std::StdQuad, J)
     return Diagonal(J) * std.M
 end
 
@@ -397,10 +404,10 @@ end
 #==========================================================================================#
 #                                     Standard triangle                                    #
 
-struct StdTri <: AbstractStdRegion{2} end
+struct StdTri{Dims} <: AbstractStdRegion{2,Dims} end
 
 is_tensor_product(::StdTri) = false
-eachdirection(::StdTri) = Base.OneTo(3)
+ndirections(::StdTri) = 3
 nvertices(::StdTri) = 3
 
 function slave2master(i, orientation, std::StdTri)
