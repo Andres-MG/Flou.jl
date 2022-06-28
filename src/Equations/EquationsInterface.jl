@@ -5,8 +5,8 @@ Must contain a field `operators` containing the operators that it uses (iterable
 """
 abstract type AbstractEquation{NV} end
 
-nvariables(::AbstractEquation{NV}) where {NV} = NV
-eachvariable(e::AbstractEquation) = Base.Base.OneTo(nvariables(e))
+@inline nvariables(::AbstractEquation{NV}) where {NV} = NV
+@inline eachvariable(e::AbstractEquation) = Base.Base.OneTo(nvariables(e))
 
 function variablenames end
 

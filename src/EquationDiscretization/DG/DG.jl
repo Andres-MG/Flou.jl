@@ -1,33 +1,10 @@
-abstract type DiscontinuousGalerkin{EQ,RT} <: AbstractSpatialDiscretization{EQ,RT} end
-
-include("DofHandler.jl")
-
-function StateVector(raw, dh::DofHandlerDG, stdvec, nvars)
-    nd = [ndofs.(stdvec)...]
-    nelems = [nelements(dh, i) for i in eachregion(dh)]
-    return StateVector(raw, nd, nelems, nvars)
-end
-
-function StateVector{RT}(
-    value::Union{UndefInitializer,Missing,Nothing},
-    dh::DofHandlerDG,
-    stdvec,
-    nvars,
-) where {
-    RT,
-}
-    nd = [ndofs.(stdvec)...]
-    nelems = [nelements(dh, i) for i in eachregion(dh)]
-    rawlen = sum(nd .* nvars .* nelems)
-    raw = Vector{RT}(value, rawlen)
-    return StateVector(raw, nd, nelems, nvars)
-end
+abstract type DiscontinuousGalerkin{EQ,RT} <: AbstractEquationDiscretization{EQ,RT} end
 
 function MortarStateVector{RT}(value, mesh, stdvec, dh::DofHandlerDG, nvars) where {RT}
     dims = Vector{NTuple{2,NTuple{2,Int}}}(undef, nfaces(mesh))
     for i in eachface(mesh)
         elem = face(mesh, i).eleminds[1]
-        reg, _ = loc2reg(dh, elem)
+        reg = elem2region(dh, elem)
         std = stdvec[reg]
         pos = face(mesh, i).elempos[1]
         idir = (pos - 1) ÷ 2 + 1
@@ -57,30 +34,28 @@ function open_for_write!(file::HDF5.File, dg::DiscontinuousGalerkin{EQ,RT}) wher
     offsets = Int[0]
     types = UInt8[]
     regions = Int[]
-    for ir in eachregion(dofhandler)
+    for ie in eachelement(dofhandler)
+        ir = elem2region(dofhandler, ie)
         std = stdvec[ir]
-        for ieloc in eachelement(dofhandler, ir)
-            # Point coordinates
-            ie = reg2loc(dofhandler, ir, ieloc)
-            padding = zeros(SVector{3 - spatialdim(mesh),eltype(points)})
-            for ξ in std.ξe
-                append!(points, coords(ξ, mesh, ie))
-                append!(points, padding)
-            end
-
-            # Connectivities
-            conns = _VTK_connectivities(std) .+ last(offsets)
-            append!(connectivities, conns)
-
-            # Offsets
-            push!(offsets, ndofs(std) + last(offsets))
-
-            # Types
-            push!(types, _VTK_type(std))
-
-            # Regions
-            push!(regions, ir)
+        # Point coordinates
+        padding = zeros(SVector{3 - spatialdim(mesh),eltype(points)})
+        for ξ in std.ξe
+            append!(points, coords(ξ, mesh, ie))
+            append!(points, padding)
         end
+
+        # Connectivities
+        conns = _VTK_connectivities(std) .+ last(offsets)
+        append!(connectivities, conns)
+
+        # Offsets
+        push!(offsets, ndofs(std) + last(offsets))
+
+        # Types
+        push!(types, _VTK_type(std))
+
+        # Regions
+        push!(regions, ir)
     end
 
     points = reshape(points, (3, :))
@@ -94,40 +69,8 @@ function open_for_write!(file::HDF5.File, dg::DiscontinuousGalerkin{EQ,RT}) wher
     HDF5.write(root, "Types", types)
     HDF5.write(root, "Offsets", offsets)
 
-    HDF5.write(root, "CellData/Region", regions)
+    HDF5.write(root, "CellData/region", regions)
     return nothing
-end
-
-function pointdata2VTKHDF(data, dg::DiscontinuousGalerkin)
-    npoints = ndofs(dg)
-    datavec = eltype(data)[]
-    sizehint!(datavec, npoints)
-    for ir in eachregion(dg.dofhandler)
-        std = dg.stdvec[ir]
-        tmp = Vector{eltype(data)}(undef, ndofs(std))
-        for ie in eachelement(dh.dofhandler, ir)
-            project2equispaced!(tmp, view(data[ir], :, ie), std)
-            append!(datavec, tmp)
-        end
-    end
-    return datavec
-end
-
-function solution2VTKHDF(Q, dg::DiscontinuousGalerkin)
-    npoints = ndofs(dg)
-    Qe = [eltype(Q)[] for _ in eachvariable(dg.equation)]
-    for i in eachindex(Q)
-        sizehint!(Qe[i], npoints)
-    end
-    for ir in eachregion(dg.dofhandler)
-        std = dg.stdvec[ir]
-        tmp = Vector{eltype(Q)}(undef, ndofs(std))
-        for ie in eachelement(dg.dofhandler, ir), iv in eachvariable(dg.equation)
-            project2equispaced!(tmp, view(Q[ir], :, iv, ie), std)
-            append!(Qe[iv], tmp)
-        end
-    end
-    return Qe
 end
 
 abstract type AbstractNumericalFlux end

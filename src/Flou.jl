@@ -77,23 +77,13 @@ export KPPEquation, initial_whirl_KPP!
 # TimeDiscretization.jl
 export integrate, get_save_callback
 
-# Basic utilities
 include("Utilities.jl")
-include("Containers.jl")
-
-# Equations interface
 include("Equations/EquationsInterface.jl")
-
-# Spatial discretizations
 include("SpatialDiscretization/SpatialDiscretization.jl")
-
-# Spatial operators
-include("Operators/Operators.jl")
-
-# Equation implementations
+include("Containers.jl")
+include("EquationDiscretization/EquationDiscretization.jl")
 include("Equations/Equations.jl")
-
-# Time discretizations
+include("FlouBiz.jl")
 include("TimeDiscretization/TimeDiscretization.jl")
 
 # Visualization

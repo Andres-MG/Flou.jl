@@ -16,34 +16,40 @@ if Threads.nthreads() > 1
 end
 
 # Discretization
-Δt = 1e-4
-tf = 1.0
-solver = ORK256(;williamson_condition=false)
+Δt = 2e-6
+tf = 0.01
+# solver = ORK256(williamson_condition=false)
+# solver = SSPRK53()
+# solver = DGLDDRK73_C()
+solver = CarpenterKennedy2N54(williamson_condition=false)
 
-std = StdQuad{Float64}((6, 6), (GLL(), GLL()))
+std = StdQuad{Float64}((8, 8), (GLL(), GLL()))
 div = SSFVDivOperator(
     ChandrasekharAverage(),
     LxFNumericalFlux(
         StdAverageNumericalFlux(),
-        1.0,
+        0.2,
     ),
-    1e+0,
+    # MatrixDissipation(
+    #     ChandrasekharAverage(),
+	# 1.0,
+    # ),
+    0.1,
 )
 numflux = MatrixDissipation(
     ChandrasekharAverage(),
     1.0,
 )
 
-mesh = StepMesh{Float64}((0,0), (3, 1), 0.6, 0.2, ((8, 4), (8, 12), (16, 12)))
+mesh = StepMesh{Float64}((0,0), (2, 2), 1.5, 1.0, ((30, 20), (30, 20), (10, 20)))
 
 equation = EulerEquation{2}(div, 1.4)
 
-M0 = 3.0
-a0 = soundvelocity(1.0, 1.0, equation)
-Q0 = Flou.vars_prim2cons((1.0, M0*a0, 0.0, 1.0), equation)
+Q0 = Flou.vars_prim2cons((5.997, -98.5914, 0.0, 11_666.5), equation)
+Q1 = Flou.vars_prim2cons((1.0, 0.0, 0.0, 1.0), equation)
 ∂Ω = [
-    1 => EulerInflowBC(Q0),
-    2 => EulerOutflowBC(),
+    1 => EulerOutflowBC(),
+    2 => EulerInflowBC(Q0),
     3 => EulerSlipBC(),
     4 => EulerSlipBC(),
     5 => EulerSlipBC(),
@@ -54,15 +60,19 @@ DG = DGSEM(mesh, std, equation, ∂Ω, numflux)
 Q = StateVector{Float64}(undef, DG.dofhandler, DG.stdvec, nvariables(equation))
 for ie in eachelement(mesh)
     for i in eachindex(DG.stdvec[1])
-        xy = coords(DG.physelem, ie)[i]
-        Q[1][i, :, ie] .= Q0
+        x = coords(DG.physelem, ie)[i][1]
+        if x > 1.5
+            Q[1][i, :, ie] .= Q0
+        else
+            Q[1][i, :, ie] .= Q1
+        end
     end
 end
 
 display(DG)
 println()
 
-sb = get_save_callback("../results/solution", range(0, tf, 20))
+sb = get_save_callback("../results/solution", range(0, tf, 30))
 
 @info "Starting simulation..."
 

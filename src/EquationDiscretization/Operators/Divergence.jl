@@ -262,7 +262,7 @@ function volume_contribution!(
     F♯ = [
         Array{eltype(Q),3}(undef, size(std, idir), ndofs(std), nvariables(equation))
         for idir in eachdirection(std)
-    ]   # Type-instability with MArray
+    ]
 
     # Volume fluxes
     @inbounds for i in eachindex(std)
