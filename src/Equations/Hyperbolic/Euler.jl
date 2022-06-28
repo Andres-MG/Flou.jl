@@ -238,6 +238,38 @@ function vars_cons2entropy(Q, eq::EulerEquation{3})
     )
 end
 
+function vars_entropy2prim(W, eq::EulerEquation{1})
+    u = -W[2] / W[3]
+    s = eq.γ - (eq.γ - 1) * (W[1] - W[3] * u^2 / 2)
+    p = ((-W[3])^eq.γ * exp(s))^(1 / (eq.γ - 1))
+    ρ = -p * W[3]
+    return SVector(ρ, u, p)
+end
+
+function vars_entropy2prim(W, eq::EulerEquation{2})
+    u = -W[2] / W[4]
+    v = -W[3] / W[4]
+    s = eq.γ - (eq.γ - 1) * (W[1] - W[4] * (u^2 + v^2) / 2)
+    p = ((-W[4])^eq.γ * exp(s))^(1 / (eq.γ - 1))
+    ρ = -p * W[4]
+    return SVector(ρ, u, v, p)
+end
+
+function vars_entropy2prim(W, eq::EulerEquation{3})
+    u = -W[2] / W[5]
+    v = -W[3] / W[5]
+    w = -W[4] / W[5]
+    s = eq.γ - (eq.γ - 1) * (W[1] - W[5] * (u^2 + v^2 + w^2) / 2)
+    p = ((-W[5])^eq.γ * exp(s))^(1 / (eq.γ - 1))
+    ρ = -p * W[5]
+    return SVector(ρ, u, v, w, p)
+end
+
+function vars_entropy2cons(W, eq::EulerEquation)
+    P = vars_entropy2prim(W, eq)
+    return vars_prim2cons(P, eq)
+end
+
 """
     normal_shockwave(ρ0, u0, p0, eq::EulerEquation)
 
