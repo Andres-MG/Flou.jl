@@ -306,6 +306,16 @@ end
 #==========================================================================================#
 #                                     Face state vector                                    #
 
+# NOTE:
+#  * Each variable has its own vector, as the element vectors.
+#  * Different views map regions for BC, interior, MPI and mortar faces.
+#  * In each region, the master side goes first, then the slave. With this arrangement, MPI
+#    faces are always split in send and receive blocks.
+#  * Values are stored without a previous rotation, i.e., even the sides of interior faces
+#    can have different sizes (although they'll have the same length).
+#  * There must be a global accessor for all the faces, and local accessors for the
+#    regions implemented.
+
 struct FaceStateVector{T,V}
     data::T
     vars::V
