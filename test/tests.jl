@@ -83,18 +83,17 @@ function SodTube1D()
     )
 
     mesh = CartesianMesh{1,Float64}(0, 1, 20)
-    function Q!(Q, x, n, t, b, time, eq)
+    function Qext(Qin, x, n, t, b, time, eq)
         P = if x[1] < 0.5
             SVector(1.0, 0.0, 100.0)
         else
             SVector(0.125, 0.0, 10.0)
         end
-        Q .= Flou.vars_prim2cons(P, eq)
-        return nothing
+        return Flou.vars_prim2cons(P, eq)
     end
     ∂Ω = [
-        1 => DirichletBC(Q!),
-        2 => DirichletBC(Q!),
+        1 => DirichletBC(Qext),
+        2 => DirichletBC(Qext),
     ]
     equation = EulerEquation{1}(div, 1.4)
     DG = DGSEM(mesh, std, equation, ∂Ω, numflux)
@@ -103,7 +102,7 @@ function SodTube1D()
     for ie in eachelement(mesh)
         for i in eachindex(DG.stdvec[1])
             x = coords(DG.physelem, ie)[i]
-            Q!(view(Q[1], i, :, ie), x, [], [], [], 0.0, equation)
+            Q[1][i, :, ie] = Qext([], x, [], [], [], 0.0, equation)
         end
     end
 
@@ -145,14 +144,13 @@ function Shockwave2D()
     Q0 = Flou.vars_prim2cons((ρ0, u0, 0.0, p0), equation)
     Q1 = Flou.vars_prim2cons((ρ1, u1, 0.0, p1), equation)
 
-    function Q!(Q, xy, n, t, b, time, equation)
+    function Qext(Qin, xy, n, t, b, time, equation)
         x = xy[1]
-        Q .= (x < 0) ? Q0 : Q1
-        return nothing
+        return (x < 0) ? Q0 : Q1
     end
     ∂Ω = [
-        1 => DirichletBC(Q!),
-        2 => DirichletBC(Q!),
+        1 => DirichletBC(Qext),
+        2 => DirichletBC(Qext),
     ]
     DG = DGSEM(mesh, std, equation, ∂Ω, numflux)
 
@@ -160,7 +158,7 @@ function Shockwave2D()
     for ie in eachelement(mesh)
         for i in eachindex(DG.stdvec[1])
             xy = coords(DG.physelem, ie)[i]
-            Q!(view(Q[1], i, :, ie), xy, [], [], [], 0.0, equation)
+            Q[1][i, :, ie] = Qext([], xy, [], [], [], 0.0, equation)
         end
     end
 

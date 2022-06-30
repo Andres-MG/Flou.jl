@@ -139,11 +139,11 @@ struct LxFNumericalFlux{T,RT} <: AbstractNumericalFlux
     intensity::RT
 end
 
-function numericalflux! end
+function numericalflux end
 
-function rotate2face! end
+function rotate2face end
 
-function rotate2phys! end
+function rotate2phys end
 
 # TODO: maybe move to StdRegions.jl??
 function project2faces!(Qf, Q, dg::DiscontinuousGalerkin)
@@ -193,19 +193,16 @@ function interface_fluxes!(Fn, Qf, dg::DiscontinuousGalerkin, riemannsolver)
         t = face(physface, iface).t
         b = face(physface, iface).b
 
-        Qln = MVector{nvariables(equation),eltype(Qf)}(undef)
-        Qrn = MVector{nvariables(equation),eltype(Qf)}(undef)
-        Fni = MVector{nvariables(equation),eltype(Fn)}(undef)
         Ql = Qf[iface][1]
         Qr = Qf[iface][2]
         ireg = loc2reg(dofhandler, eleminds[1]).first
         std = face(stdvec[ireg], elempos[1])
         @inbounds for i in eachindex(std)
             j = slave2master(i, orientation, std)
-            rotate2face!(Qln, view(Ql, i, :), n[i], t[i], b[i], equation)
-            rotate2face!(Qrn, view(Qr, j, :), n[i], t[i], b[i], equation)
-            numericalflux!(Fni, Qln, Qrn, n[i], equation, riemannsolver)
-            rotate2phys!(view(Fn[iface][1], i, :), Fni, n[i], t[i], b[i], equation)
+            Qln = rotate2face(view(Ql, i, :), n[i], t[i], b[i], equation)
+            Qrn = rotate2face(view(Qr, j, :), n[i], t[i], b[i], equation)
+            Fni = numericalflux(Qln, Qrn, n[i], equation, riemannsolver)
+            Fn[iface][1][i, :] = rotate2phys(Fni, n[i], t[i], b[i], equation)
             for ivar in eachvariable(equation)
                 Fn[iface][1][i, ivar] *= face(physface, iface).J[i]
                 Fn[iface][2][j, ivar] = -Fn[iface][1][i, ivar]
@@ -243,11 +240,9 @@ end
             throw(ArgumentError("Qext and Qint must have the same dimensions."))
     end
     for (i, Qi) in enumerate(eachrow(Qint))
-        copy!(view(Qext, i, :), Qi)
-        stateBC!(view(Qext, i, :), coords[i], n[i], t[i], b[i], time, eq, bc)
+        Qext[i, :] = stateBC(Qi, coords[i], n[i], t[i], b[i], time, eq, bc)
     end
     return nothing
 end
-
 
 include("DGSEM.jl")

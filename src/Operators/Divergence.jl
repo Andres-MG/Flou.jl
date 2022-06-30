@@ -42,28 +42,20 @@ function volume_contribution!(
     ireg, ieloc = loc2reg(dofhandler, ielem)
     ndim = spatialdim(std)
 
-    # Buffers
-    F = MArray{Tuple{ndim,nvariables(equation),ndofs(std)},eltype(Q)}(undef)
-    F̃ = MArray{Tuple{ndofs(std),nvariables(equation),ndim},eltype(Q)}(undef)
-
     # Volume fluxes
+    F̃ = MArray{Tuple{ndim,ndofs(std),nvariables(equation)},eltype(Q)}(undef)
+    Ja = element(physelem, ielem).Ja
     @inbounds for i in eachindex(std)
-        @views volumeflux!(F[:, :, i], Q[ireg][i, :, ieloc], equation)
-    end
-
-    # Contravariant fluxes
-    ielem = reg2loc(dofhandler, ireg, ieloc)
-    for ivar in eachvariable(equation)
-        for i in eachindex(std)
-            Ja = element(physelem, ielem).Ja[i]
-            @views contravariant!(F̃[i, ivar, :], F[:, ivar, i], Ja)
+        F = volumeflux(view(Q[ireg], i, :, ieloc), equation)
+        for ivar in eachvariable(equation)
+            F̃[:, i, ivar] = contravariant(F, Ja[i])
         end
     end
 
     # Weak derivative
     @inbounds for s in eachindex(std.K)
         mul!(
-            dQ, std.K[s], view(F̃, :, :, s),
+            dQ, std.K[s], view(F̃, s, :, :),
             one(eltype(dQ)), one(eltype(dQ)),
         )
     end
@@ -89,27 +81,20 @@ function volume_contribution!(
     ireg, ieloc = loc2reg(dofhandler, ielem)
     ndim = spatialdim(std)
 
-    # Buffers
-    F = MArray{Tuple{ndim,nvariables(equation),ndofs(std)},eltype(Q)}(undef)
-    F̃ = MArray{Tuple{ndofs(std),nvariables(equation),ndim},eltype(Q)}(undef)
-
     # Volume fluxes
+    F̃ = MArray{Tuple{ndim,ndofs(std),nvariables(equation)},eltype(Q)}(undef)
+    Ja = element(physelem, ielem).Ja
     @inbounds for i in eachindex(std)
-        @views volumeflux!(F[:, :, i], Q[ireg][i, :, ieloc], equation)
-    end
-
-    # Contravariant fluxes
-    for ivar in eachvariable(equation)
-        for i in eachindex(std)
-            Ja = element(physelem, ielem).Ja[i]
-            @views contravariant!(F̃[i, ivar, :], F[:, ivar, i], Ja)
+        F = volumeflux(view(Q[ireg], i, :, ieloc), equation)
+        for ivar in eachvariable(equation)
+            F̃[:, i, ivar] = contravariant(F, Ja[i])
         end
     end
 
-    # Weak derivative
+    # Strong derivative
     @inbounds for s in eachindex(std.K)
         mul!(
-            dQ, std.K[s], view(F̃, :, :, s),
+            dQ, std.Ks[s], view(F̃, s, :, :),
             one(eltype(dQ)), one(eltype(dQ)),
         )
     end
@@ -148,26 +133,20 @@ function volume_contribution!(
     ))
 
     # Buffers
-    F = MArray{Tuple{ND,nvariables(equation),ndofs(std)},eltype(Q)}(undef)
-    F̃ = MVector{ND,eltype(Q)}(undef)
     F♯ = [
         Array{eltype(Q),3}(undef, size(std, idir), ndofs(std), nvariables(equation))
         for idir in eachdirection(std)
     ]
 
-    # Volume fluxes
-    @inbounds for i in eachindex(std)
-        @views volumeflux!(F[:, :, i], Q[ireg][i, :, ieloc], equation)
-    end
-
     # Indexing
     ci = CartesianIndices(std)
 
-    # Contravariant fluxes
+    # Volume fluxes (diagonal of F♯ matrices)
     Ja = element(physelem, ielem).Ja
-    for ivar in eachvariable(equation)
-        for i in eachindex(std)
-            contravariant!(F̃, view(F, :, ivar, i), Ja[i])
+    @inbounds for i in eachindex(std)
+        F = volumeflux(view(Q[ireg], i, :, ieloc), equation)
+        for ivar in eachvariable(equation)
+            F̃ = contravariant(view(F, :, ivar), Ja[i])
             for idir in eachdirection(std)
                 F♯[idir][ci[i][idir], i, ivar] = F̃[idir]
             end
@@ -175,10 +154,10 @@ function volume_contribution!(
     end
 
     # Two-point fluxes
-    Qr = reshape(view(Q[ireg], :, :, ieloc), (size(std)..., size(Q[ireg], 2)))
-    dQr = reshape(dQ, (size(std)..., size(dQ, 2)))
+    Qr = reshape(view(Q[ireg], :, :, ieloc), (size(std)..., nvariables(equation)))
+    dQr = reshape(dQ, (size(std)..., nvariables(equation)))
     F♯r = [
-        reshape(F♯[idir], (size(std, idir), size(std)..., size(F♯[idir]) |> last))
+        reshape(F♯[idir], (size(std, idir), size(std)..., nvariables(equation)))
         for idir in eachdirection(std)
     ]
     Jar = reshape(Ja, size(std))
@@ -186,8 +165,7 @@ function volume_contribution!(
     # 1D
     if ND == 1
         @inbounds for i in eachindex(std), l in (i + 1):ndofs(std)
-            twopointflux!(
-                view(F♯r[1], l, i, :),
+            F♯r[1][l, i, :] = twopointflux(
                 view(Qr, i, :),
                 view(Qr, l, :),
                 Jar[i],
@@ -202,8 +180,7 @@ function volume_contribution!(
     elseif ND == 2
         @inbounds for j in eachindex(std, 2), i in eachindex(std, 1)
             for l in (i + 1):size(std, 1)
-                twopointflux!(
-                    view(F♯r[1], l, i, j, :),
+                F♯r[1][l, i, j, :] = twopointflux(
                     view(Qr, i, j, :),
                     view(Qr, l, j, :),
                     view(Jar[i, j], :, 1),
@@ -214,8 +191,7 @@ function volume_contribution!(
                 @views copy!(F♯r[1][i, l, j, :], F♯r[1][l, i, j, :])
             end
             for l in (j + 1):size(std, 2)
-                twopointflux!(
-                    view(F♯r[2], l, i, j, :),
+                F♯r[2][l, i, j, :] = twopointflux(
                     view(Qr, i, j, :),
                     view(Qr, i, l, :),
                     view(Jar[i, j], :, 2),
@@ -235,21 +211,23 @@ function volume_contribution!(
     # Strong derivative
     # 1D
     if ND == 1
+        K♯ = std.K♯[1]
         @inbounds for v in eachvariable(equation), i in eachindex(std)
             for k in eachindex(std)
-                dQr[i, v] += std.K♯[1][i, k] * F♯r[1][k, i, v]
+                dQr[i, v] += K♯[i, k] * F♯r[1][k, i, v]
             end
         end
 
     # 2D
     elseif ND == 2
+        K♯ = (face(std, 3).K♯[1], face(std, 1).K♯[1])
         @inbounds for v in eachvariable(equation)
             for j in eachindex(std, 2), i in eachindex(std, 1)
                 for k in eachindex(std, 1)
-                    dQr[i, j, v] += std.K♯[1][i, j, k] * F♯r[1][k, i, j, v]
+                    dQr[i, j, v] += K♯[1][i, j, k] * F♯r[1][k, i, j, v]
                 end
                 for k in eachindex(std, 2)
-                    dQr[i, j, v] += std.K♯[2][i, j, k] * F♯r[2][k, i, j, v]
+                    dQr[i, j, v] += K♯[2][i, j, k] * F♯r[2][k, i, j, v]
                 end
             end
         end
@@ -307,15 +285,10 @@ function volume_contribution!(
         )
         for idir in eachdirection(std)
     ]
-    F̄t = MVector{nvariables(equation),eltype(Q)}(undef)
-    F̄v = MVector{nvariables(equation),eltype(Q)}(undef)
-    Qln = MVector{nvariables(equation),eltype(Q)}(undef)
-    Qrn = MVector{nvariables(equation),eltype(Q)}(undef)
-    Fn = MVector{nvariables(equation),eltype(Q)}(undef)
 
     # Fluxes at the subcell interfaces
-    Qr = reshape(view(Q[ireg], :, :, ieloc), (size(std)..., size(Q[ireg], 2)))
-    dQr = reshape(dQ, (size(std)..., size(dQ, 2)))
+    Qr = reshape(view(Q[ireg], :, :, ieloc), (size(std)..., nvariables(equation)))
+    dQr = reshape(dQ, (size(std)..., nvariables(equation)))
     Jar = reshape(element(physelem, ielem).Ja, size(std))
     ns = elementgrid(physelem, ielem).n
     ts = elementgrid(physelem, ielem).t
@@ -324,6 +297,7 @@ function volume_contribution!(
 
     # 1D
     if ND == 1
+        Qmat = std.Q[1]
         F̄r = F̄[1]
 
         # Boundaries
@@ -336,8 +310,7 @@ function volume_contribution!(
             # Two-point fluxes
             fill!(view(F̄r, i, :), zero(eltype(Q)))
             for k in i:ndofs(std), l in 1:(i - 1)
-                twopointflux!(
-                    F̄t,
+                F̄t = twopointflux(
                     view(Qr, l, :),
                     view(Qr, k, :),
                     Ja[l],
@@ -346,13 +319,12 @@ function volume_contribution!(
                     op.tpflux,
                 )
                 for v in eachvariable(equation)
-                    F̄r[i, v] += 2 * std.Q[1][l, k] * F̄t[v]
+                    F̄r[i, v] += 2Qmat[l, k] * F̄t[v]
                 end
             end
 
             # FV fluxes
-            numericalflux!(
-                F̄v,
+            F̄v = numericalflux(
                 view(Qr, (i - 1), :),
                 view(Qr, i, :),
                 ns[1][i],
@@ -365,15 +337,16 @@ function volume_contribution!(
             Wr = vars_cons2entropy(view(Qr, i, :), equation)
             b = dot(Wr - Wl, view(F̄r, i, :) - F̄v)
             δ = _ssfv_compute_delta(b, op.blend)
-            F̄r[i, :] .= F̄v .+ δ .* (view(F̄r, i, :) .- F̄v)
+            F̄r[i, :] = F̄v + δ .* (view(F̄r, i, :) - F̄v)
         end
 
     # 2D
     elseif ND == 2
-        F̄r = [
-            reshape(F̄[1], (size(std, 1) + 1, size(std, 2), size(F̄[1]) |> last)),
-            reshape(F̄[2], (size(std, 1), size(std, 2) + 1, size(F̄[2]) |> last)),
-        ]
+        Qmat = (face(std, 3).Q[1], face(std, 1).Q[1])
+        F̄r = (
+            reshape(F̄[1], (size(std, 1) + 1, size(std, 2), nvariables(equation))),
+            reshape(F̄[2], (size(std, 1), size(std, 2) + 1, nvariables(equation))),
+        )
 
         @inbounds for j in eachindex(std, 2)
             # Boundaries
@@ -386,8 +359,7 @@ function volume_contribution!(
                 # Two-point fluxes
                 fill!(view(F̄r[1], i, j, :), zero(eltype(Q)))
                 for k in i:size(std, 1), l in 1:(i - 1)
-                    twopointflux!(
-                        F̄t,
+                    F̄t = twopointflux(
                         view(Qr, l, j, :),
                         view(Qr, k, j, :),
                         view(Jar[l, j], :, 1),
@@ -396,44 +368,47 @@ function volume_contribution!(
                         op.tpflux,
                     )
                     for v in eachvariable(equation)
-                        F̄r[1][i, j, v] += 2 * std.Q[1][l, k] * F̄t[v]
+                        F̄r[1][i, j, v] += 2Qmat[1][l, k] * F̄t[v]
                     end
                 end
 
                 # FV fluxes
-                rotate2face!(
-                    Qln,
+                Qln = rotate2face(
                     view(Qr, (i - 1), j, :),
                     ns[1][i, j],
                     ts[1][i, j],
                     bs[1][i, j],
                     equation,
                 )
-                rotate2face!(
-                    Qrn,
+                Qrn = rotate2face(
                     view(Qr, i, j, :),
                     ns[1][i, j],
                     ts[1][i, j],
                     bs[1][i, j],
                     equation,
                 )
-                numericalflux!(
-                    Fn,
+                Fn = numericalflux(
                     Qln,
                     Qrn,
                     ns[1][i, j],
                     equation,
                     op.fvflux,
                 )
-                rotate2phys!(F̄v, Fn, ns[1][i, j], ts[1][i, j], bs[1][i, j], equation)
+                F̄v = rotate2phys(
+                    Fn,
+                    ns[1][i, j],
+                    ts[1][i, j],
+                    bs[1][i, j],
+                    equation,
+                ) |> MVector
                 F̄v .*= Js[1][i, j]
 
                 # Blending
                 Wl = vars_cons2entropy(view(Qr, (i - 1), j, :), equation)
                 Wr = vars_cons2entropy(view(Qr, i, j, :), equation)
-                b = dot(Wr .- Wl, view(F̄r[1], i, j, :) .- F̄v)
+                b = dot(Wr - Wl, view(F̄r[1], i, j, :) - F̄v)
                 δ = _ssfv_compute_delta(b, op.blend)
-                F̄r[1][i, j, :] .= F̄v .+ δ .* (view(F̄r[1], i, j, :) .- F̄v)
+                F̄r[1][i, j, :] = F̄v + δ .* (view(F̄r[1], i, j, :) - F̄v)
             end
         end
         @inbounds for i in eachindex(std, 1)
@@ -447,8 +422,7 @@ function volume_contribution!(
                 # Two-point fluxes
                 fill!(view(F̄r[2], i, j, :), zero(eltype(Q)))
                 for k in j:size(std, 2), l in 1:(j - 1)
-                    twopointflux!(
-                        F̄t,
+                    F̄t = twopointflux(
                         view(Qr, i, l, :),
                         view(Qr, i, k, :),
                         view(Jar[i, l], :, 2),
@@ -457,44 +431,47 @@ function volume_contribution!(
                         op.tpflux,
                     )
                     for v in eachvariable(equation)
-                        F̄r[2][i, j, v] += 2 * std.Q[2][l, k] * F̄t[v]
+                        F̄r[2][i, j, v] += 2Qmat[2][l, k] * F̄t[v]
                     end
                 end
 
                 # FV fluxes
-                rotate2face!(
-                    Qln,
+                Qln = rotate2face(
                     view(Qr, i, (j - 1), :),
-                    ns[2][j],
-                    ts[2][j],
-                    bs[2][j],
+                    ns[2][i, j],
+                    ts[2][i, j],
+                    bs[2][i, j],
                     equation,
                 )
-                rotate2face!(
-                    Qrn,
+                Qrn = rotate2face(
                     view(Qr, i, j, :),
-                    ns[2][j],
-                    ts[2][j],
-                    bs[2][j],
+                    ns[2][i, j],
+                    ts[2][i, j],
+                    bs[2][i, j],
                     equation,
                 )
-                numericalflux!(
-                    Fn,
+                Fn = numericalflux(
                     Qln,
                     Qrn,
-                    ns[2][j],
+                    ns[2][i, j],
                     equation,
                     op.fvflux,
                 )
-                rotate2phys!(F̄v, Fn, ns[2][j], ts[2][j], bs[2][j], equation)
+                F̄v = rotate2phys(
+                    Fn,
+                    ns[2][i, j],
+                    ts[2][i, j],
+                    bs[2][i, j],
+                    equation,
+                ) |> MVector
                 F̄v .*= Js[2][j]
 
                 # Blending
                 Wl = vars_cons2entropy(view(Qr, i, (j - 1), :), equation)
                 Wr = vars_cons2entropy(view(Qr, i, j, :), equation)
-                b = dot(Wr .- Wl, view(F̄r[2], i, j, :) .- F̄v)
+                b = dot(Wr - Wl, view(F̄r[2], i, j, :) - F̄v)
                 δ = _ssfv_compute_delta(b, op.blend)
-                F̄r[2][i, j, :] .= F̄v .+ δ .* (view(F̄r[2], i, j, :) .- F̄v)
+                F̄r[2][i, j, :] = F̄v + δ .* (view(F̄r[2], i, j, :) - F̄v)
             end
         end
 
@@ -542,167 +519,3 @@ function _ssfv_compute_delta(b, c)
     # end
     return max(δ, 0.4)
 end
-
-# function volume_contribution!(
-#     dQ,
-#     Q,
-#     ielem,
-#     std::AbstractStdRegion{ND,<:GaussQuadrature},
-#     dg::DiscontinuousGalerkin,
-#     op::SplitDivOperator,
-# ) where {ND}
-#     # Unpack
-#     (; dofhandler, physelem, equation) = dg
-
-#     ireg, ieloc = loc2reg(dofhandler, ielem)
-#     is_tensor_product(std) || throw(ArgumentError(
-#         "All the standard regions must be tensor-products."
-#     ))
-
-#     # Buffers
-#     F = MArray{Tuple{ND,nvariables(equation),ndofs(std)},eltype(Q)}(undef)
-#     F̃ = MVector{ND,eltype(Q)}(undef)
-#     F♯ = [
-#         Array{eltype(Q),3}(undef, size(std, idir), ndofs(std), nvariables(equation))
-#         for idir in eachdirection(std)
-#     ]
-
-#     # Volume fluxes
-#     @inbounds for i in eachindex(std)
-#         @views volumeflux!(F[:, :, i], Q[ireg][i, :, ieloc], equation)
-#     end
-
-#     # Indexing
-#     ci = CartesianIndices(std)
-
-#     # Contravariant fluxes
-#     Ja = element(physelem, ielem).Ja
-#     for ivar in eachvariable(equation)
-#         for i in eachindex(std)
-#             contravariant!(F̃, view(F, :, ivar, i), Ja[i])
-#             for idir in eachdirection(std)
-#                 F♯[idir][ci[i][idir], i, ivar] = F̃[idir]
-#             end
-#         end
-#     end
-
-#     # Two-point fluxes
-#     Qr = reshape(view(Q[ireg], :, :, ieloc), (size(std)..., size(Q[ireg], 2)))
-#     dQr = reshape(dQ, (size(std)..., size(dQ, 2)))
-#     F♯r = [
-#         reshape(F♯[idir], (size(std, idir), size(std)..., size(F♯[idir]) |> last))
-#         for idir in eachdirection(std)
-#     ]
-#     Jar = reshape(Ja, size(std))
-
-#     # 1D
-#     if ND == 1
-#         # Entropy-projected variables and fluxes
-#         W = MMatrix{ndofs(std),nvariables(equation),eltype(Q)}(undef)
-#         @inbounds for i in eachindex(std)
-#             W[i, :] .= vars_cons2entropy(view(Q[ireg], i, :, ieloc), equation)
-#         end
-#         Ŵl = std.l[1]' * W
-#         Ŵr = std.l[2]' * W
-#         Q̂l = vars_entropy2cons(Ŵl, equation)
-#         Q̂r = vars_entropy2cons(Ŵr, equation)
-
-#         Fli = MMatrix{ndofs(std),nvariables(equation),eltype(Q)}(undef)
-#         Fri = MMatrix{ndofs(std),nvariables(equation),eltype(Q)}(undef)
-#         @inbounds for i in eachindex(std)
-#             twopointflux!(
-#                 view(Fli, i, :),
-#                 view(Qr, i, :),
-#                 Q̂l,
-#                 Jar[i],
-#                 Jar[i],
-#                 equation,
-#                 op.tpflux,
-#             )
-#             twopointflux!(
-#                 view(Fri, i, :),
-#                 view(Qr, i, :),
-#                 Q̂r,
-#                 Jar[i],
-#                 Jar[i],
-#                 equation,
-#                 op.tpflux,
-#             )
-#             for l in (i + 1):ndofs(std)
-#                 twopointflux!(
-#                     view(F♯r[1], l, i, :),
-#                     view(Qr, i, :),
-#                     view(Qr, l, :),
-#                     Jar[i],
-#                     Jar[l],
-#                     equation,
-#                     op.tpflux,
-#                 )
-#                 @views copy!(F♯r[1][i, l, :], F♯r[1][l, i, :])
-#             end
-#         end
-
-#     # 2D
-#     elseif ND == 2
-#         @inbounds for j in eachindex(std, 2), i in eachindex(std, 1)
-#             for l in (i + 1):size(std, 1)
-#                 twopointflux!(
-#                     view(F♯r[1], l, i, j, :),
-#                     view(Qr, i, j, :),
-#                     view(Qr, l, j, :),
-#                     view(Jar[i, j], :, 1),
-#                     view(Jar[l, j], :, 1),
-#                     equation,
-#                     op.tpflux,
-#                 )
-#                 @views copy!(F♯r[1][i, l, j, :], F♯r[1][l, i, j, :])
-#             end
-#             for l in (j + 1):size(std, 2)
-#                 twopointflux!(
-#                     view(F♯r[2], l, i, j, :),
-#                     view(Qr, i, j, :),
-#                     view(Qr, i, l, :),
-#                     view(Jar[i, j], :, 2),
-#                     view(Jar[i, l], :, 2),
-#                     equation,
-#                     op.tpflux,
-#                 )
-#                 @views copy!(F♯r[2][j, i, l, :], F♯r[2][l, i, j, :])
-#             end
-#         end
-
-#     # 3D
-#     else # ND == 3
-#         error("Not implemented yet!")
-#     end
-
-#     # Strong derivative
-#     # 1D
-#     if ND == 1
-#         @inbounds for v in eachvariable(equation), i in eachindex(std)
-#             for k in eachindex(std)
-#                 @views dQr[i, v] += std.K♯[1][i, k] * F♯r[1][k, i, v] +
-#                     std.l[1][i] * (Fli[i, v] - std.l[1]' * Fli[:, v]) -
-#                     std.l[2][i] * (Fri[i, v] - std.l[2]' * Fri[:, v])
-#             end
-#         end
-
-#     # 2D
-#     elseif ND == 2
-#         @inbounds for v in eachvariable(equation)
-#             for j in eachindex(std, 2), i in eachindex(std, 1)
-#                 for k in eachindex(std, 1)
-#                     dQr[i, j, v] += std.K♯[1][i, j, k] * F♯r[1][k, i, j, v]
-#                 end
-#                 for k in eachindex(std, 2)
-#                     dQr[i, j, v] += std.K♯[2][i, j, k] * F♯r[2][k, i, j, v]
-#                 end
-#             end
-#         end
-
-#     # 3D
-#     else # ND == 3
-#         error("Not implemented yet!")
-#     end
-#     return nothing
-# end

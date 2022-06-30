@@ -29,25 +29,19 @@ function variablenames(::LinearAdvection; unicode=false)
     end
 end
 
-function volumeflux!(F, Q, eq::LinearAdvection{ND}) where {ND}
-    for i in 1:ND
-        F[i,1] = eq.a[i] * Q[1]
-    end
-    return nothing
+function volumeflux(Q, eq::LinearAdvection{ND}) where {ND}
+    return SMatrix{ND,1}(a * Q[1] for a in eq.a)
 end
 
-function rotate2face!(Qrot, Qf, n, t, b, ::LinearAdvection)
-    Qrot[1] = Qf[1]
-    return nothing
+function rotate2face(Qf, n, t, b, ::LinearAdvection)
+    return SVector(Qf[1])
 end
 
-function rotate2phys!(Qf, Qrot, n, t, b, ::LinearAdvection)
-    Qf[1] = Qrot[1]
-    return nothing
+function rotate2phys(Qrot, n, t, b, ::LinearAdvection)
+    return SVector(Qrot[1])
 end
 
-function numericalflux!(
-    Fn,
+function numericalflux(
     Ql,
     Qr,
     n,
@@ -60,12 +54,10 @@ function numericalflux!(
     @inbounds for i in 1:ND
         an += eq.a[i] * n[i]
     end
-    Fn[1] = an * (Ql[1] + Qr[1]) / 2
-    return nothing
+    return SVector(an * (Ql[1] + Qr[1]) / 2)
 end
 
-function numericalflux!(
-    Fn,
+function numericalflux(
     Ql,
     Qr,
     n,
@@ -75,13 +67,12 @@ function numericalflux!(
     ND,
 }
     # Average
-    numericalflux!(Fn, Ql, Qr, n, eq, nf.avg)
+    Fn = numericalflux(Ql, Qr, n, eq, nf.avg)
 
     # Dissipation
     an = zero(eltype(eq.a))
-    @inbounds for i in 1:ND
+    @inbounds @simd for i in 1:ND
         an += eq.a[i] * n[i]
     end
-    Fn[1] += abs(an) * (Ql[1] - Qr[1]) / 2 * nf.intensity
-    return nothing
+    return SVector(Fn[1] + abs(an) * (Ql[1] - Qr[1]) / 2 * nf.intensity)
 end

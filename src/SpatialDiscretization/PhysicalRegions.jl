@@ -312,33 +312,33 @@ coords(v::StructVector{<:PhysicalElement}, i) = LazyRow(v, i).coords
 coords(f::PhysicalFace) = f.coords
 coords(v::StructVector{<:PhysicalFace}, i) = LazyRow(v, i).coords
 
-function contravariant!(F̃, F, Ja::SMatrix{1,1})
-    F̃[1] = F[1] * Ja[1, 1]
-    return nothing
+function contravariant(F, Ja::SMatrix{1,1})
+    return SVector(F[1] * Ja[1, 1])
 end
 
-function contravariant!(F̃, F, Ja::SMatrix{2,2})
-    F̃[1] = F[1] * Ja[1, 1] + F[2] * Ja[2, 1]
-    F̃[2] = F[1] * Ja[1, 2] + F[2] * Ja[2, 2]
-    return nothing
+function contravariant(F, Ja::SMatrix{2,2})
+    return SVector(
+        F[1] * Ja[1, 1] + F[2] * Ja[2, 1],
+        F[1] * Ja[1, 2] + F[2] * Ja[2, 2],
+    )
 end
 
-function contravariant!(F̃, F, Ja::SMatrix{3,3})
-    F̃[1] = F[1] * Ja[1, 1] + F[2] * Ja[2, 1] + F[3] * Ja[3, 1]
-    F̃[2] = F[1] * Ja[1, 2] + F[2] * Ja[2, 2] + F[3] * Ja[3, 2]
-    F̃[3] = F[1] * Ja[1, 3] + F[2] * Ja[2, 3] + F[3] * Ja[3, 3]
-    return nothing
+function contravariant(F, Ja::SMatrix{3,3})
+    return SVector(
+        F[1] * Ja[1, 1] + F[2] * Ja[2, 1] + F[3] * Ja[3, 1],
+        F[1] * Ja[1, 2] + F[2] * Ja[2, 2] + F[3] * Ja[3, 2],
+        F[1] * Ja[1, 3] + F[2] * Ja[2, 3] + F[3] * Ja[3, 3],
+    )
 end
 
-function covariant!(F, F̃, Ja::SMatrix{1,1})
-    F[1] = F̃ / Ja[1, 1]
-    return nothing
+function covariant(F̃, Ja::SMatrix{1,1})
+    return SVector(F̃ / Ja[1, 1])
 end
 
-function covariant!(F, F̃, Ja::SMatrix{2,2})
+function covariant(F̃, Ja::SMatrix{2,2})
     error("Not implemented yet!")
 end
 
-function covariant!(F, F̃, Ja::SMatrix{3,3})
+function covariant(F̃, Ja::SMatrix{3,3})
     error("Not implemented yet!")
 end

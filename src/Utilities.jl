@@ -14,6 +14,9 @@ function logarithmic_mean(al, ar)
     return (al + ar) / 2F
 end
 
+# TODO: Workaround to get fast `mul!` to work with a sparse matrix and an array from
+# `StaticArrays`:
+# https://github.com/JuliaSparse/SparseArrays.jl/blob/a3b2736abbe814899ac4317d7aab7652a650cd90/src/linalg.jl#L30
 function LinearAlgebra.mul!(
     C::StridedVecOrMat,
     A::SparseArrays.AbstractSparseMatrixCSC,
@@ -37,7 +40,7 @@ function LinearAlgebra.mul!(
             end
         end
     end
-    C
+    return nothing
 end
 
 macro flouthreads(expr)

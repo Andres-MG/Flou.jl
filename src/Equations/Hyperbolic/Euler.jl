@@ -37,85 +37,86 @@ function variablenames(::EulerEquation{ND}; unicode=false) where {ND}
     end
 end
 
-function volumeflux!(F, Q, eq::EulerEquation{1})
+function volumeflux(Q, eq::EulerEquation{1})
     ρ, ρu, ρe = Q
     u = ρu/ρ
     p = pressure(Q, eq)
-    F[1, 1] = ρu
-    F[1, 2] = ρu * u + p
-    F[1, 3] = (ρe + p) * u
-    return nothing
+    return SMatrix{1,3}(
+        ρu,
+        ρu * u + p,
+        (ρe + p) * u,
+    )
 end
 
-function volumeflux!(F, Q, eq::EulerEquation{2})
+function volumeflux(Q, eq::EulerEquation{2})
     ρ, ρu, ρv, ρe = Q
     u, v = ρu/ρ, ρv/ρ
     p = pressure(Q, eq)
-    F[1, 1] = ρu           ; F[2, 1] = ρv
-    F[1, 2] = ρu * u + p   ; F[2, 2] = ρu * v
-    F[1, 3] = ρv * u       ; F[2, 3] = ρv * v + p
-    F[1, 4] = (ρe + p) * u ; F[2, 4] = (ρe + p) * v
-    return nothing
+    return SMatrix{2,4}(
+        ρu,           ρv,
+        ρu * u + p,   ρv * v,
+        ρv * u,       ρv * v + p,
+        (ρe + p) * u, (ρe + p) * v,
+    )
 end
 
-function volumeflux!(F, Q, eq::EulerEquation{3})
+function volumeflux(Q, eq::EulerEquation{3})
     ρ, ρu, ρv, ρw, ρe = Q
     u, v, w = ρu/ρ, ρv/ρ, ρw/ρ
     p = pressure(Q, eq)
-    F[1, 1] = ρu           ; F[2, 1] = ρv           ; F[3, 1] = ρw
-    F[1, 2] = ρu * u + p   ; F[2, 2] = ρu * v       ; F[3, 2] = ρu * w
-    F[1, 3] = ρv * u       ; F[2, 3] = ρv * v + p   ; F[3, 3] = ρv * w
-    F[1, 4] = ρw * u       ; F[2, 4] = ρw * v       ; F[3, 4] = ρw * w + p
-    F[1, 5] = (ρe + p) * u ; F[2, 5] = (ρe + p) * v ; F[3, 5] = (ρe + p) * w
-    return nothing
+    return SMatrix{3,5}(
+        ρu,           ρv,           ρw,
+        ρu * u + p,   ρu * v,       ρu * w,
+        ρv * u,       ρv * v + p,   ρv * w,
+        ρw * u,       ρw * v,       ρw * w + p,
+        (ρe + p) * u, (ρe + p) * v, (ρe + p) * w,
+    )
 end
 
-function rotate2face!(Qrot, Qf, n, t, b, ::EulerEquation{1})
-    Qrot[1] = Qf[1]
-    Qrot[2] = Qf[2] * n[1]
-    Qrot[3] = Qf[3]
-    return nothing
+function rotate2face(Qf, n, t, b, ::EulerEquation{1})
+    return SVector(Qf[1], Qf[2] * n[1], Qf[3])
 end
 
-function rotate2phys!(Qf, Qrot, n, t, b, ::EulerEquation{1})
-    Qf[1] = Qrot[1]
-    Qf[2] = Qrot[2] * n[1]
-    Qf[3] = Qrot[3]
-    return nothing
+function rotate2phys(Qrot, n, t, b, ::EulerEquation{1})
+    return SVector(Qrot[1], Qrot[2] * n[1], Qrot[3])
 end
 
-function rotate2face!(Qrot, Qf, n, t, b, ::EulerEquation{2})
-    Qrot[1] = Qf[1]
-    Qrot[2] = Qf[2] * n[1] + Qf[3] * n[2]
-    Qrot[3] = Qf[2] * t[1] + Qf[3] * t[2]
-    Qrot[4] = Qf[4]
-    return nothing
+function rotate2face(Qf, n, t, b, ::EulerEquation{2})
+    return SVector(
+        Qf[1],
+        Qf[2] * n[1] + Qf[3] * n[2],
+        Qf[2] * t[1] + Qf[3] * t[2],
+        Qf[4],
+    )
 end
 
-function rotate2phys!(Qf, Qrot, n, t, b, ::EulerEquation{2})
-    Qf[1] = Qrot[1]
-    Qf[2] = Qrot[2] * n[1] + Qrot[3] * t[1]
-    Qf[3] = Qrot[2] * n[2] + Qrot[3] * t[2]
-    Qf[4] = Qrot[4]
-    return nothing
+function rotate2phys(Qrot, n, t, b, ::EulerEquation{2})
+    return SVector(
+        Qrot[1],
+        Qrot[2] * n[1] + Qrot[3] * t[1],
+        Qrot[2] * n[2] + Qrot[3] * t[2],
+        Qrot[4],
+    )
 end
 
-function rotate2face!(Qrot, Qf, n, t, b, ::EulerEquation{3})
-    Qrot[1] = Qf[1]
-    Qrot[2] = Qf[2] * n[1] + Qf[3] * n[2] + Qf[4] * n[3]
-    Qrot[3] = Qf[2] * t[1] + Qf[3] * t[2] + Qf[4] * t[3]
-    Qrot[4] = Qf[2] * b[1] + Qf[3] * b[2] + Qf[4] * b[3]
-    Qrot[5] = Qf[5]
-    return nothing
+function rotate2face(Qf, n, t, b, ::EulerEquation{3})
+    return SVector(
+        Qf[1],
+        Qf[2] * n[1] + Qf[3] * n[2] + Qf[4] * n[3],
+        Qf[2] * t[1] + Qf[3] * t[2] + Qf[4] * t[3],
+        Qf[2] * b[1] + Qf[3] * b[2] + Qf[4] * b[3],
+        Qf[5],
+    )
 end
 
-function rotate2phys!(Qf, Qrot, n, t, b, ::EulerEquation{3})
-    Qf[1] = Qrot[1]
-    Qf[2] = Qrot[2] * n[1] + Qrot[3] * t[1] + Qrot[4] * b[1]
-    Qf[3] = Qrot[2] * n[2] + Qrot[3] * t[2] + Qrot[4] * b[2]
-    Qf[4] = Qrot[2] * n[2] + Qrot[3] * t[2] + Qrot[4] * b[3]
-    Qf[5] = Qrot[5]
-    return nothing
+function rotate2phys(Qrot, n, t, b, ::EulerEquation{3})
+    return SVector(
+        Qrot[1],
+        Qrot[2] * n[1] + Qrot[3] * t[1] + Qrot[4] * b[1],
+        Qrot[2] * n[2] + Qrot[3] * t[2] + Qrot[4] * b[2],
+        Qrot[2] * n[3] + Qrot[3] * t[3] + Qrot[4] * b[3],
+        Qrot[5],
+    )
 end
 
 """
@@ -127,17 +128,17 @@ function pressure end
 
 function pressure(Q, eq::EulerEquation{1})
     ρ, ρu, ρe = Q
-    return (eq.γ-1) * (ρe - ρu^2 / 2ρ)
+    return (eq.γ - 1) * (ρe - ρu^2 / 2ρ)
 end
 
 function pressure(Q, eq::EulerEquation{2})
     ρ, ρu, ρv, ρe = Q
-    return (eq.γ-1) * (ρe - (ρu^2 + ρv^2) / 2ρ)
+    return (eq.γ - 1) * (ρe - (ρu^2 + ρv^2) / 2ρ)
 end
 
 function pressure(Q, eq::EulerEquation{3})
     ρ, ρu, ρv, ρw, ρe = Q
-    return (eq.γ-1) * (ρe - (ρu^2 + ρv^2 + ρw^2) / 2ρ)
+    return (eq.γ - 1) * (ρe - (ρu^2 + ρv^2 + ρw^2) / 2ρ)
 end
 
 """
@@ -302,32 +303,28 @@ struct EulerInflowBC{RT,NV} <: AbstractBC
     end
 end
 
-function stateBC!(Q, x, n, t, b, time, ::EulerEquation, bc::EulerInflowBC)
-    copy!(Q, bc.Qext)
-    return nothing
+function stateBC(Qin, x, n, t, b, time, ::EulerEquation, bc::EulerInflowBC)
+    return bc.Qext
 end
 
 struct EulerOutflowBC <: AbstractBC end
 
-function stateBC!(Q, x, n, t, b, time, ::EulerEquation, ::EulerOutflowBC)
+function stateBC(Qin, x, n, t, b, time, ::EulerEquation, ::EulerOutflowBC)
     return nothing
 end
 
 struct EulerSlipBC <: AbstractBC end
 
-function stateBC!(Q, x, n, t, b, time, eq::EulerEquation, ::EulerSlipBC)
-    Qn = similar(Q)
-    rotate2face!(Qn, Q, n, t, b, eq)
+function stateBC(Qin, x, n, t, b, time, eq::EulerEquation, ::EulerSlipBC)
+    Qn = rotate2face(Qin, n, t, b, eq) |> MVector
     Qn[2] = -Qn[2]
-    rotate2phys!(Q, Qn, n, t, b, eq)
-    return nothing
+    return rotate2phys!(Qn, n, t, b, eq)
 end
 
 #==========================================================================================#
 #                                     Numerical fluxes                                     #
 
-function numericalflux!(
-    Fn,
+function numericalflux(
     Ql,
     Qr,
     n,
@@ -341,36 +338,40 @@ function numericalflux!(
         _, ρur, ρer = Qr
         _, ul, pl = vars_cons2prim(Ql, eq)
         _, ur, pr = vars_cons2prim(Qr, eq)
-        Fn[1] = (ρul + ρur) / 2
-        Fn[2] = (ρul * ul + pl + ρur * ur + pr) / 2
-        Fn[3] = ((ρel + pl) * ul + (ρer + pr) * ur) / 2
+        return SVector(
+            (ρul + ρur) / 2,
+            (ρul * ul + pl + ρur * ur + pr) / 2,
+            ((ρel + pl) * ul + (ρer + pr) * ur) / 2,
+        )
 
     elseif ND == 2
         _, ρul, ρvl, ρel = Ql
         _, ρur, ρvr, ρer = Qr
         _, ul, _, pl = vars_cons2prim(Ql, eq)
         _, ur, _, pr = vars_cons2prim(Qr, eq)
-        Fn[1] = (ρul + ρur) / 2
-        Fn[2] = (ρul * ul + pl + ρur * ur + pr) / 2
-        Fn[3] = (ρvl * ul + ρvr * ur) / 2
-        Fn[4] = ((ρel + pl) * ul + (ρer + pr) * ur) / 2
+        return SVector(
+            (ρul + ρur) / 2,
+            (ρul * ul + pl + ρur * ur + pr) / 2,
+            (ρvl * ul + ρvr * ur) / 2,
+            ((ρel + pl) * ul + (ρer + pr) * ur) / 2,
+        )
 
     else # ND == 3
         _, ρul, ρvl, ρwl, ρel = Ql
         _, ρur, ρvr, ρwr, ρer = Qr
         _, ul, _, _, pl = vars_cons2prim(Ql, eq)
         _, ur, _, _, pr = vars_cons2prim(Qr, eq)
-        Fn[1] = (ρul + ρur) / 2
-        Fn[2] = (ρul * ul + pl + ρur * ur + pr) / 2
-        Fn[3] = (ρvl * ul + ρvr * ur) / 2
-        Fn[4] = (ρwl * ul + ρwr * ur) / 2
-        Fn[5] = ((ρel + pl) * ul + (ρer + pr) * ur) / 2
+        return SVector(
+            (ρul + ρur) / 2,
+            (ρul * ul + pl + ρur * ur + pr) / 2,
+            (ρvl * ul + ρvr * ur) / 2,
+            (ρwl * ul + ρwr * ur) / 2,
+            ((ρel + pl) * ul + (ρer + pr) * ur) / 2,
+        )
     end
-    return nothing
 end
 
-function numericalflux!(
-    Fn,
+function numericalflux(
     Ql,
     Qr,
     n,
@@ -380,7 +381,7 @@ function numericalflux!(
     ND,
 }
     # Average
-    numericalflux!(Fn, Ql, Qr, n, eq, nf.avg)
+    Fn = numericalflux(Ql, Qr, n, eq, nf.avg)
 
     # Dissipation
     if ND == 1
@@ -396,16 +397,12 @@ function numericalflux!(
     al = soundvelocity(ρl, pl, eq)
     ar = soundvelocity(ρr, pr, eq)
     λ = max(abs(ul) + al, abs(ur) + ar)
-    @inbounds for ivar in eachvariable(eq)
-        Fn[ivar] += λ * (Ql[ivar] - Qr[ivar]) / 2 * nf.intensity
-    end
-    return nothing
+    return SVector(Fn + λ .* (Ql - Qr) ./ 2 .* nf.intensity)
 end
 
 struct ChandrasekharAverage <: AbstractNumericalFlux end
 
-function numericalflux!(
-    Fn,
+function numericalflux(
     Ql,
     Qr,
     n,
@@ -438,25 +435,30 @@ function numericalflux!(
     # Fluxes
     if ND == 1
         h = 1 / (2β * (eq.γ - 1)) - (ul^2 + ur^2) / 4 + p/ρ + u^2
-        Fn[1] = ρ * u
-        Fn[2] = ρ * u^2 + p
-        Fn[3] = ρ * u * h
+        return SVector(
+            ρ * u,
+            ρ * u^2 + p,
+            ρ * u * h,
+        )
     elseif ND == 2
         h = 1 / (2β * (eq.γ - 1)) - (ul^2 + vl^2 + ur^2 + vr^2) / 4 + p/ρ + u^2 + v^2
-        Fn[1] = ρ * u
-        Fn[2] = ρ * u^2 + p
-        Fn[3] = ρ * u * v
-        Fn[4] = ρ * u * h
+        return SVector(
+            ρ * u,
+            ρ * u^2 + p,
+            ρ * u * v,
+            ρ * u * h,
+        )
     else # ND == 3
         h = 1 / (2β * (eq.γ - 1)) - (ul^2 + vl^2 + wl^2 + ur^2 + vr^2 + wl^2) / 4 +
             p/ρ + u^2 + v^2 + w^2
-        Fn[1] = ρ * u
-        Fn[2] = ρ * u^2 + p
-        Fn[3] = ρ * u * v
-        Fn[4] = ρ * u * w
-        Fn[5] = ρ * u * h
+        return SVector(
+            ρ * u,
+            ρ * u^2 + p,
+            ρ * u * v,
+            ρ * u * w,
+            ρ * u * h,
+        )
     end
-    return nothing
 end
 
 struct MatrixDissipation{T,RT} <: AbstractNumericalFlux
@@ -464,8 +466,7 @@ struct MatrixDissipation{T,RT} <: AbstractNumericalFlux
     intensity::RT
 end
 
-function numericalflux!(
-    Fn,
+function numericalflux(
     Ql,
     Qr,
     n,
@@ -501,7 +502,7 @@ function numericalflux!(
     h = eq.γ / (eq.γ - 1) / 2β + v2 / 2
 
     # Averaging term
-    numericalflux!(Fn, Ql, Qr, n, eq, nf.avg)
+    Fn = numericalflux(Ql, Qr, n, eq, nf.avg)
 
     # Dissipative term
     rt = eltype(Fn)
@@ -536,15 +537,13 @@ function numericalflux!(
             one(rt),  u + a,    v,        w,        h + u * a,
         )
     end
-    Fn .+= R * Λ * T * R' * (Wl .- Wr) ./ 2 .* nf.intensity
-    return nothing
+    return SVector(Fn .+ R * Λ * T * R' * (Wl .- Wr) ./ 2 .* nf.intensity)
 end
 
 #==========================================================================================#
 #                                     Two-point fluxes                                     #
 
-function twopointflux!(
-    F♯,
+function twopointflux(
     Q1,
     Q2,
     Ja1,
@@ -579,25 +578,31 @@ function twopointflux!(
     if ND == 1
         h = 1 / (2β * (eq.γ - 1)) - (u1^2 + u2^2) / 4 + p/ρ + u^2
         n = (Ja1[1] + Ja2[1]) / 2
-        F♯[1] = (ρ * u) * n
-        F♯[2] = (ρ * u^2 + p) * n
-        F♯[3] = (ρ * u * h) * n
+        return SVector(
+            (ρ * u) * n,
+            (ρ * u^2 + p) * n,
+            (ρ * u * h) * n,
+        )
     elseif ND == 2
         h = 1 / (2β * (eq.γ - 1)) - (u1^2 + v1^2 + u2^2 + v2^2) / 4 + p/ρ + u^2 + v^2
         n = SVector((Ja1 .+ Ja2) ./ 2)
-        F♯[1] = (ρ * u) * n[1] + (ρ * v) * n[2]
-        F♯[2] = (ρ * u^2 + p) * n[1] + (ρ * u * v) * n[2]
-        F♯[3] = (ρ * u * v) * n[1] + (ρ * v^2 + p) * n[2]
-        F♯[4] = (ρ * u * h) * n[1] + (ρ * v * h) * n[2]
+        return SVector(
+            (ρ * u) * n[1] + (ρ * v) * n[2],
+            (ρ * u^2 + p) * n[1] + (ρ * u * v) * n[2],
+            (ρ * u * v) * n[1] + (ρ * v^2 + p) * n[2],
+            (ρ * u * h) * n[1] + (ρ * v * h) * n[2],
+        )
     else # ND == 3
         h = 1 / (2β * (eq.γ - 1)) - (u1^2 + v1^2 + w1^2 + u2^2 + v2^2 + w2^2) / 4 +
             p/ρ + u^2 + v^2 + w^2
         n = SVector((Ja1 .+ Ja2) ./ 2)
-        F♯[1] = (ρ * u) * n[1] + (ρ * v) * n[2] + (ρ * w) * n[3]
-        F♯[2] = (ρ * u^2 + p) * n[1] + (ρ * u * v) * n[2] + (ρ * u * w) * n[3]
-        F♯[3] = (ρ * u * v) * n[1] + (ρ * v^2 + p) * n[2] + (ρ * v * w) * n[3]
-        F♯[4] = (ρ * u * w) * n[1] + (ρ * v * w) * n[2] + (ρ * w^2 + p) * n[3]
-        F♯[5] = (ρ * u * h) * n[1] + (ρ * v * h) * n[2] + (ρ * w * h) * n[3]
+        return SVector(
+            (ρ * u) * n[1] + (ρ * v) * n[2] + (ρ * w) * n[3],
+            (ρ * u^2 + p) * n[1] + (ρ * u * v) * n[2] + (ρ * u * w) * n[3],
+            (ρ * u * v) * n[1] + (ρ * v^2 + p) * n[2] + (ρ * v * w) * n[3],
+            (ρ * u * w) * n[1] + (ρ * v * w) * n[2] + (ρ * w^2 + p) * n[3],
+            (ρ * u * h) * n[1] + (ρ * v * h) * n[2] + (ρ * w * h) * n[3],
+        )
     end
     return nothing
 end

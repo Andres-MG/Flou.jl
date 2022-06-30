@@ -20,32 +20,27 @@ function variablenames(::BurgersEquation; unicode=false)
     end
 end
 
-function volumeflux!(F, Q, ::BurgersEquation)
-    F[1, 1] = Q[1]^2 / 2
-    return nothing
+function volumeflux(Q, ::BurgersEquation)
+    return SMatrix{1,1}(Q[1]^2 / 2)
 end
 
-function rotate2face!(Qrot, Qf, n, t, b, ::BurgersEquation)
-    Qrot[1] = Qf[1]
-    return nothing
+function rotate2face(Qf, n, t, b, ::BurgersEquation)
+    return SVector(Qf[1])
 end
 
-function rotate2phys!(Qf, Qrot, n, t, b, ::BurgersEquation)
-    Qf[1] = Qrot[1]
-    return nothing
+function rotate2phys(Qrot, n, t, b, ::BurgersEquation)
+    return SVector(Qrot[1])
 end
 
-function numericalflux!(Fn, Ql, Qr, n, ::BurgersEquation, ::StdAverageNumericalFlux)
-    Fn[1] = (Ql[1]^2 + Qr[1]^2) / 4
-    return nothing
+function numericalflux(Ql, Qr, n, ::BurgersEquation, ::StdAverageNumericalFlux)
+    return SVector((Ql[1]^2 + Qr[1]^2) / 4)
 end
 
-function numericalflux!(Fn, Ql, Qr, n, eq::BurgersEquation, nf::LxFNumericalFlux)
+function numericalflux(Ql, Qr, n, eq::BurgersEquation, nf::LxFNumericalFlux)
     # Average
-    numericalflux!(Fn, Ql, Qr, n, eq, nf.avg)
+    Fn = numericalflux(Ql, Qr, n, eq, nf.avg)
 
     # Dissipation
     λ = max(abs(Ql[1]), abs(Qr[1]))
-    Fn[1] += λ * (Ql[1] - Qr[1]) / 2 * nf.intensity
-    return nothing
+    return SVector(Fn[1] + λ * (Ql[1] - Qr[1]) / 2 * nf.intensity)
 end

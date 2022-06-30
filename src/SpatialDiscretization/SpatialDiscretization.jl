@@ -13,17 +13,16 @@ abstract type AbstractBC end
 function stateBC! end
 
 """
-    DirichletBC(Q!::Function)
+    DirichletBC(Qext::Function)
 
-Dirichlet boundary condition where `Q!(Q, x, n, t, b, time, equation)`.
+Dirichlet boundary condition where `Qext = Qext(Q, x, n, t, b, time, equation)`.
 """
 struct DirichletBC{QF} <: AbstractBC
-    Q!::QF     # Q!(Q, x, n, t, b, time, eq)  in/out
+    Qext::QF     # Qext(Qin, x, n, t, b, time, eq)
 end
 
-function stateBC!(Q, x, n, t, b, time, eq, bc::DirichletBC)
-    bc.Q!(Q, x, n, t, b, time, eq)
-    return nothing
+function stateBC(Qin, x, n, t, b, time, eq, bc::DirichletBC)
+    return bc.Qext(Qin, x, n, t, b, time, eq)
 end
 
 include("DG/DG.jl")

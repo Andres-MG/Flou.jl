@@ -10,6 +10,8 @@ eachvariable(e::AbstractEquation) = Base.Base.OneTo(nvariables(e))
 
 function variablenames end
 
+function volumeflux end
+
 """
     rhs!(dQ, Q, p::Tuple{<:AbstractEquation,<:AbstractSpatialDiscretization}, time)
 
