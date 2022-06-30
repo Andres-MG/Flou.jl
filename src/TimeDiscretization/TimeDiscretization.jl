@@ -14,11 +14,13 @@ function integrate(Q0, disc, solver, tfinal; kwargs...)
             if isa(e, TaskFailedException)
                 if isa(e.task.result, DomainError)
                     @error "Simulation crashed!"
+                else
+                    throw(e)
                 end
             elseif isa(e, DomainError)
                 @error "Simulation crashed!"
-        else
-            throw(e)
+            else
+                throw(e)
             end
         end
     end
