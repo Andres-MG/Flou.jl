@@ -131,18 +131,18 @@ function StdSegment{RT}(np::Integer, qtype::AbstractQuadrature) where {RT<:Real}
     end
 
     # SBP matrices
-    B = l[2] * l[2]' - l[1] * l[1]'
+    B = l[2]' * l[2] - l[1]' * l[1]
     Q = M * D
 
     # Volume operators
     K = Q' |> Matrix{RT}
-    Ks = copy(Q)
+    Ks = Q
     K♯ = 2Q
 
     # Surface contribution
     lω = Tuple(vec.(l))
-    @. Ks = -Ks + B
-    @. K♯ = -K♯ + B
+    Ks = -Ks + B
+    K♯ = -K♯ + B
 
     return StdSegment{
         typeof(qtype),
@@ -178,7 +178,7 @@ function Base.show(io::IO, ::MIME"text/plain", s::StdSegment{QT,D,RT}) where {QT
     if QT == GaussQuadrature
         print(io,  "Gauss quadrature with ", D[1], " nodes")
     elseif QT == GaussLobattoQuadrature
-        print(io, "Gauss-Lobatto quadrature with ", D[2], " nodes")
+        print(io, "Gauss-Lobatto quadrature with ", D[1], " nodes")
     else
         @assert false "[StdRegion.show] You shouldn't be here..."
     end
@@ -282,33 +282,17 @@ function StdQuad{RT}(np::AbstractVecOrTuple, qtype::AbstractQuadrature) where {R
         sparse(kron(fstd[1]._n2e[1], I[1])),
     )
     K = (
-        # Array{RT,3}(undef, np[1], np[2], np[1]),
-        # Array{RT,3}(undef, np[1], np[2], np[2]),
         sparse(kron(Iω[2], fstd[2].K[1])),
         sparse(kron(fstd[1].K[1], Iω[1])),
     )
     Ks = (
-        # Array{RT,3}(undef, np[1], np[2], np[1]),
-        # Array{RT,3}(undef, np[1], np[2], np[2]),
         sparse(kron(Iω[2], fstd[1].Ks[1])),
         sparse(kron(fstd[2].Ks[1], Iω[1])),
     )
     K♯ = (
-        # Array{RT,3}(undef, np[1], np[2], np[1]),
-        # Array{RT,3}(undef, np[1], np[2], np[2]),
         sparse(kron(Iω[2], fstd[1].K♯[1])),
         sparse(kron(fstd[2].K♯[1], Iω[1])),
     )
-    # for j in 1:np[2]
-    #     @. K[1][:, j, :] = fstd[1].K[1] * fstd[2].ω[j]
-    #     @. Ks[1][:, j, :] = fstd[1].Ks[1] * fstd[2].ω[j]
-    #     @. K♯[1][:, j, :] = fstd[1].K♯[1] * fstd[2].ω[j]
-    # end
-    # for i in 1:np[1]
-    #     @. K[2][i, :, :] = fstd[2].K[1] * fstd[1].ω[i]
-    #     @. Ks[2][i, :, :] = fstd[2].Ks[1] * fstd[1].ω[i]
-    #     @. K♯[2][i, :, :] = fstd[2].K♯[1] * fstd[1].ω[i]
-    # end
 
     # Projection operator
     l = (
@@ -316,10 +300,6 @@ function StdQuad{RT}(np::AbstractVecOrTuple, qtype::AbstractQuadrature) where {R
         sparse(kron(I[2], fstd[2].l[2])),
         sparse(kron(fstd[1].l[1], I[1])),
         sparse(kron(fstd[1].l[2], I[1])),
-    #     fstd[1].l[1],
-    #     fstd[1].l[2],
-    #     fstd[2].l[1],
-    #     fstd[2].l[2],
     )
 
     # Surface contribution
@@ -328,10 +308,6 @@ function StdQuad{RT}(np::AbstractVecOrTuple, qtype::AbstractQuadrature) where {R
         sparse(kron(Iω[2], fstd[2].lω[2])),
         sparse(kron(fstd[1].lω[1], Iω[1])),
         sparse(kron(fstd[1].lω[2], Iω[1])),
-        # fstd[1].l[1] * fstd[2].ω',
-        # fstd[1].l[2] * fstd[2].ω',
-        # fstd[2].l[1] * fstd[1].ω',
-        # fstd[2].l[2] * fstd[1].ω',
     )
 
     return StdQuad{
