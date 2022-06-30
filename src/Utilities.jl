@@ -14,6 +14,32 @@ function logarithmic_mean(al, ar)
     return (al + ar) / 2F
 end
 
+function LinearAlgebra.mul!(
+    C::StridedVecOrMat,
+    A::SparseArrays.AbstractSparseMatrixCSC,
+    B::StaticArrays.StaticArray,
+    α::Number,
+    β::Number,
+)
+    size(A, 2) == size(B, 1) || throw(DimensionMismatch())
+    size(A, 1) == size(C, 1) || throw(DimensionMismatch())
+    size(B, 2) == size(C, 2) || throw(DimensionMismatch())
+    nzv = SparseArrays.nonzeros(A)
+    rv = SparseArrays.rowvals(A)
+    if β != 1
+        β != 0 ? LinearAlgebra.rmul!(C, β) : fill!(C, zero(eltype(C)))
+    end
+    for k in 1:size(C, 2)
+        @inbounds for col in 1:size(A, 2)
+            αxj = B[col,k] * α
+            for j in SparseArrays.nzrange(A, col)
+                C[rv[j], k] += nzv[j]*αxj
+            end
+        end
+    end
+    C
+end
+
 macro flouthreads(expr)
     esc(quote
         return if Threads.nthreads() == 1

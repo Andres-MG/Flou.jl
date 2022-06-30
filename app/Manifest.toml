@@ -331,7 +331,7 @@ uuid = "53c48c17-4a7d-5ca2-90c5-79b7896eea93"
 version = "0.8.4"
 
 [[deps.Flou]]
-deps = ["DiffEqCallbacks", "FastGaussQuadrature", "HDF5", "LinearAlgebra", "OrdinaryDiffEq", "Polynomials", "Printf", "SpecialPolynomials", "StaticArrays", "StructArrays"]
+deps = ["DiffEqCallbacks", "FastGaussQuadrature", "HDF5", "LinearAlgebra", "OrdinaryDiffEq", "Polynomials", "Printf", "SparseArrays", "SpecialPolynomials", "StaticArrays", "StructArrays"]
 path = ".."
 uuid = "79555db7-5fd0-4f01-8876-5756d7b17bf9"
 version = "0.1.0"

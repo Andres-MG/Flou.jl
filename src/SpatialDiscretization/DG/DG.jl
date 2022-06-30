@@ -148,9 +148,8 @@ function rotate2phys! end
 # TODO: maybe move to StdRegions.jl??
 function project2faces!(Qf, Q, dg::DiscontinuousGalerkin)
     # Unpack
-    (; mesh, dofhandler, stdvec, equation) = dg
+    (; mesh, dofhandler, stdvec) = dg
 
-    ndim = spatialdim(mesh)
     for ireg in eachregion(dofhandler)
         std = stdvec[ireg]
         @flouthreads for ieloc in eachelement(dofhandler, ireg)
@@ -158,58 +157,8 @@ function project2faces!(Qf, Q, dg::DiscontinuousGalerkin)
             iface = element(mesh, ie).faceinds
             facepos = element(mesh, ie).facepos
 
-            if is_tensor_product(std)
-                Qr = reshape(
-                    view(Q[ireg], :, :, ieloc),
-                    (size(std)..., size(Q[ireg], 2)),
-                )
-
-                # 1D
-                if ndim == 1
-                    @inbounds for v in eachvariable(equation)
-                        Qf[iface[1]][facepos[1]][1, v] = zero(eltype(Qf))
-                        Qf[iface[2]][facepos[2]][1, v] = zero(eltype(Qf))
-                        for k in eachindex(std)
-                            Qf[iface[1]][facepos[1]][1, v] += std.l[1][k] * Qr[k, v]
-                            Qf[iface[2]][facepos[2]][1, v] += std.l[2][k] * Qr[k, v]
-                        end
-                    end
-
-                # 2D
-                elseif ndim == 2
-                    @inbounds for v in eachvariable(equation)
-                        for j in eachindex(std, 2)
-                            Qf[iface[1]][facepos[1]][j, v] = zero(eltype(Qf))
-                            Qf[iface[2]][facepos[2]][j, v] = zero(eltype(Qf))
-                            for k in eachindex(std, 1)
-                                Qf[iface[1]][facepos[1]][j, v] += std.l[1][k] * Qr[k, j, v]
-                                Qf[iface[2]][facepos[2]][j, v] += std.l[2][k] * Qr[k, j, v]
-                            end
-                        end
-                        for i in eachindex(std, 1)
-                            Qf[iface[3]][facepos[3]][i, v] = zero(eltype(Qf))
-                            Qf[iface[4]][facepos[4]][i, v] = zero(eltype(Qf))
-                            for k in eachindex(std, 2)
-                                Qf[iface[3]][facepos[3]][i, v] += std.l[3][k] * Qr[i, k, v]
-                                Qf[iface[4]][facepos[4]][i, v] += std.l[4][k] * Qr[i, k, v]
-                            end
-                        end
-                    end
-
-                # 3D
-                else # ndim == 3
-                    error("Not implemented yet!")
-                end
-            else
-                @inbounds for v in eachvariable(equation)
-                    for i in eachindex(std), s in eachindex(iface, facepos)
-                        Qf[iface[s]][facepos[s]][i, v] = zero(eltype(Qf))
-                        for k in eachindex(std)
-                            Qf[iface[s]][facepos[s]][i, v] = std.l[2][k] *
-                                                             Q[ireg][k, v, ieloc]
-                        end
-                    end
-                end
+            @inbounds for (s, (face, pos)) in enumerate(zip(iface, facepos))
+                mul!(Qf[face][pos], std.l[s], view(Q[ireg], :, :, ieloc))
             end
         end
     end

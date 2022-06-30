@@ -1,7 +1,8 @@
 module Flou
 
-using LinearAlgebra: LinearAlgebra, dot, mul!, Diagonal, diagm, factorize, ldiv!
-using StaticArrays: StaticArrays, SVector, MVector, SMatrix, MArray, SDiagonal
+using LinearAlgebra: LinearAlgebra, dot, mul!, Diagonal, factorize, ldiv!
+using SparseArrays: SparseArrays, sparse, mul!
+using StaticArrays: StaticArrays, SVector, MVector, SMatrix, MMatrix, MArray, SDiagonal
 using StructArrays: StructArrays, StructVector, LazyRows, LazyRow
 using FastGaussQuadrature: FastGaussQuadrature, gausslegendre, gausslobatto
 using Polynomials: Polynomials, Polynomial, derivative
@@ -30,6 +31,8 @@ function print_flou_header(io::IO=stdout)
     println(io, header)
     println(io, "")
 end
+
+const AbstractVecOrTuple = Union{AbstractVector,Tuple}
 
 # Containers.jl
 export StateVector, MortarStateVector

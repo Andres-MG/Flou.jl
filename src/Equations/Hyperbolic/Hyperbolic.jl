@@ -38,18 +38,20 @@ end
 
 function volume_contribution!(dQ, Q, dg, operator)
     for ireg in eachregion(dg.dofhandler)
+        std = dg.stdvec[ireg]
         @flouthreads for ieloc in eachelement(dg.dofhandler)
             ie = reg2loc(dg.dofhandler, ireg, ieloc)
-            volume_contribution!(view(dQ[ireg], :, :, ieloc), Q, ie, dg, operator)
+            volume_contribution!(view(dQ[ireg], :, :, ieloc), Q, ie, std, dg, operator)
         end
     end
 end
 
 function surface_contribution!(dQ, Fn, dg, operator)
     for ireg in eachregion(dg.dofhandler)
+        std = dg.stdvec[ireg]
         @flouthreads for ieloc in eachelement(dg.dofhandler, ireg)
             ie = reg2loc(dg.dofhandler, ireg, ieloc)
-            surface_contribution!(view(dQ[ireg], :, :, ieloc), Fn, ie, dg, operator)
+            surface_contribution!(view(dQ[ireg], :, :, ieloc), Fn, ie, std, dg, operator)
         end
     end
     return nothing

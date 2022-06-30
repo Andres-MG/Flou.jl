@@ -241,7 +241,7 @@ end
 function vars_entropy2prim(W, eq::EulerEquation{1})
     u = -W[2] / W[3]
     s = eq.γ - (eq.γ - 1) * (W[1] - W[3] * u^2 / 2)
-    p = ((-W[3])^eq.γ * exp(s))^(1 / (eq.γ - 1))
+    p = ((-W[3])^eq.γ * exp(s))^(1 / (1 - eq.γ))
     ρ = -p * W[3]
     return SVector(ρ, u, p)
 end
@@ -250,7 +250,7 @@ function vars_entropy2prim(W, eq::EulerEquation{2})
     u = -W[2] / W[4]
     v = -W[3] / W[4]
     s = eq.γ - (eq.γ - 1) * (W[1] - W[4] * (u^2 + v^2) / 2)
-    p = ((-W[4])^eq.γ * exp(s))^(1 / (eq.γ - 1))
+    p = ((-W[4])^eq.γ * exp(s))^(1 / (1 - eq.γ))
     ρ = -p * W[4]
     return SVector(ρ, u, v, p)
 end
@@ -260,7 +260,7 @@ function vars_entropy2prim(W, eq::EulerEquation{3})
     v = -W[3] / W[5]
     w = -W[4] / W[5]
     s = eq.γ - (eq.γ - 1) * (W[1] - W[5] * (u^2 + v^2 + w^2) / 2)
-    p = ((-W[5])^eq.γ * exp(s))^(1 / (eq.γ - 1))
+    p = ((-W[5])^eq.γ * exp(s))^(1 / (1 - eq.γ))
     ρ = -p * W[5]
     return SVector(ρ, u, v, w, p)
 end

@@ -38,7 +38,7 @@ function Advection2D()
     tf = 0.5
     solver = ORK256(;williamson_condition=false)
 
-    std = StdQuad{Float64}((5, 5), (GL(), GL()))
+    std = StdQuad{Float64}((5, 5), GL())
     div = WeakDivOperator()
     numflux = LxFNumericalFlux(
         StdAverageNumericalFlux(),
@@ -119,7 +119,7 @@ function Shockwave2D()
     tf = 1.0
     solver = ORK256(;williamson_condition=false)
 
-    std = StdQuad{Float64}((6, 6), (GLL(), GLL()))
+    std = StdQuad{Float64}((6, 6), GLL())
     div = SSFVDivOperator(
         ChandrasekharAverage(),
         LxFNumericalFlux(
@@ -177,7 +177,7 @@ function Implosion2D()
     tf = 50Δt # 0.045
     solver = ORK256(;williamson_condition=false)
 
-    std = StdQuad{Float64}((4, 4), (GLL(), GLL()))
+    std = StdQuad{Float64}((4, 4), GLL())
     div = SplitDivOperator(
         ChandrasekharAverage(),
     )
@@ -226,7 +226,7 @@ function ForwardFacingStep2D()
     tf = 0.1 # 2.0
     solver = ORK256(;williamson_condition=false)
 
-    std = StdQuad{Float64}((8, 8), (GLL(), GLL()))
+    std = StdQuad{Float64}((8, 8), GLL())
     div = SSFVDivOperator(
         ChandrasekharAverage(),
         LxFNumericalFlux(

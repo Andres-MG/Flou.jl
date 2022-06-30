@@ -6,11 +6,11 @@ struct GaussLobattoQuadrature <: AbstractQuadrature end
 const GL = GaussQuadrature
 const GLL = GaussLobattoQuadrature
 
-abstract type AbstractStdRegion{ND,Dims} end
+abstract type AbstractStdRegion{ND,Q,Dims} end
 
-Base.size(::AbstractStdRegion{ND,Dims}) where {ND,Dims} = Dims
-Base.size(::AbstractStdRegion{ND,Dims}, i) where {ND,Dims} = Dims[i]
-Base.length(::AbstractStdRegion{ND,Dims}) where {ND,Dims} = prod(Dims)
+Base.size(::AbstractStdRegion{ND,Q,Dims}) where {ND,Q,Dims} = Dims
+Base.size(::AbstractStdRegion{ND,Q,Dims}, i) where {ND,Q,Dims} = Dims[i]
+Base.length(::AbstractStdRegion{ND,Q,Dims}) where {ND,Q,Dims} = prod(Dims)
 Base.eachindex(s::AbstractStdRegion, i) = Base.OneTo(size(s, i))
 Base.eachindex(s::AbstractStdRegion) = Base.OneTo(length(s))
 Base.LinearIndices(s::AbstractStdRegion) = s.lindices
@@ -35,16 +35,15 @@ function master2slave end
 
 spatialdim(::AbstractStdRegion{ND}) where {ND} = ND
 ndofs(s::AbstractStdRegion) = length(s)
-faces(s::AbstractStdRegion{ND}) where {ND} = 1 <= ND <= 3 ? s.fstd : nothing
-face(s::AbstractStdRegion{ND}, i) where {ND} = 1 <= ND <= 3 ? s.fstd[i] : nothing
-quadratures(s::AbstractStdRegion) = s.quad
-quadrature(s::AbstractStdRegion, i) = s.quad[i]
+faces(s::AbstractStdRegion{ND}) where {ND} = s.fstd
+face(s::AbstractStdRegion{ND}, i) where {ND} = s.fstd[i]
+quadrature(::AbstractStdRegion{ND,Q}) where {ND,Q} = Q
 eachdirection(s::AbstractStdRegion) = Base.OneTo(ndirections(s))
 
 #==========================================================================================#
 #                                      Standard point                                      #
 
-struct StdPoint{Dims,CI,LI} <: AbstractStdRegion{0,Dims}
+struct StdPoint{Dims,CI,LI} <: AbstractStdRegion{0,GaussQuadrature,Dims}
     cindices::CI
     lindices::LI
 end
@@ -71,8 +70,7 @@ end
 #==========================================================================================#
 #                                     Standard segment                                     #
 
-struct StdSegment{Dims,QT,RT,MM,CI,LI,FS1,FS2} <: AbstractStdRegion{1,Dims}
-    quad::Tuple{QT}
+struct StdSegment{QT,Dims,RT,MM,CI,LI,FS1,FS2} <: AbstractStdRegion{1,QT,Dims}
     fstd::Tuple{FS1,FS2}
     cindices::CI
     lindices::LI
@@ -85,7 +83,7 @@ struct StdSegment{Dims,QT,RT,MM,CI,LI,FS1,FS2} <: AbstractStdRegion{1,Dims}
     K::Tuple{Matrix{RT}}
     Ks::Tuple{Matrix{RT}}
     K♯::Tuple{Matrix{RT}}
-    l::NTuple{2,Vector{RT}}
+    l::NTuple{2,Matrix{RT}}   # Row vectors
     lω::NTuple{2,Vector{RT}}
     _n2e::Matrix{RT}
 end
@@ -94,7 +92,7 @@ is_tensor_product(::StdSegment) = true
 ndirections(::StdSegment) = 1
 nvertices(::StdSegment) = 2
 
-function StdSegment{RT}(np, qtype) where {RT<:Real}
+function StdSegment{RT}(np::Integer, qtype::AbstractQuadrature) where {RT<:Real}
     fstd = (StdPoint(), StdPoint())
     _ξ, ω = if qtype isa(GaussQuadrature)
         gausslegendre(np)
@@ -119,7 +117,7 @@ function StdSegment{RT}(np, qtype) where {RT<:Real}
     # Lagrange basis
     D = Matrix{RT}(undef, np, np)
     _n2e = similar(D)
-    l = (Vector{RT}(undef, np), Vector{RT}(undef, np))
+    l = (Matrix{RT}(undef, 1, np), Matrix{RT}(undef, 1, np))
     y = fill(zero(RT), np)
     for i in 1:np
         y[i] = one(RT)
@@ -142,13 +140,13 @@ function StdSegment{RT}(np, qtype) where {RT<:Real}
     K♯ = 2Q
 
     # Surface contribution
-    lω = l
+    lω = Tuple(vec.(l))
     @. Ks = -Ks + B
     @. K♯ = -K♯ + B
 
     return StdSegment{
-        Tuple(np),
         typeof(qtype),
+        Tuple(np),
         eltype(ω),
         typeof(M),
         typeof(cindices),
@@ -156,7 +154,6 @@ function StdSegment{RT}(np, qtype) where {RT<:Real}
         typeof(fstd[1]),
         typeof(fstd[2]),
     }(
-        (qtype,),
         fstd,
         cindices,
         lindices,
@@ -175,13 +172,13 @@ function StdSegment{RT}(np, qtype) where {RT<:Real}
     )
 end
 
-function Base.show(io::IO, ::MIME"text/plain", s::StdSegment{D,QT,RT}) where {D,QT,RT}
+function Base.show(io::IO, ::MIME"text/plain", s::StdSegment{QT,D,RT}) where {QT,D,RT}
     @nospecialize
     print(io, "StdSegment{", RT, "}: ")
     if QT == GaussQuadrature
-        print(io,  "Gauss quadrature with ", size(s, 1), " nodes")
+        print(io,  "Gauss quadrature with ", D[1], " nodes")
     elseif QT == GaussLobattoQuadrature
-        print(io, "Gauss-Lobatto quadrature with ", size(s, 1), " nodes")
+        print(io, "Gauss-Lobatto quadrature with ", D[2], " nodes")
     else
         @assert false "[StdRegion.show] You shouldn't be here..."
     end
@@ -227,8 +224,7 @@ end
 #==========================================================================================#
 #                                       Standard quad                                      #
 
-struct StdQuad{Dims,QT1,QT2,RT,MM,CI,LI,FS1,FS2} <: AbstractStdRegion{2,Dims}
-    quad::Tuple{QT1,QT2}
+struct StdQuad{QT,Dims,RT,MM,CI,LI,FS1,FS2} <: AbstractStdRegion{2,QT,Dims}
     fstd::Tuple{FS1,FS2}
     cindices::CI
     lindices::LI
@@ -236,14 +232,14 @@ struct StdQuad{Dims,QT1,QT2,RT,MM,CI,LI,FS1,FS2} <: AbstractStdRegion{2,Dims}
     ξ::Vector{SVector{2,RT}}
     ω::Vector{RT}
     M::MM
-    D::NTuple{2,Matrix{RT}}
-    Q::NTuple{2,Matrix{RT}}
-    K::NTuple{2,Array{RT,3}}
-    Ks::NTuple{2,Array{RT,3}}
-    K♯::NTuple{2,Array{RT,3}}
-    l::NTuple{4,Vector{RT}}
-    lω::NTuple{4,Matrix{RT}}
-    _n2e::NTuple{2,Matrix{RT}}
+    D::NTuple{2,SparseArrays.SparseMatrixCSC{RT,Int}}
+    Q::NTuple{2,SparseArrays.SparseMatrixCSC{RT,Int}}
+    K::NTuple{2,SparseArrays.SparseMatrixCSC{RT,Int}}
+    Ks::NTuple{2,SparseArrays.SparseMatrixCSC{RT,Int}}
+    K♯::NTuple{2,SparseArrays.SparseMatrixCSC{RT,Int}}
+    l::NTuple{4,SparseArrays.SparseMatrixCSC{RT,Int}}
+    lω::NTuple{4,SparseArrays.SparseMatrixCSC{RT,Int}}
+    _n2e::NTuple{2,SparseArrays.SparseMatrixCSC{RT,Int}}
 end
 
 is_tensor_product(::StdQuad) = true
@@ -252,17 +248,17 @@ nvertices(::StdQuad) = 4
 faces(s::StdQuad) = (s.fstd[1], s.fstd[1], s.fstd[2], s.fstd[2])
 face(s::StdQuad, i) = s.fstd[(i - 1) ÷ 2 + 1]
 
-function StdQuad{RT}(np, qtype) where {RT<:Real}
+function StdQuad{RT}(np::AbstractVecOrTuple, qtype::AbstractQuadrature) where {RT<:Real}
     # Quadratures
     fstd = (
-        StdSegment{RT}(np[1], qtype[1]),
-        StdSegment{RT}(np[2], qtype[2]),
+        StdSegment{RT}(np[2], qtype),   # Note the swap!!
+        StdSegment{RT}(np[1], qtype),
     )
-    ξ = vec([SVector(ξx[1], ξy[1]) for ξx in fstd[1].ξ, ξy in fstd[2].ξ])
-    ω = vec([ωx * ωy for ωx in fstd[1].ω, ωy in fstd[2].ω])
+    ξ = vec([SVector(ξx[1], ξy[1]) for ξx in fstd[2].ξ, ξy in fstd[1].ξ])
+    ω = vec([ωx * ωy for ωx in fstd[2].ω, ωy in fstd[1].ω])
 
     # Equispaced nodes
-    ξe = vec([SVector(ξx[1], ξy[1]) for ξx in fstd[1].ξe, ξy in fstd[2].ξe])
+    ξe = vec([SVector(ξx[1], ξy[1]) for ξx in fstd[2].ξe, ξy in fstd[1].ξe])
 
     cindices = CartesianIndices((np...,)) |> collect
     lindices = LinearIndices((np...,)) |> collect
@@ -271,52 +267,76 @@ function StdQuad{RT}(np, qtype) where {RT<:Real}
     M = Diagonal(ω)
 
     # Derivative matrices
-    D = (fstd[1].D[1], fstd[2].D[1])
-    Q = (fstd[1].Q[1], fstd[2].Q[1])
-    _n2e = (fstd[1]._n2e, fstd[2]._n2e)
+    I = (Diagonal(ones(np[1])), Diagonal(ones(np[2])))
+    Iω = (Diagonal(fstd[2].ω), Diagonal(fstd[1].ω))
+    D = (
+        sparse(kron(I[2], fstd[2].D[1])),
+        sparse(kron(fstd[1].D[1], I[1])),
+    )
+    Q = (
+        sparse(kron(I[2], fstd[2].Q[1])),
+        sparse(kron(fstd[1].Q[1], I[2])),
+    )
+    _n2e = (
+        sparse(kron(I[2], fstd[2]._n2e[1])),
+        sparse(kron(fstd[1]._n2e[1], I[1])),
+    )
     K = (
-        Array{RT,3}(undef, np[1], np[2], np[1]),
-        Array{RT,3}(undef, np[1], np[2], np[2]),
+        # Array{RT,3}(undef, np[1], np[2], np[1]),
+        # Array{RT,3}(undef, np[1], np[2], np[2]),
+        sparse(kron(Iω[2], fstd[2].K[1])),
+        sparse(kron(fstd[1].K[1], Iω[1])),
     )
     Ks = (
-        Array{RT,3}(undef, np[1], np[2], np[1]),
-        Array{RT,3}(undef, np[1], np[2], np[2]),
+        # Array{RT,3}(undef, np[1], np[2], np[1]),
+        # Array{RT,3}(undef, np[1], np[2], np[2]),
+        sparse(kron(Iω[2], fstd[1].Ks[1])),
+        sparse(kron(fstd[2].Ks[1], Iω[1])),
     )
     K♯ = (
-        Array{RT,3}(undef, np[1], np[2], np[1]),
-        Array{RT,3}(undef, np[1], np[2], np[2]),
+        # Array{RT,3}(undef, np[1], np[2], np[1]),
+        # Array{RT,3}(undef, np[1], np[2], np[2]),
+        sparse(kron(Iω[2], fstd[1].K♯[1])),
+        sparse(kron(fstd[2].K♯[1], Iω[1])),
     )
-    for j in 1:np[2]
-        @. K[1][:, j, :] = fstd[1].K[1] * fstd[2].ω[j]
-        @. Ks[1][:, j, :] = fstd[1].Ks[1] * fstd[2].ω[j]
-        @. K♯[1][:, j, :] = fstd[1].K♯[1] * fstd[2].ω[j]
-    end
-    for i in 1:np[1]
-        @. K[2][i, :, :] = fstd[2].K[1] * fstd[1].ω[i]
-        @. Ks[2][i, :, :] = fstd[2].Ks[1] * fstd[1].ω[i]
-        @. K♯[2][i, :, :] = fstd[2].K♯[1] * fstd[1].ω[i]
-    end
+    # for j in 1:np[2]
+    #     @. K[1][:, j, :] = fstd[1].K[1] * fstd[2].ω[j]
+    #     @. Ks[1][:, j, :] = fstd[1].Ks[1] * fstd[2].ω[j]
+    #     @. K♯[1][:, j, :] = fstd[1].K♯[1] * fstd[2].ω[j]
+    # end
+    # for i in 1:np[1]
+    #     @. K[2][i, :, :] = fstd[2].K[1] * fstd[1].ω[i]
+    #     @. Ks[2][i, :, :] = fstd[2].Ks[1] * fstd[1].ω[i]
+    #     @. K♯[2][i, :, :] = fstd[2].K♯[1] * fstd[1].ω[i]
+    # end
 
     # Projection operator
     l = (
-        fstd[1].l[1],
-        fstd[1].l[2],
-        fstd[2].l[1],
-        fstd[2].l[2],
+        sparse(kron(I[2], fstd[2].l[1])),
+        sparse(kron(I[2], fstd[2].l[2])),
+        sparse(kron(fstd[1].l[1], I[1])),
+        sparse(kron(fstd[1].l[2], I[1])),
+    #     fstd[1].l[1],
+    #     fstd[1].l[2],
+    #     fstd[2].l[1],
+    #     fstd[2].l[2],
     )
 
     # Surface contribution
     lω = (
-        fstd[1].l[1] * fstd[2].ω',
-        fstd[1].l[2] * fstd[2].ω',
-        fstd[2].l[1] * fstd[1].ω',
-        fstd[2].l[2] * fstd[1].ω',
+        sparse(kron(Iω[2], fstd[2].lω[1])),
+        sparse(kron(Iω[2], fstd[2].lω[2])),
+        sparse(kron(fstd[1].lω[1], Iω[1])),
+        sparse(kron(fstd[1].lω[2], Iω[1])),
+        # fstd[1].l[1] * fstd[2].ω',
+        # fstd[1].l[2] * fstd[2].ω',
+        # fstd[2].l[1] * fstd[1].ω',
+        # fstd[2].l[2] * fstd[1].ω',
     )
 
     return StdQuad{
+        typeof(qtype),
         Tuple(np),
-        typeof(qtype[1]),
-        typeof(qtype[2]),
         eltype(ω),
         typeof(M),
         typeof(cindices),
@@ -324,7 +344,6 @@ function StdQuad{RT}(np, qtype) where {RT<:Real}
         typeof(fstd[1]),
         typeof(fstd[2]),
     }(
-        Tuple(qtype),
         fstd,
         cindices,
         lindices,
@@ -343,20 +362,15 @@ function StdQuad{RT}(np, qtype) where {RT<:Real}
     )
 end
 
-function Base.show(io::IO, ::MIME"text/plain", s::StdQuad{D,Q1,Q2,RT}) where {D,Q1,Q2,RT}
+function Base.show(io::IO, ::MIME"text/plain", s::StdQuad{QT,D,RT}) where {QT,D,RT}
     @nospecialize
     println(io, "StdRegion{", RT, "}: ")
-    if Q1 == GaussQuadrature
-        println(io, " ξ: Gauss quadrature with ", size(s, 1), " nodes")
-    elseif Q1 == GaussLobattoQuadrature
-        println(io, " ξ: Gauss-Lobatto quadrature with ", size(s, 1), " nodes")
-    else
-        @assert false "[StdRegion.show] You shouldn't be here..."
-    end
-    if Q2 == GaussQuadrature
-        print(io, " η: Gauss quadrature with ", size(s, 2), " nodes")
-    elseif Q2 == GaussLobattoQuadrature
-        print(io, " η: Gauss-Lobatto quadrature with ", size(s, 2), " nodes")
+    if QT == GaussQuadrature
+        println(io, " ξ: Gauss quadrature with ", D[1], " nodes")
+        print(io, " η: Gauss quadrature with ", D[2], " nodes")
+    elseif QT == GaussLobattoQuadrature
+        println(io, " ξ: Gauss-Lobatto quadrature with ", D[1], " nodes")
+        print(io, " η: Gauss-Lobatto quadrature with ", D[2], " nodes")
     else
         @assert false "[StdRegion.show] You shouldn't be here..."
     end
@@ -404,7 +418,7 @@ end
 #==========================================================================================#
 #                                     Standard triangle                                    #
 
-struct StdTri{Dims} <: AbstractStdRegion{2,Dims} end
+struct StdTri{Q,Dims} <: AbstractStdRegion{2,Q,Dims} end
 
 is_tensor_product(::StdTri) = false
 ndirections(::StdTri) = 3
@@ -423,49 +437,3 @@ _VTK_type(::StdTri) = UInt8(69)
 function _VTK_connectivities(::StdTri)
     error("Not implemented yet!")
 end
-
-    # NOTE: Non tensor-product approach for a quad element
-    # D = (zeros(RT, npts, npts), zeros(RT, npts, npts))
-    # K = (zeros(RT, npts, npts), zeros(RT, npts, npts))
-    # Ds = (zeros(RT, npts, npts), zeros(RT, npts, npts))
-    # for j in 1:np[2], i in 1:np[1]
-    #     k = lindices[i, j]
-    #     D[1][k, lindices[:, j]] = fstd[1].D[i, :]
-    #     D[2][k, lindices[i, :]] = fstd[2].D[j, :]
-    #     K[1][k, lindices[:, j]] = fstd[1].D[:, i] .* ω[lindices[:, j]]
-    #     K[2][k, lindices[i, :]] = fstd[2].D[:, j] .* ω[lindices[i, :]]
-    #     Ds[1][k, lindices[:, j]] = fstd[1].Ds[i, :]
-    #     Ds[2][k, lindices[i, :]] = fstd[2].Ds[j, :]
-    # end
-    # D = sparse.(D)
-    # K = sparse.(K)
-    # Ds = sparse.(Ds)
-    # l = (
-    #     zeros(RT, np[2], npts),
-    #     zeros(RT, np[2], npts),
-    #     zeros(RT, np[1], npts),
-    #     zeros(RT, np[1], npts),
-    # )
-    # for j in 1:np[2]
-    #     l[1][j, lindices[:, j]] = fstd[1].l[1]
-    #     l[2][j, lindices[:, j]] = fstd[1].l[2]
-    # end
-    # for i in 1:np[1]
-    #     l[3][i, lindices[i, :]] = fstd[2].l[1]
-    #     l[4][i, lindices[i, :]] = fstd[2].l[2]
-    # end
-    # l = sparse.(l)
-    # lω = (
-    #     zeros(RT, npts, np[2]),
-    #     zeros(RT, npts, np[2]),
-    #     zeros(RT, npts, np[1]),
-    #     zeros(RT, npts, np[1]),
-    # )
-    # for j in 1:np[2], i in 1:np[1]
-    #     k = lindices[i, j]
-    #     lω[1][k, j] = fstd[1].l[1][i] * fstd[2].ω[j]
-    #     lω[2][k, j] = fstd[1].l[2][i] * fstd[2].ω[j]
-    #     lω[3][k, i] = fstd[2].l[1][j] * fstd[1].ω[i]
-    #     lω[4][k, i] = fstd[2].l[2][j] * fstd[1].ω[i]
-    # end
-    # lω = sparse.(lω)

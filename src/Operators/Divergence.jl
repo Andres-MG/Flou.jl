@@ -4,56 +4,21 @@ function surface_contribution!(
     dQ,
     Fn,
     ielem,
+    std::AbstractStdRegion,
     dg::DiscontinuousGalerkin,
     ::AbstractDivOperator,
 )
     # Unpack
-    (; mesh, equation) = dg
+    (; mesh) = dg
 
-    ireg = loc2reg(dg.dofhandler, ielem).first
-    std = dg.stdvec[ireg]
-    ndim = spatialdim(std)
     iface = element(mesh, ielem).faceinds
     facepos = element(mesh, ielem).facepos
 
-    # Tensor-product elements
-    if is_tensor_product(std)
-        dQr = reshape(dQ, (size(std)..., size(dQ, 2)))
-
-        # 1D
-        if ndim == 1
-            @inbounds for v in eachvariable(equation)
-                for i in eachindex(std)
-                    dQr[i, v] -= std.lω[1][i] * Fn[iface[1]][facepos[1]][1, v]
-                    dQr[i, v] -= std.lω[2][i] * Fn[iface[2]][facepos[2]][1, v]
-                end
-            end
-
-        # 2D
-        elseif ndim == 2
-            @inbounds for v in eachvariable(equation), j in eachindex(std, 2)
-                for i in eachindex(std, 1)
-                    dQr[i, j, v] -= std.lω[1][i, j] * Fn[iface[1]][facepos[1]][j, v]
-                    dQr[i, j, v] -= std.lω[2][i, j] * Fn[iface[2]][facepos[2]][j, v]
-                    dQr[i, j, v] -= std.lω[3][j, i] * Fn[iface[3]][facepos[3]][i, v]
-                    dQr[i, j, v] -= std.lω[4][j, i] * Fn[iface[4]][facepos[4]][i, v]
-                end
-            end
-
-        # 3D
-        else # ndim == 3
-            error("Not implemented yet!")
-        end
-
-    # Non-tensor-product elements
-    else
-        @inbounds for v in eachvariable(equation)
-            for s in eachindex(iface, facepos), i in eachindex(std)
-                for k in eachindex(std)
-                    dQ[i, v] -= std.lω[s][i, k] * Fn[iface[s]][facepos[s]][k, v]
-                end
-            end
-        end
+    @inbounds for (s, (face, pos)) in enumerate(zip(iface, facepos))
+        mul!(
+            dQ, std.lω[s], Fn[face][pos],
+            -one(eltype(dQ)), one(eltype(dQ)),
+        )
     end
     return nothing
 end
@@ -67,6 +32,7 @@ function volume_contribution!(
     dQ,
     Q,
     ielem,
+    std::AbstractStdRegion,
     dg::DiscontinuousGalerkin,
     ::WeakDivOperator,
 )
@@ -74,7 +40,6 @@ function volume_contribution!(
     (; dofhandler, physelem, equation) = dg
 
     ireg, ieloc = loc2reg(dofhandler, ielem)
-    std = dg.stdvec[ireg]
     ndim = spatialdim(std)
 
     # Buffers
@@ -96,46 +61,11 @@ function volume_contribution!(
     end
 
     # Weak derivative
-    # Tensor-product element
-    if is_tensor_product(std)
-        dQr = reshape(dQ, (size(std)..., size(dQ, 2)))
-        F̃r = reshape(F̃, (size(std)..., size(F̃)[2:end]...))
-
-        # 1D
-        if ndim == 1
-            @inbounds for v in eachvariable(equation)
-                for k in eachindex(std), i in eachindex(std)
-                    dQr[i, v] += std.K[1][i, k] * F̃r[k, v, 1]
-                end
-            end
-
-        # 2D
-        elseif ndim == 2
-            @inbounds for v in eachvariable(equation)
-                for j in eachindex(std, 2), i in eachindex(std, 1)
-                    for k in eachindex(std, 1)
-                        dQr[i, j, v] += std.K[1][i, j, k] * F̃r[k, j, v, 1]
-                    end
-                    for k in eachindex(std, 2)
-                        dQr[i, j, v] += std.K[2][i, j, k] * F̃r[i, k, v, 2]
-                    end
-                end
-            end
-
-        # 3D
-        else # ndim == 3
-            error("Not implemented yet!")
-        end
-
-    # Non-tensor-product element
-    else
-        @inbounds for s in eachindex(std.K)
-            for v in eachvariable(equation), i in eachindex(std)
-                for k in eachindex(std)
-                    dQ[i, v] += std.K[s][i, k] * F̃[k, v, s]
-                end
-            end
-        end
+    @inbounds for s in eachindex(std.K)
+        mul!(
+            dQ, std.K[s], view(F̃, :, :, s),
+            one(eltype(dQ)), one(eltype(dQ)),
+        )
     end
     return nothing
 end
@@ -149,6 +79,7 @@ function volume_contribution!(
     dQ,
     Q,
     ielem,
+    std::AbstractStdRegion,
     dg::DiscontinuousGalerkin,
     ::StrongDivOperator,
 )
@@ -156,7 +87,6 @@ function volume_contribution!(
     (; dofhandler, physelem, equation) = dg
 
     ireg, ieloc = loc2reg(dofhandler, ielem)
-    std = dg.stdvec[ireg]
     ndim = spatialdim(std)
 
     # Buffers
@@ -177,46 +107,11 @@ function volume_contribution!(
     end
 
     # Weak derivative
-    # Tensor-product element
-    if is_tensor_product(std)
-        dQr = reshape(dQ, (size(std)..., size(dQ, 2)))
-        F̃r = reshape(F̃, (size(std)..., size(F̃)[2:end]...))
-
-        # 1D
-        if ndim == 1
-            @inbounds for v in eachvariable(equation)
-                for k in eachindex(std), i in eachindex(std)
-                    dQr[i, v] += std.Ks[1][i, k] * F̃r[k, v, 1]
-                end
-            end
-
-        # 2D
-        elseif ndim == 2
-            @inbounds for v in eachvariable(equation)
-                for j in eachindex(std, 2), i in eachindex(std, 1)
-                    for k in eachindex(std, 1)
-                        dQr[i, j, v] += std.Ks[1][i, j, k] * F̃r[k, j, v, 1]
-                    end
-                    for k in eachindex(std, 2)
-                        dQr[i, j, v] += std.Ks[2][i, j, k] * F̃r[i, k, v, 2]
-                    end
-                end
-            end
-
-        # 3D
-        else # ndim == 3
-            error("Not implemented yet!")
-        end
-
-    # Non-tensor-product element
-    else
-        @inbounds for s in eachindex(std.K)
-            for v in eachvariable(equation), i in eachindex(std)
-                for k in eachindex(std)
-                    dQ[i, v] += std.Ks[s][i, k] * F̃[k, v, s]
-                end
-            end
-        end
+    @inbounds for s in eachindex(std.K)
+        mul!(
+            dQ, std.K[s], view(F̃, :, :, s),
+            one(eltype(dQ)), one(eltype(dQ)),
+        )
     end
     return nothing
 end
@@ -240,29 +135,25 @@ function volume_contribution!(
     dQ,
     Q,
     ielem,
+    std::AbstractStdRegion{ND,<:GaussLobattoQuadrature},
     dg::DiscontinuousGalerkin,
     op::SplitDivOperator,
-)
+) where {ND}
     # Unpack
     (; dofhandler, physelem, equation) = dg
 
     ireg, ieloc = loc2reg(dofhandler, ielem)
-    std = dg.stdvec[ireg]
-    ndim = spatialdim(std)
     is_tensor_product(std) || throw(ArgumentError(
         "All the standard regions must be tensor-products."
     ))
-    all(isa.(quadratures(std), GaussLobattoQuadrature)) || throw(ArgumentError(
-        "Only GLL nodes admit a split-form formulation."
-    ))
 
     # Buffers
-    F = MArray{Tuple{ndim,nvariables(equation),ndofs(std)},eltype(Q)}(undef)
-    F̃ = MVector{ndim,eltype(Q)}(undef)
+    F = MArray{Tuple{ND,nvariables(equation),ndofs(std)},eltype(Q)}(undef)
+    F̃ = MVector{ND,eltype(Q)}(undef)
     F♯ = [
         Array{eltype(Q),3}(undef, size(std, idir), ndofs(std), nvariables(equation))
         for idir in eachdirection(std)
-    ]   # Type-instability with MArray
+    ]
 
     # Volume fluxes
     @inbounds for i in eachindex(std)
@@ -293,7 +184,7 @@ function volume_contribution!(
     Jar = reshape(Ja, size(std))
 
     # 1D
-    if ndim == 1
+    if ND == 1
         @inbounds for i in eachindex(std), l in (i + 1):ndofs(std)
             twopointflux!(
                 view(F♯r[1], l, i, :),
@@ -308,7 +199,7 @@ function volume_contribution!(
         end
 
     # 2D
-    elseif ndim == 2
+    elseif ND == 2
         @inbounds for j in eachindex(std, 2), i in eachindex(std, 1)
             for l in (i + 1):size(std, 1)
                 twopointflux!(
@@ -337,13 +228,13 @@ function volume_contribution!(
         end
 
     # 3D
-    else # ndim == 3
+    else # ND == 3
         error("Not implemented yet!")
     end
 
     # Strong derivative
     # 1D
-    if ndim == 1
+    if ND == 1
         @inbounds for v in eachvariable(equation), i in eachindex(std)
             for k in eachindex(std)
                 dQr[i, v] += std.K♯[1][i, k] * F♯r[1][k, i, v]
@@ -351,7 +242,7 @@ function volume_contribution!(
         end
 
     # 2D
-    elseif ndim == 2
+    elseif ND == 2
         @inbounds for v in eachvariable(equation)
             for j in eachindex(std, 2), i in eachindex(std, 1)
                 for k in eachindex(std, 1)
@@ -364,7 +255,7 @@ function volume_contribution!(
         end
 
     # 3D
-    else # ndim == 3
+    else # ND == 3
         error("Not implemented yet!")
     end
     return nothing
@@ -395,20 +286,16 @@ function volume_contribution!(
     dQ,
     Q,
     ielem,
+    std::AbstractStdRegion{ND,<:GaussLobattoQuadrature},
     dg::DiscontinuousGalerkin,
     op::SSFVDivOperator,
-)
+) where {ND}
     # Unpack
     (; dofhandler, physelem, equation) = dg
 
     ireg, ieloc = loc2reg(dofhandler, ielem)
-    std = dg.stdvec[ireg]
-    ndim = spatialdim(std)
     is_tensor_product(std) || throw(ArgumentError(
         "All the standard regions must be tensor-products."
-    ))
-    all(isa.(quadratures(std), GaussLobattoQuadrature)) || throw(ArgumentError(
-        "Only GLL nodes admit a split-form formulation."
     ))
 
     # Buffers
@@ -436,7 +323,7 @@ function volume_contribution!(
     Js = elementgrid(physelem, ielem).Jf
 
     # 1D
-    if ndim == 1
+    if ND == 1
         F̄r = F̄[1]
 
         # Boundaries
@@ -482,7 +369,7 @@ function volume_contribution!(
         end
 
     # 2D
-    elseif ndim == 2
+    elseif ND == 2
         F̄r = [
             reshape(F̄[1], (size(std, 1) + 1, size(std, 2), size(F̄[1]) |> last)),
             reshape(F̄[2], (size(std, 1), size(std, 2) + 1, size(F̄[2]) |> last)),
@@ -612,13 +499,13 @@ function volume_contribution!(
         end
 
     # 3D
-    else # ndim == 3
+    else # ND == 3
         error("Not implemented yet!")
     end
 
     # Strong derivative
     # 1D
-    if ndim == 1
+    if ND == 1
         @inbounds for v in eachvariable(equation)
             for i in eachindex(std)
                 dQr[i, v] += F̄r[1][i, v] - F̄r[1][(i + 1), v]
@@ -626,18 +513,18 @@ function volume_contribution!(
         end
 
     # 2D
-    elseif ndim == 2
+    elseif ND == 2
         @inbounds for v in eachvariable(equation)
             for j in eachindex(std, 2), i in eachindex(std, 1)
                 dQr[i, j, v] += (F̄r[1][i, j, v] - F̄r[1][(i + 1), j, v]) *
-                                face(std, 2).M[j, j]
+                                face(std, 2).ω[j]
                 dQr[i, j, v] += (F̄r[2][i, j, v] - F̄r[2][i, (j + 1), v]) *
-                                face(std, 1).M[i, i]
+                                face(std, 1).ω[i]
             end
         end
 
     # 3D
-    else # ndim == 3
+    else # ND == 3
         error("Not implemented yet!")
     end
     return nothing
@@ -655,3 +542,167 @@ function _ssfv_compute_delta(b, c)
     # end
     return max(δ, 0.4)
 end
+
+# function volume_contribution!(
+#     dQ,
+#     Q,
+#     ielem,
+#     std::AbstractStdRegion{ND,<:GaussQuadrature},
+#     dg::DiscontinuousGalerkin,
+#     op::SplitDivOperator,
+# ) where {ND}
+#     # Unpack
+#     (; dofhandler, physelem, equation) = dg
+
+#     ireg, ieloc = loc2reg(dofhandler, ielem)
+#     is_tensor_product(std) || throw(ArgumentError(
+#         "All the standard regions must be tensor-products."
+#     ))
+
+#     # Buffers
+#     F = MArray{Tuple{ND,nvariables(equation),ndofs(std)},eltype(Q)}(undef)
+#     F̃ = MVector{ND,eltype(Q)}(undef)
+#     F♯ = [
+#         Array{eltype(Q),3}(undef, size(std, idir), ndofs(std), nvariables(equation))
+#         for idir in eachdirection(std)
+#     ]
+
+#     # Volume fluxes
+#     @inbounds for i in eachindex(std)
+#         @views volumeflux!(F[:, :, i], Q[ireg][i, :, ieloc], equation)
+#     end
+
+#     # Indexing
+#     ci = CartesianIndices(std)
+
+#     # Contravariant fluxes
+#     Ja = element(physelem, ielem).Ja
+#     for ivar in eachvariable(equation)
+#         for i in eachindex(std)
+#             contravariant!(F̃, view(F, :, ivar, i), Ja[i])
+#             for idir in eachdirection(std)
+#                 F♯[idir][ci[i][idir], i, ivar] = F̃[idir]
+#             end
+#         end
+#     end
+
+#     # Two-point fluxes
+#     Qr = reshape(view(Q[ireg], :, :, ieloc), (size(std)..., size(Q[ireg], 2)))
+#     dQr = reshape(dQ, (size(std)..., size(dQ, 2)))
+#     F♯r = [
+#         reshape(F♯[idir], (size(std, idir), size(std)..., size(F♯[idir]) |> last))
+#         for idir in eachdirection(std)
+#     ]
+#     Jar = reshape(Ja, size(std))
+
+#     # 1D
+#     if ND == 1
+#         # Entropy-projected variables and fluxes
+#         W = MMatrix{ndofs(std),nvariables(equation),eltype(Q)}(undef)
+#         @inbounds for i in eachindex(std)
+#             W[i, :] .= vars_cons2entropy(view(Q[ireg], i, :, ieloc), equation)
+#         end
+#         Ŵl = std.l[1]' * W
+#         Ŵr = std.l[2]' * W
+#         Q̂l = vars_entropy2cons(Ŵl, equation)
+#         Q̂r = vars_entropy2cons(Ŵr, equation)
+
+#         Fli = MMatrix{ndofs(std),nvariables(equation),eltype(Q)}(undef)
+#         Fri = MMatrix{ndofs(std),nvariables(equation),eltype(Q)}(undef)
+#         @inbounds for i in eachindex(std)
+#             twopointflux!(
+#                 view(Fli, i, :),
+#                 view(Qr, i, :),
+#                 Q̂l,
+#                 Jar[i],
+#                 Jar[i],
+#                 equation,
+#                 op.tpflux,
+#             )
+#             twopointflux!(
+#                 view(Fri, i, :),
+#                 view(Qr, i, :),
+#                 Q̂r,
+#                 Jar[i],
+#                 Jar[i],
+#                 equation,
+#                 op.tpflux,
+#             )
+#             for l in (i + 1):ndofs(std)
+#                 twopointflux!(
+#                     view(F♯r[1], l, i, :),
+#                     view(Qr, i, :),
+#                     view(Qr, l, :),
+#                     Jar[i],
+#                     Jar[l],
+#                     equation,
+#                     op.tpflux,
+#                 )
+#                 @views copy!(F♯r[1][i, l, :], F♯r[1][l, i, :])
+#             end
+#         end
+
+#     # 2D
+#     elseif ND == 2
+#         @inbounds for j in eachindex(std, 2), i in eachindex(std, 1)
+#             for l in (i + 1):size(std, 1)
+#                 twopointflux!(
+#                     view(F♯r[1], l, i, j, :),
+#                     view(Qr, i, j, :),
+#                     view(Qr, l, j, :),
+#                     view(Jar[i, j], :, 1),
+#                     view(Jar[l, j], :, 1),
+#                     equation,
+#                     op.tpflux,
+#                 )
+#                 @views copy!(F♯r[1][i, l, j, :], F♯r[1][l, i, j, :])
+#             end
+#             for l in (j + 1):size(std, 2)
+#                 twopointflux!(
+#                     view(F♯r[2], l, i, j, :),
+#                     view(Qr, i, j, :),
+#                     view(Qr, i, l, :),
+#                     view(Jar[i, j], :, 2),
+#                     view(Jar[i, l], :, 2),
+#                     equation,
+#                     op.tpflux,
+#                 )
+#                 @views copy!(F♯r[2][j, i, l, :], F♯r[2][l, i, j, :])
+#             end
+#         end
+
+#     # 3D
+#     else # ND == 3
+#         error("Not implemented yet!")
+#     end
+
+#     # Strong derivative
+#     # 1D
+#     if ND == 1
+#         @inbounds for v in eachvariable(equation), i in eachindex(std)
+#             for k in eachindex(std)
+#                 @views dQr[i, v] += std.K♯[1][i, k] * F♯r[1][k, i, v] +
+#                     std.l[1][i] * (Fli[i, v] - std.l[1]' * Fli[:, v]) -
+#                     std.l[2][i] * (Fri[i, v] - std.l[2]' * Fri[:, v])
+#             end
+#         end
+
+#     # 2D
+#     elseif ND == 2
+#         @inbounds for v in eachvariable(equation)
+#             for j in eachindex(std, 2), i in eachindex(std, 1)
+#                 for k in eachindex(std, 1)
+#                     dQr[i, j, v] += std.K♯[1][i, j, k] * F♯r[1][k, i, j, v]
+#                 end
+#                 for k in eachindex(std, 2)
+#                     dQr[i, j, v] += std.K♯[2][i, j, k] * F♯r[2][k, i, j, v]
+#                 end
+#             end
+#         end
+
+#     # 3D
+#     else # ND == 3
+#         error("Not implemented yet!")
+#     end
+#     return nothing
+# end

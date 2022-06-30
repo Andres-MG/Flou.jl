@@ -20,7 +20,7 @@ end
 tf = 1.0
 solver = ORK256(;williamson_condition=false)
 
-std = StdQuad{Float64}((6, 6), (GLL(), GLL()))
+std = StdQuad{Float64}((6, 6), GLL())
 div = SSFVDivOperator(
     ChandrasekharAverage(),
     LxFNumericalFlux(
