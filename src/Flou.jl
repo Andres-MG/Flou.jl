@@ -61,7 +61,6 @@ export DirichletBC
 
 export DGSEM
 export StdAverageNumericalFlux, LxFNumericalFlux
-export rotate2face!, rotate2phys!
 
 export nregions, nelements
 export eachregion, eachelement
@@ -75,7 +74,7 @@ export BurgersEquation
 export EulerEquation, pressure, energy, soundvelocity
 export ChandrasekharAverage, MatrixDissipation
 export EulerInflowBC, EulerOutflowBC, EulerSlipBC
-export KPPEquation, initial_whirl_KPP!
+export KPPEquation
 
 # TimeDiscretization.jl
 export integrate, get_save_callback
