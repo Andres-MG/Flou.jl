@@ -16,28 +16,30 @@ end
 
 # TODO: Workaround to get fast `mul!` to work with a sparse matrix and an array from
 # `StaticArrays`:
-# https://github.com/JuliaSparse/SparseArrays.jl/blob/a3b2736abbe814899ac4317d7aab7652a650cd90/src/linalg.jl#L30
+# https://github.com/JuliaSparse/SparseArrays.jl/blob/a3b2736abbe814899ac4317d7aab7652a650cd90/src/linalg.jl#L56
 function LinearAlgebra.mul!(
     C::StridedVecOrMat,
-    A::SparseArrays.AbstractSparseMatrixCSC,
+    xA::Transpose{<:Any,<:SparseArrays.AbstractSparseMatrixCSC},
     B::StaticArrays.StaticArray,
     α::Number,
     β::Number,
 )
-    size(A, 2) == size(B, 1) || throw(DimensionMismatch())
-    size(A, 1) == size(C, 1) || throw(DimensionMismatch())
+    A = xA.parent
+    size(A, 2) == size(C, 1) || throw(DimensionMismatch())
+    size(A, 1) == size(B, 1) || throw(DimensionMismatch())
     size(B, 2) == size(C, 2) || throw(DimensionMismatch())
     nzv = SparseArrays.nonzeros(A)
     rv = SparseArrays.rowvals(A)
     if β != 1
-        β != 0 ? LinearAlgebra.rmul!(C, β) : fill!(C, zero(eltype(C)))
+        β != 0 ? rmul!(C, β) : fill!(C, zero(eltype(C)))
     end
     for k in 1:size(C, 2)
         @inbounds for col in 1:size(A, 2)
-            αxj = B[col,k] * α
+            tmp = zero(eltype(C))
             for j in SparseArrays.nzrange(A, col)
-                C[rv[j], k] += nzv[j]*αxj
+                tmp += transpose(nzv[j])*B[rv[j],k]
             end
+            C[col,k] += tmp * α
         end
     end
     return nothing

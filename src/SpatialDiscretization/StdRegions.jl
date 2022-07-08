@@ -78,14 +78,14 @@ struct StdSegment{QT,Dims,RT,MM,CI,LI,FS1,FS2} <: AbstractStdRegion{1,QT,Dims}
     ξ::Vector{SVector{1,RT}}
     ω::Vector{RT}
     M::MM
-    D::Tuple{Matrix{RT}}
-    Q::Tuple{Matrix{RT}}
-    K::Tuple{Matrix{RT}}
-    Ks::Tuple{Matrix{RT}}
-    K♯::Tuple{Matrix{RT}}
-    l::NTuple{2,Matrix{RT}}   # Row vectors
+    D::Tuple{Transpose{RT,Matrix{RT}}}
+    Q::Tuple{Transpose{RT,Matrix{RT}}}
+    K::Tuple{Transpose{RT,Matrix{RT}}}
+    Ks::Tuple{Transpose{RT,Matrix{RT}}}
+    K♯::Tuple{Transpose{RT,Matrix{RT}}}
+    l::NTuple{2,Transpose{RT,Vector{RT}}}   # Row vectors
     lω::NTuple{2,Vector{RT}}
-    _n2e::Matrix{RT}
+    _n2e::Transpose{RT,Matrix{RT}}
 end
 
 is_tensor_product(::StdSegment) = true
@@ -117,7 +117,7 @@ function StdSegment{RT}(np::Integer, qtype::AbstractQuadrature) where {RT<:Real}
     # Lagrange basis
     D = Matrix{RT}(undef, np, np)
     _n2e = similar(D)
-    l = (Matrix{RT}(undef, 1, np), Matrix{RT}(undef, 1, np))
+    l = (Vector{RT}(undef, np), Vector{RT}(undef, np))
     y = fill(zero(RT), np)
     for i in 1:np
         y[i] = one(RT)
@@ -131,7 +131,7 @@ function StdSegment{RT}(np::Integer, qtype::AbstractQuadrature) where {RT<:Real}
     end
 
     # SBP matrices
-    B = l[2]' * l[2] - l[1]' * l[1]
+    B = l[2] * l[2]' - l[1] * l[1]'
     Q = M * D
 
     # Volume operators
@@ -140,7 +140,8 @@ function StdSegment{RT}(np::Integer, qtype::AbstractQuadrature) where {RT<:Real}
     K♯ = 2Q
 
     # Surface contribution
-    lω = Tuple(vec.(l))
+    lω = l
+    l = l .|> transpose |> Tuple
     Ks = -Ks + B
     K♯ = -K♯ + B
 
@@ -161,14 +162,14 @@ function StdSegment{RT}(np::Integer, qtype::AbstractQuadrature) where {RT<:Real}
         ξ,
         ω,
         M,
-        (D,),
-        (Q,),
-        (K,),
-        (Ks,),
-        (K♯,),
+        D |> transpose |> collect |> transpose |> tuple,
+        Q |> transpose |> collect |> transpose |> tuple,
+        K |> transpose |> collect |> transpose |> tuple,
+        Ks |> transpose |> collect |> transpose |> tuple,
+        K♯ |> transpose |> collect |> transpose |> tuple,
         l,
         lω,
-        _n2e,
+        _n2e |> transpose |> collect |> transpose,
     )
 end
 
@@ -232,14 +233,14 @@ struct StdQuad{QT,Dims,RT,MM,CI,LI,FS1,FS2} <: AbstractStdRegion{2,QT,Dims}
     ξ::Vector{SVector{2,RT}}
     ω::Vector{RT}
     M::MM
-    D::NTuple{2,SparseArrays.SparseMatrixCSC{RT,Int}}
-    Q::NTuple{2,SparseArrays.SparseMatrixCSC{RT,Int}}
-    K::NTuple{2,SparseArrays.SparseMatrixCSC{RT,Int}}
-    Ks::NTuple{2,SparseArrays.SparseMatrixCSC{RT,Int}}
-    K♯::NTuple{2,SparseArrays.SparseMatrixCSC{RT,Int}}
-    l::NTuple{4,SparseArrays.SparseMatrixCSC{RT,Int}}
-    lω::NTuple{4,SparseArrays.SparseMatrixCSC{RT,Int}}
-    _n2e::NTuple{2,SparseArrays.SparseMatrixCSC{RT,Int}}
+    D::NTuple{2,Transpose{RT,SparseMatrixCSC{RT,Int}}}
+    Q::NTuple{2,Transpose{RT,SparseMatrixCSC{RT,Int}}}
+    K::NTuple{2,Transpose{RT,SparseMatrixCSC{RT,Int}}}
+    Ks::NTuple{2,Transpose{RT,SparseMatrixCSC{RT,Int}}}
+    K♯::NTuple{2,Transpose{RT,SparseMatrixCSC{RT,Int}}}
+    l::NTuple{4,Transpose{RT,SparseMatrixCSC{RT,Int}}}
+    lω::NTuple{4,Transpose{RT,SparseMatrixCSC{RT,Int}}}
+    _n2e::NTuple{2,Transpose{RT,SparseMatrixCSC{RT,Int}}}
 end
 
 is_tensor_product(::StdQuad) = true
@@ -270,24 +271,24 @@ function StdQuad{RT}(np::AbstractVecOrTuple, qtype::AbstractQuadrature) where {R
     I = (Diagonal(ones(np[1])), Diagonal(ones(np[2])))
     Iω = (Diagonal(fstd[2].ω), Diagonal(fstd[1].ω))
     D = (
-        sparse(kron(I[2], fstd[2].D[1])),
-        sparse(kron(fstd[1].D[1], I[1])),
+        kron(I[2], fstd[2].D[1]),
+        kron(fstd[1].D[1], I[1]),
     )
     Q = (
-        sparse(kron(I[2], fstd[2].Q[1])),
-        sparse(kron(fstd[1].Q[1], I[2])),
+        kron(I[2], fstd[2].Q[1]),
+        kron(fstd[1].Q[1], I[2]),
     )
     _n2e = (
-        sparse(kron(I[2], fstd[2]._n2e[1])),
-        sparse(kron(fstd[1]._n2e[1], I[1])),
+        kron(I[2], fstd[2]._n2e[1]),
+        kron(fstd[1]._n2e[1], I[1]),
     )
     K = (
-        sparse(kron(Iω[2], fstd[2].K[1])),
-        sparse(kron(fstd[1].K[1], Iω[1])),
+        kron(Iω[2], fstd[2].K[1]),
+        kron(fstd[1].K[1], Iω[1]),
     )
     Ks = (
-        sparse(kron(Iω[2], fstd[2].Ks[1])),
-        sparse(kron(fstd[1].Ks[1], Iω[1])),
+        kron(Iω[2], fstd[2].Ks[1]),
+        kron(fstd[1].Ks[1], Iω[1]),
     )
     K♯ = (
         kron(diag(Iω[2]), fstd[2].K♯[1]),
@@ -296,18 +297,18 @@ function StdQuad{RT}(np::AbstractVecOrTuple, qtype::AbstractQuadrature) where {R
 
     # Projection operator
     l = (
-        sparse(kron(I[2], fstd[2].l[1])),
-        sparse(kron(I[2], fstd[2].l[2])),
-        sparse(kron(fstd[1].l[1], I[1])),
-        sparse(kron(fstd[1].l[2], I[1])),
+        kron(I[2], fstd[2].l[1]),
+        kron(I[2], fstd[2].l[2]),
+        kron(fstd[1].l[1], I[1]),
+        kron(fstd[1].l[2], I[1]),
     )
 
     # Surface contribution
     lω = (
-        sparse(kron(Iω[2], fstd[2].lω[1])),
-        sparse(kron(Iω[2], fstd[2].lω[2])),
-        sparse(kron(fstd[1].lω[1], Iω[1])),
-        sparse(kron(fstd[1].lω[2], Iω[1])),
+        kron(Iω[2], fstd[2].lω[1]),
+        kron(Iω[2], fstd[2].lω[2]),
+        kron(fstd[1].lω[1], Iω[1]),
+        kron(fstd[1].lω[2], Iω[1]),
     )
 
     return StdQuad{
@@ -327,14 +328,14 @@ function StdQuad{RT}(np::AbstractVecOrTuple, qtype::AbstractQuadrature) where {R
         ξ,
         ω,
         M,
-        D,
-        Q,
-        K,
-        Ks,
-        K♯,
-        l,
-        lω,
-        _n2e,
+        D .|> transpose .|> sparse .|> transpose |> Tuple,
+        Q .|> transpose .|> sparse .|> transpose |> Tuple,
+        K .|> transpose .|> sparse .|> transpose |> Tuple,
+        Ks .|> transpose .|> sparse .|> transpose |> Tuple,
+        K♯ .|> transpose .|> collect .|> transpose |> Tuple,
+        l .|> transpose .|> sparse .|> transpose |> Tuple,
+        lω .|> transpose .|> sparse .|> transpose |> Tuple,
+        _n2e .|> transpose .|> sparse .|> transpose |> Tuple,
     )
 end
 
