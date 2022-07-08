@@ -48,7 +48,7 @@ function volume_contribution!(
     @inbounds for i in eachindex(std)
         F = volumeflux(view(Q[ireg], i, :, ieloc), equation)
         for ivar in eachvariable(equation)
-            F̃[:, i, ivar] = contravariant(F, Ja[i])
+            F̃[:, i, ivar] = contravariant(view(F, :, ivar), Ja[i])
         end
     end
 
@@ -87,7 +87,7 @@ function volume_contribution!(
     @inbounds for i in eachindex(std)
         F = volumeflux(view(Q[ireg], i, :, ieloc), equation)
         for ivar in eachvariable(equation)
-            F̃[:, i, ivar] = contravariant(F, Ja[i])
+            F̃[:, i, ivar] = contravariant(view(F, :, ivar), Ja[i])
         end
     end
 
@@ -155,7 +155,6 @@ function volume_contribution!(
 
     # Two-point fluxes
     Qr = reshape(view(Q[ireg], :, :, ieloc), (size(std)..., nvariables(equation)))
-    dQr = reshape(dQ, (size(std)..., nvariables(equation)))
     F♯r = [
         reshape(F♯[idir], (size(std, idir), size(std)..., nvariables(equation)))
         for idir in eachdirection(std)
@@ -209,32 +208,12 @@ function volume_contribution!(
     end
 
     # Strong derivative
-    # 1D
-    if ND == 1
-        K♯ = std.K♯[1]
-        @inbounds for v in eachvariable(equation), i in eachindex(std)
-            for k in eachindex(std)
-                dQr[i, v] += K♯[i, k] * F♯r[1][k, i, v]
+    @inbounds for v in eachvariable(equation)
+        for i in eachindex(std)
+            for (K♯, Fs) in zip(std.K♯, F♯)
+                @views dQ[i, v] += dot(K♯[i, :], Fs[:, i, v])
             end
         end
-
-    # 2D
-    elseif ND == 2
-        K♯ = (face(std, 3).K♯[1], face(std, 1).K♯[1])
-        @inbounds for v in eachvariable(equation)
-            for j in eachindex(std, 2), i in eachindex(std, 1)
-                for k in eachindex(std, 1)
-                    dQr[i, j, v] += K♯[1][i, j, k] * F♯r[1][k, i, j, v]
-                end
-                for k in eachindex(std, 2)
-                    dQr[i, j, v] += K♯[2][i, j, k] * F♯r[2][k, i, j, v]
-                end
-            end
-        end
-
-    # 3D
-    else # ND == 3
-        error("Not implemented yet!")
     end
     return nothing
 end

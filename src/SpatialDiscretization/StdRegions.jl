@@ -136,7 +136,7 @@ function StdSegment{RT}(np::Integer, qtype::AbstractQuadrature) where {RT<:Real}
 
     # Volume operators
     K = Q' |> Matrix{RT}
-    Ks = Q
+    Ks = Q |> copy
     K♯ = 2Q
 
     # Surface contribution
@@ -286,12 +286,12 @@ function StdQuad{RT}(np::AbstractVecOrTuple, qtype::AbstractQuadrature) where {R
         sparse(kron(fstd[1].K[1], Iω[1])),
     )
     Ks = (
-        sparse(kron(Iω[2], fstd[1].Ks[1])),
-        sparse(kron(fstd[2].Ks[1], Iω[1])),
+        sparse(kron(Iω[2], fstd[2].Ks[1])),
+        sparse(kron(fstd[1].Ks[1], Iω[1])),
     )
     K♯ = (
-        sparse(kron(Iω[2], fstd[1].K♯[1])),
-        sparse(kron(fstd[2].K♯[1], Iω[1])),
+        kron(diag(Iω[2]), fstd[2].K♯[1]),
+        kron(fstd[1].K♯[1], diag(Iω[1])),
     )
 
     # Projection operator

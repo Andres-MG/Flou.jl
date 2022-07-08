@@ -1,6 +1,6 @@
 module Flou
 
-using LinearAlgebra: LinearAlgebra, dot, mul!, Diagonal, factorize, ldiv!
+using LinearAlgebra: LinearAlgebra, dot, mul!, diag, Diagonal, factorize, ldiv!
 using SparseArrays: SparseArrays, sparse, mul!
 using StaticArrays: StaticArrays, SVector, MVector, SMatrix, MMatrix, MArray, SDiagonal
 using StructArrays: StructArrays, StructVector, LazyRows, LazyRow
