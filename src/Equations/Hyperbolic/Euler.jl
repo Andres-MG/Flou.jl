@@ -54,8 +54,8 @@ function volumeflux(Q, eq::EulerEquation{2})
     p = pressure(Q, eq)
     return SMatrix{2,4}(
         ρu,           ρv,
-        ρu * u + p,   ρv * v,
-        ρv * u,       ρv * v + p,
+        ρu * u + p,   ρv * u,
+        ρu * v,       ρv * v + p,
         (ρe + p) * u, (ρe + p) * v,
     )
 end
@@ -66,9 +66,9 @@ function volumeflux(Q, eq::EulerEquation{3})
     p = pressure(Q, eq)
     return SMatrix{3,5}(
         ρu,           ρv,           ρw,
-        ρu * u + p,   ρu * v,       ρu * w,
-        ρv * u,       ρv * v + p,   ρv * w,
-        ρw * u,       ρw * v,       ρw * w + p,
+        ρu * u + p,   ρv * u,       ρw * u,
+        ρu * v,       ρv * v + p,   ρw * v,
+        ρu * w,       ρv * w,       ρw * w + p,
         (ρe + p) * u, (ρe + p) * v, (ρe + p) * w,
     )
 end
@@ -422,7 +422,7 @@ function numericalflux(
         u, v = (ul + ur) / 2, (vl + vr) / 2
     else # ND == 3
         ρl, ul, vl, wl, pl = vars_cons2prim(Ql, eq)
-        ρr, ur, vr, wl, pr = vars_cons2prim(Qr, eq)
+        ρr, ur, vr, wr, pr = vars_cons2prim(Qr, eq)
         u, v, w = (ul + ur) / 2, (vl + vr) / 2, (wl + wr) / 2
     end
 

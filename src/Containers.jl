@@ -138,7 +138,7 @@ end
 function Base.show(io::IO, ::MIME"text/plain", m::MortarStateVector{RT}) where {RT}
     @nospecialize
     nface = length(m.data)
-    nvars = size(s.data[1][1], 2)
+    nvars = size(m.data[1][1], 2)
     print(io, nface, " face mortar state vector with ", nvars,
         " variable(s) and eltype ", RT)
 end

@@ -105,7 +105,7 @@ function pointdata2VTKHDF(data, dg::DiscontinuousGalerkin)
     for ir in eachregion(dg.dofhandler)
         std = dg.stdvec[ir]
         tmp = Vector{eltype(data)}(undef, ndofs(std))
-        for ie in eachelement(dh.dofhandler, ir)
+        for ie in eachelement(dg.dofhandler, ir)
             project2equispaced!(tmp, view(data[ir], :, ie), std)
             append!(datavec, tmp)
         end

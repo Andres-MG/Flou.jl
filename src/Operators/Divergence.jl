@@ -16,8 +16,7 @@ function surface_contribution!(
 
     @inbounds for (s, (face, pos)) in enumerate(zip(iface, facepos))
         mul!(
-            dQ, std.lω[s], Fn[face][pos],
-            -one(eltype(dQ)), one(eltype(dQ)),
+            dQ, std.lω[s], Fn[face][pos], -one(eltype(dQ)), one(eltype(dQ)),
         )
     end
     return nothing
@@ -114,7 +113,7 @@ struct SplitDivOperator{T} <: AbstractDivOperator
     tpflux::T
 end
 
-function twopointflux! end
+function twopointflux end
 
 function volume_contribution!(
     dQ,

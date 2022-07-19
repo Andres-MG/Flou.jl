@@ -26,7 +26,7 @@ nbdfaces(m::AbstractMesh, i) = length(m.bdfaces[i])
 nperiodic(m::AbstractMesh) = length(m.periodic)
 nvertices(m::AbstractMesh) = length(m.nodes)
 nvertices(e::MeshElement) = length(e.nodeinds)
-nvertices(f::MeshFace) = lengt(f.nodeinds)
+nvertices(f::MeshFace) = length(f.nodeinds)
 
 elements(m::AbstractMesh) = LazyRows(m.elements)
 faces(m::AbstractMesh) = LazyRows(m.faces)

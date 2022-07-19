@@ -99,7 +99,7 @@ function PhysicalSubgrid(std, ::CartesianMesh{1,RT}, _) where {RT}
     n = (fill(SVector(one(RT)), nx),)
     t = (fill(SVector(zero(RT)), nx),)
     b = (fill(SVector(zero(RT)), nx),)
-    Jf = (fill(one(RT), nx))
+    Jf = (fill(one(RT), nx),)
     return PhysicalSubgrid(n, t, b, Jf)
 end
 
