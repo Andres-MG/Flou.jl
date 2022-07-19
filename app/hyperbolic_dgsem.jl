@@ -18,29 +18,39 @@ end
 # Discretization
 Δt = 1e-4
 tf = 1.0
-solver = ORK256(;williamson_condition=false)
+solver = ORK256(williamson_condition=false)
 
-std = StdQuad{Float64}((6, 6), GLL())
+std = StdQuad{Float64}((7, 7), GL())
 div = SSFVDivOperator(
     ChandrasekharAverage(),
     LxFNumericalFlux(
         StdAverageNumericalFlux(),
         1.0,
     ),
-    1e+0,
+    # 3e-1,
+    # MatrixDissipation(
+    #     ChandrasekharAverage(),
+    #     1.0,
+    # ),
+    1e-1,
 )
 numflux = MatrixDissipation(
     ChandrasekharAverage(),
     1.0,
 )
+# numflux = LxFNumericalFlux(
+#     StdAverageNumericalFlux(),
+#     1.0,
+# )
 
-mesh = StepMesh{Float64}((0,0), (3, 1), 0.6, 0.2, ((8, 4), (8, 12), (16, 12)))
+# mesh = CartesianMesh{2,Float64}((0, 0), (1, 0.5), (11, 5))
+mesh = StepMesh{Float64}((0, 0), (3, 1), 0.6, 0.2, ((8, 4), (8, 12), (16, 12)))
 
 equation = EulerEquation{2}(div, 1.4)
 
 M0 = 3.0
 a0 = soundvelocity(1.0, 1.0, equation)
-Q0 = Flou.vars_prim2cons((1.0, M0*a0, 0.0, 1.0), equation)
+Q0 = Flou.vars_prim2cons((1.0, M0 * a0, 0.0, 1.0), equation)
 ∂Ω = [
     1 => EulerInflowBC(Q0),
     2 => EulerOutflowBC(),
@@ -54,7 +64,6 @@ DG = DGSEM(mesh, std, equation, ∂Ω, numflux)
 Q = StateVector{Float64}(undef, DG.dofhandler, DG.stdvec, nvariables(equation))
 for ie in eachelement(mesh)
     for i in eachindex(DG.stdvec[1])
-        xy = coords(DG.physelem, ie)[i]
         Q[1][i, :, ie] .= Q0
     end
 end
@@ -62,7 +71,7 @@ end
 display(DG)
 println()
 
-sb = get_save_callback("../results/solution", range(0, tf, 20))
+sb = get_save_callback("../results/solution", range(0, tf, 10))
 
 @info "Starting simulation..."
 

@@ -12,9 +12,6 @@ function rhs!(_dQ, _Q, dg::DGSEM{<:HyperbolicEquation}, time)
     # Restart time derivative
     fill!(dQ, zero(eltype(dQ)))
 
-    # Volume flux
-    volume_contribution!(dQ, Q, dg, equation.operators[1])
-
     # Project Q to faces
     project2faces!(dg.Qf, Q, dg)
 
@@ -26,6 +23,9 @@ function rhs!(_dQ, _Q, dg::DGSEM{<:HyperbolicEquation}, time)
 
     # Surface contribution
     surface_contribution!(dQ, dg.Fn, dg, equation.operators[1])
+
+    # Volume flux
+    volume_contribution!(dQ, Q, dg, equation.operators[1])
 
     # Apply mass matrix
     apply_massmatrix!(dQ, dg)
