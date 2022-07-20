@@ -1,5 +1,5 @@
 """
-    StepMesh{RT<:Real}(start, finish, height, offset, nxy; side=:right)
+    StepMesh{RT<:Real}(start, finish, offset, height, nxy)
 
 A mesh representing a domain with the shape of an L.
 
