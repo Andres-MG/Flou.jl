@@ -27,7 +27,13 @@ function ndirections end
 
 function massmatrix end
 
-function project2equispaced! end
+@inline function project2equispaced!(Qe, Q, s::AbstractStdRegion)
+    @boundscheck length(Qe) == length(Q) || throw(DimensionMismatch(
+        "`Qe` and `Q` must have the same length (== ndofs)."
+    ))
+    @inbounds Qe .= s._n2e * Q
+    return nothing
+end
 
 function slave2master end
 
@@ -203,14 +209,6 @@ function massmatrix(std::StdSegment, J)
     return Diagonal(J) * std.M
 end
 
-@inline function project2equispaced!(Qe, Q, s::StdSegment)
-    @boundscheck length(Qe) == length(Q) || throw(DimensionMismatch(
-        "`Qe` and `Q` must have the same length (== ndofs)."
-    ))
-    @inbounds Qe .= s._n2e * Q
-    return nothing
-end
-
 function slave2master(i, orientation, std::StdSegment)
     return if orientation == 1
         i
@@ -254,7 +252,7 @@ struct StdQuad{QT,Dims,RT,MM,CI,LI,FS1,FS2} <: AbstractStdRegion{2,QT,Dims}
     l::NTuple{4,Transpose{RT,SparseMatrixCSC{RT,Int}}}
     lω::NTuple{4,Transpose{RT,SparseMatrixCSC{RT,Int}}}
     lωFV::NTuple{4,Transpose{RT,SparseMatrixCSC{RT,Int}}}
-    _n2e::NTuple{2,Transpose{RT,SparseMatrixCSC{RT,Int}}}
+    _n2e::Transpose{RT,SparseMatrixCSC{RT,Int}}
 end
 
 is_tensor_product(::StdQuad) = true
@@ -292,10 +290,7 @@ function StdQuad{RT}(np::AbstractVecOrTuple, qtype::AbstractQuadrature) where {R
         kron(I[2], fstd[2].Q[1]),
         kron(fstd[1].Q[1], I[2]),
     )
-    _n2e = (
-        kron(I[2], fstd[2]._n2e[1]),
-        kron(fstd[1]._n2e[1], I[1]),
-    )
+    _n2e = kron(fstd[1]._n2e, fstd[2]._n2e)
     K = (
         kron(Iω[2], fstd[2].K[1]),
         kron(fstd[1].K[1], Iω[1]),
@@ -356,7 +351,7 @@ function StdQuad{RT}(np::AbstractVecOrTuple, qtype::AbstractQuadrature) where {R
         l .|> transpose .|> sparse .|> transpose |> Tuple,
         lω .|> transpose .|> sparse .|> transpose |> Tuple,
         lωFV .|> transpose .|> sparse .|> transpose |> Tuple,
-        _n2e .|> transpose .|> sparse .|> transpose |> Tuple,
+        _n2e |> transpose |> sparse |> transpose,
     )
 end
 
@@ -377,18 +372,6 @@ end
 
 function massmatrix(std::StdQuad, J)
     return Diagonal(J) * std.M
-end
-
-@inline function project2equispaced!(Qe, Q, s::StdQuad)
-    @boundscheck length(Qe) == length(Q) == ndofs(s) || throw(DimensionMismatch(
-        "`Qe` and `Q` must have the same length (== ndofs)."
-    ))
-    @inbounds begin
-        Qr = reshape(Q, size(s))
-        Qer = reshape(Qe, size(s))
-        Qer .= s._n2e[1] * Qr * s._n2e[2]'
-    end
-    return nothing
 end
 
 function slave2master(i, orientation, std::StdQuad)
