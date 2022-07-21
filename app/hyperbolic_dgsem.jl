@@ -72,12 +72,14 @@ end
 display(DG)
 println()
 
+mb, mvals = get_monitors_callback(Float64, :entropy)
 sb = get_save_callback("../results/solution", save_steps)
+cb = make_callback_list(mb, sb)
 
 @info "Starting simulation..."
 
 _, exetime = integrate(Q, DG, solver, tf; save_everystep=false, alias_u0=true,
-    adaptive=false, dt=Δt, callback=sb, progress=true, progress_steps=50)
+    adaptive=false, dt=Δt, callback=cb, progress=true, progress_steps=50)
 
 @info "Elapsed time: $(exetime) s"
 @info "Time per iteration and DOF: $(exetime / (tf/Δt) / ndofs(DG)) s"

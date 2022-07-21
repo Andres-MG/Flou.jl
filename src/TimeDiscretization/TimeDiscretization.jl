@@ -61,3 +61,34 @@ function get_save_callback(basename, iterations)
     end
     return DiscreteCallback(condition, affect, initialize=initialize)
 end
+
+function get_monitors_callback(rt, monitors...)
+    # Entropy monitor
+    if monitors[1] == :entropy
+        saved_vals = SavedValues(rt, rt)
+        save_func = (u, _, integrator) -> begin
+            disc = integrator.p
+            (; dofhandler, stdvec, equation) = disc
+            s = zero(eltype(rt))
+            Q = StateVector(u, dofhandler, stdvec, nvariables(equation))
+            s = zero(rt)
+            @inbounds for ir in eachregion(Q), ie in eachelement(Q, ir)
+                for i in eachindex(stdvec[ir])
+                    s += math_entropy(view(Q[ir], i, :, ie), equation)
+                end
+            end
+            return s
+        end
+    end
+    return (SavingCallback(save_func, saved_vals), saved_vals)
+end
+
+function make_callback_list(callbacks...)
+    return if isempty(callbacks)
+        nothing
+    elseif length(callbacks) == 1
+        callbacks[1]
+    else
+        CallbackSet(callbacks...)
+    end
+end

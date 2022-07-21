@@ -10,7 +10,8 @@ using Polynomials: Polynomials, Polynomial, derivative
 using SpecialPolynomials: SpecialPolynomials, Lagrange
 using Printf: Printf, @printf, @sprintf
 using HDF5: HDF5
-using OrdinaryDiffEq: OrdinaryDiffEq, ODEProblem, solve, DiscreteCallback
+using OrdinaryDiffEq: OrdinaryDiffEq, ODEProblem, solve, DiscreteCallback, CallbackSet
+using DiffEqCallbacks: DiffEqCallbacks, SavingCallback, SavedValues
 
 # Globals
 export FlouVersion, print_flou_header
@@ -68,13 +69,13 @@ export WeakDivOperator, StrongDivOperator, SplitDivOperator, SSFVDivOperator
 # Equations.jl
 export LinearAdvection
 export BurgersEquation
-export EulerEquation, pressure, energy, soundvelocity
+export EulerEquation, pressure, energy, math_entropy, soundvelocity
 export ChandrasekharAverage, MatrixDissipation
 export EulerInflowBC, EulerOutflowBC, EulerSlipBC
 export KPPEquation
 
 # TimeDiscretization.jl
-export integrate, get_save_callback
+export integrate, make_callback_list, get_save_callback, get_monitors_callback
 
 # Basic utilities
 include("Utilities.jl")

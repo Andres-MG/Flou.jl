@@ -163,6 +163,17 @@ function energy(Q, eq::EulerEquation{3})
     return p / (eq.γ - 1) + ρ * (u^2 + v^2 + w^2) / 2
 end
 
+"""
+    math_entropy(Q, eq::EulerEquation)
+
+Compute the mathematical entropy, `σ`, from the *conservative* variables `Q`.
+"""
+function math_entropy(Q, eq::EulerEquation)
+    ρ = Q[1]
+    p = pressure(Q, eq)
+    return log(p) - eq.γ * log(ρ)
+end
+
 function soundvelocity(ρ, p, eq::EulerEquation)
     return sqrt(eq.γ * p / ρ)
 end
@@ -206,7 +217,7 @@ end
 function vars_cons2entropy(Q, eq::EulerEquation{1})
     ρ, ρu, _ = Q
     p = pressure(Q, eq)
-    s = log(p) - eq.γ * log(ρ)
+    s = math_entropy(Q, eq)
     return SVector(
         (eq.γ - s) / (eq.γ - 1) - ρu^2 / ρ / 2p,
         ρu / p,
@@ -217,7 +228,7 @@ end
 function vars_cons2entropy(Q, eq::EulerEquation{2})
     ρ, ρu, ρv, _ = Q
     p = pressure(Q, eq)
-    s = log(p) - eq.γ * log(ρ)
+    s = math_entropy(Q, eq)
     return SVector(
         (eq.γ - s) / (eq.γ - 1) - (ρu^2 + ρv^2) / ρ / 2p,
         ρu / p,
@@ -229,7 +240,7 @@ end
 function vars_cons2entropy(Q, eq::EulerEquation{3})
     ρ, ρu, ρv, ρw, _ = Q
     p = pressure(Q, eq)
-    s = log(p) - eq.γ * log(ρ)
+    s = math_entropy(Q, eq)
     return SVector(
         (eq.γ - s) / (eq.γ - 1) - (ρu^2 + ρv^2 + ρw^2) / ρ / 2p,
         ρu / p,
