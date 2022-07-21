@@ -18,6 +18,7 @@ end
 # Discretization
 Δt = 1e-4
 tf = 1.0
+save_steps = 1:100:(Int(round(tf/Δt)) + 1)
 solver = ORK256(williamson_condition=false)
 
 std = StdQuad{Float64}((7, 7), GL())
@@ -71,7 +72,7 @@ end
 display(DG)
 println()
 
-sb = get_save_callback("../results/solution", range(0, tf, 10))
+sb = get_save_callback("../results/solution", save_steps)
 
 @info "Starting simulation..."
 

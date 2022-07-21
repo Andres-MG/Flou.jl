@@ -30,8 +30,12 @@ end
 #==========================================================================================#
 #                                        Callbacks                                         #
 
-function get_save_callback(basename, tstops)
-    f = function save_callback(integrator)
+function _is_iter_selected(iterations)
+    return (_, _, integrator) -> integrator.iter in iterations
+end
+
+function _save_function(basename)
+    return (integrator) -> begin
         disc = integrator.p
         (; dofhandler, stdvec, equation) = disc
 
@@ -43,8 +47,17 @@ function get_save_callback(basename, tstops)
         add_solution!(file, Q, disc)
 
         close_file!(file)
-        @info "Saved solution at t=$(integrator.t) in `$(filename)`"
+        msg = @sprintf("Saved solution at t=%.7g in `%s`", integrator.t, filename)
+        @info msg
         return nothing
     end
-    return PresetTimeCallback(tstops, f)
+end
+
+function get_save_callback(basename, iterations)
+    condition = _is_iter_selected(iterations)
+    affect = _save_function(basename)
+    initialize = (_, _, _, integrator) -> begin
+        affect(integrator)
+    end
+    return DiscreteCallback(condition, affect, initialize=initialize)
 end
