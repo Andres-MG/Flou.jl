@@ -70,7 +70,7 @@ export WeakDivOperator, StrongDivOperator, SplitDivOperator, SSFVDivOperator
 export LinearAdvection
 export BurgersEquation
 export EulerEquation, pressure, energy, math_entropy, soundvelocity
-export ChandrasekharAverage, MatrixDissipation
+export ChandrasekharAverage, ScalarDissipation, MatrixDissipation
 export EulerInflowBC, EulerOutflowBC, EulerSlipBC
 export KPPEquation
 

@@ -486,6 +486,81 @@ function numericalflux(
     end
 end
 
+struct ScalarDissipation{T,RT} <: AbstractNumericalFlux
+    avg::T
+    intensity::RT
+end
+
+function numericalflux(
+    Ql,
+    Qr,
+    n,
+    eq::EulerEquation{ND},
+    nf::ScalarDissipation,
+) where {
+    ND,
+}
+    # Variables
+    if ND == 1
+        ρl, ul, pl = vars_cons2prim(Ql, eq)
+        ρul = Ql[2]
+        ρr, ur, pr = vars_cons2prim(Qr, eq)
+        ρur = Qr[2]
+        u = (ul + ur) / 2
+    elseif ND == 2
+        ρl, ul, vl, pl = vars_cons2prim(Ql, eq)
+        ρul, ρvl = Ql[2], Ql[3]
+        ρr, ur, vr, pr = vars_cons2prim(Qr, eq)
+        ρur, ρvr = Qr[2], Qr[3]
+        u, v = (ul + ur) / 2, (vl + vr) / 2
+    else # ND == 3
+        ρl, ul, vl, wl, pl = vars_cons2prim(Ql, eq)
+        ρul, ρvl, ρwl = Qr[2], Qr[3], Qr[4]
+        ρr, ur, vr, wr, pr = vars_cons2prim(Qr, eq)
+        ρur, ρvr, ρwr = Qr[2], Qr[3], Qr[4]
+        u, v, w = (ul + ur) / 2, (vl + vr) / 2, (wl + wr) / 2
+    end
+
+    # Averages
+    ρ = (ρl + ρr) / 2
+    βl, βr = ρl / 2pl, ρr / 2pr
+    β = logarithmic_mean(βl, βr)
+    al = soundvelocity(ρl, pl, eq)
+    ar = soundvelocity(ρr, pr, eq)
+
+    # Averaging term
+    Fn = numericalflux(Ql, Qr, n, eq, nf.avg)
+
+    # Dissipative term
+    λ = max(abs(ul) + al, abs(ur) + ar)
+    𝓓 = if ND == 1
+        SVector(
+            ρr - ρl,
+            ρur - ρul,
+            (1 / β / (eq.γ - 1) + ul * ur) * (ρr - ρl) / 2 +
+                ρ * (u * (ur - ul) + (1/βr - 1/βl) / 2(eq.γ - 1)),
+        )
+    elseif ND == 2
+        SVector(
+            ρr - ρl,
+            ρur - ρul,
+            ρvr - ρvl,
+            (1 / β / (eq.γ - 1) + ul * ur + vl * vr) * (ρr - ρl) / 2 +
+                ρ * (u * (ur - ul) + v * (vr - vl) + (1/βr - 1/βl) / 2(eq.γ - 1)),
+        )
+    else # ND == 3
+        SVector(
+            ρr - ρl,
+            ρur - ρul,
+            ρvr - ρvl,
+            ρwr - ρwl,
+            (1 / β / (eq.γ - 1) + ul * ur + vl * vr + wl * wr) * (ρr - ρl) / 2 +
+                ρ * (u * (ur - ul) + v * (vr - vl) + w * (wr - wl) + (1/βr - 1/βl) / 2(eq.γ - 1)),
+        )
+    end
+    return SVector(Fn .- λ / 2 .* 𝓓 .* nf.intensity)
+end
+
 struct MatrixDissipation{T,RT} <: AbstractNumericalFlux
     avg::T
     intensity::RT
@@ -524,7 +599,7 @@ function numericalflux(
     p = (ρl + ρr) / (2 * (βl + βr))
     β = logarithmic_mean(βl, βr)
     a = soundvelocity(ρ, p, eq)
-    h = eq.γ / (eq.γ - 1) / 2β + v2 / 2
+    h = eq.γ / 2β / (eq.γ - 1) + v2 / 2
 
     # Averaging term
     Fn = numericalflux(Ql, Qr, n, eq, nf.avg)
