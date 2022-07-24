@@ -73,8 +73,9 @@ function get_monitors_callback(rt, monitors...)
             Q = StateVector(u, dofhandler, stdvec, nvariables(equation))
             s = zero(rt)
             @inbounds for ir in eachregion(Q), ie in eachelement(Q, ir)
-                for i in eachindex(stdvec[ir])
-                    s += math_entropy(view(Q[ir], i, :, ie), equation)
+                std = stdvec[ir]
+                for i in eachindex(std)
+                    s += math_entropy(view(Q[ir], i, :, ie), equation) * std.ω[i]
                 end
             end
             return s
