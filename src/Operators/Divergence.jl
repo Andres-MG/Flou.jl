@@ -261,16 +261,25 @@ function surface_contribution!(
 end
 
 function _ssfv_compute_delta(b, c)
-    δ = sqrt(b^2 + c)
-    δ = (δ - b) / δ
-    # δ = if b <= 0
-    #     one(b)
-    # elseif b >= c
-    #     zero(b)
-    # else
-    #     (1 + cospi(b / c)) / 2
-    # end
+    # Fisher
+    # δ = sqrt(b^2 + c)
+    # δ = (δ - b) / δ
+
+    # Ours
+    δ = if b <= 0
+        one(b)
+    elseif b >= c
+        zero(b)
+    else
+        (1 + cospi(b / c)) / 2
+    end
+
+    # Constant
+    # return c
+
+    # Limiting
     return max(δ, 0.5)
+    # return δ
 end
 
 function _ssfv_flux_1d!(F̄c, Q, Qmat, Ja, ns, ts, bs, Js, std, equation, op, idir)
@@ -474,11 +483,10 @@ function _ssfv_gauss_flux_1d!(
         F̄v .*= Js[i]
 
         # Blending
-        # Wl = vars_cons2entropy(view(Q, i - 1, :), equation)
-        # Wr = vars_cons2entropy(view(Q, i, :), equation)
-        # b = dot(Wr - Wl, view(F̄s, i, :) - F̄v)
-        # δ = _ssfv_compute_delta(b, op.blend)
-        δ = op.blend
+        Wl = view(W, i - 1, :)
+        Wr = view(W, i, :)
+        b = dot(Wr - Wl, view(F̄c, i, :) - F̄v)
+        δ = _ssfv_compute_delta(b, op.blend)
         F̄c[i, :] .= F̄v .+ δ .* (view(F̄c, i, :) .- F̄v)
     end
 end
