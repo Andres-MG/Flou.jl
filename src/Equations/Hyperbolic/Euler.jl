@@ -174,8 +174,22 @@ function math_entropy(Q, eq::EulerEquation)
     return log(p) - eq.γ * log(ρ)
 end
 
+function soundvelocity_sqr(Q, eq::EulerEquation)
+    ρ = Q[1]
+    p = pressure(Q, eq)
+    return soundvelocity_sqr(ρ, p, eq)
+end
+
+function soundvelocity_sqr(ρ, p, eq::EulerEquation)
+    return eq.γ * p / ρ
+end
+
+function soundvelocity(Q, eq::EulerEquation)
+    return soundvelocity_sqr(Q, eq) |> sqrt
+end
+
 function soundvelocity(ρ, p, eq::EulerEquation)
-    return sqrt(eq.γ * p / ρ)
+    return soundvelocity_sqr(ρ, p, eq) |> sqrt
 end
 
 function vars_cons2prim(Q, eq::EulerEquation{1})
