@@ -33,7 +33,7 @@ nregions(::StepMesh) = 3
 region(m::StepMesh, i) = m.regionmap[i]
 eachregion(m::StepMesh) = Base.OneTo(nregions(m))
 
-nelements(m::StepMesh, i) = count(==(i), m.regionmap)
+nelements(m::StepMesh, i) = count(prod(m.nelements[i]))
 
 function StepMesh{RT}(start, finish, offset, height, nxy) where {RT}
     length(start) == 2 || throw(ArgumentError(

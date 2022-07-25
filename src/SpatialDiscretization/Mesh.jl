@@ -95,5 +95,6 @@ function coords(ξ::AbstractVector, nodes::AbstractVector, ::HexLinearMapping)
     error("Not implemented yet!")
 end
 
+include("GmshMesh.jl")
 include("CartesianMesh.jl")
 include("StepMesh.jl")

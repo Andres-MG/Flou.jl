@@ -12,6 +12,7 @@ using Printf: Printf, @printf, @sprintf
 using HDF5: HDF5
 using OrdinaryDiffEq: OrdinaryDiffEq, ODEProblem, solve
 using DiffEqCallbacks: DiffEqCallbacks, PresetTimeCallback
+using Gmsh: gmsh
 
 # Globals
 export FlouVersion, print_flou_header
@@ -39,9 +40,6 @@ const AbstractVecOrTuple = Union{AbstractVector,Tuple}
 export StateVector, MortarStateVector
 export nregions, nvariables, eachregion, eachvariable
 
-# FlouBiz.jl
-export save
-
 # EquationsInterface.jl
 export nvariables, eachvariable, variablenames
 
@@ -56,7 +54,7 @@ export eachelement, eachboundary, eachface, eachintface, eachbdface, eachvertex
 
 export GaussQuadrature, GL, GaussLobattoQuadrature, GLL
 export StdSegment, StdQuad
-export ndofs, is_tensor_product, ndirections, eachdirection, ndofs, quadratures, quadrature
+export ndofs, is_tensor_product, ndirections, eachdirection, ndofs, quadrature
 
 export DirichletBC
 
