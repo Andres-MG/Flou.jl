@@ -12,6 +12,9 @@ function rhs!(_dQ, _Q, dg::DGSEM{<:HyperbolicEquation}, time)
     # Restart time derivative
     fill!(dQ, zero(eltype(dQ)))
 
+    # Volume flux
+    volume_contribution!(dQ, Q, dg, equation.operators[1])
+
     # Project Q to faces
     project2faces!(dg.Qf, Q, dg)
 
@@ -22,10 +25,7 @@ function rhs!(_dQ, _Q, dg::DGSEM{<:HyperbolicEquation}, time)
     interface_fluxes!(dg.Fn, dg.Qf, dg, dg.riemannsolver)
 
     # Surface contribution
-    surface_contribution!(dQ, dg.Fn, dg, equation.operators[1])
-
-    # Volume flux
-    volume_contribution!(dQ, Q, dg, equation.operators[1])
+    surface_contribution!(dQ, Q, dg.Fn, dg, equation.operators[1])
 
     # Apply mass matrix
     apply_massmatrix!(dQ, dg)
@@ -41,17 +41,23 @@ function volume_contribution!(dQ, Q, dg, operator)
         std = dg.stdvec[ireg]
         @flouthreads for ieloc in eachelement(dg.dofhandler)
             ie = reg2loc(dg.dofhandler, ireg, ieloc)
-            volume_contribution!(view(dQ[ireg], :, :, ieloc), Q, ie, std, dg, operator)
+            volume_contribution!(
+                view(dQ[ireg], :, :, ieloc), view(Q[ireg], :, :, ieloc),
+                ie, std, dg, operator,
+            )
         end
     end
 end
 
-function surface_contribution!(dQ, Fn, dg, operator)
+function surface_contribution!(dQ, Q, Fn, dg, operator)
     for ireg in eachregion(dg.dofhandler)
         std = dg.stdvec[ireg]
         @flouthreads for ieloc in eachelement(dg.dofhandler, ireg)
             ie = reg2loc(dg.dofhandler, ireg, ieloc)
-            surface_contribution!(view(dQ[ireg], :, :, ieloc), Fn, ie, std, dg, operator)
+            surface_contribution!(
+                view(dQ[ireg], :, :, ieloc), view(Q[ireg], :, :, ieloc),
+                Fn, ie, std, dg, operator,
+            )
         end
     end
     return nothing

@@ -91,7 +91,6 @@ struct StdSegment{QT,Dims,RT,MM,CI,LI,FS1,FS2} <: AbstractStdRegion{1,QT,Dims}
     K♯::Tuple{Transpose{RT,Matrix{RT}}}
     l::NTuple{2,Transpose{RT,Vector{RT}}}   # Row vectors
     lω::NTuple{2,Vector{RT}}
-    lωFV::NTuple{2,Vector{RT}}
     _n2e::Transpose{RT,Matrix{RT}}
 end
 
@@ -148,17 +147,6 @@ function StdSegment{RT}(np::Integer, qtype::AbstractQuadrature) where {RT<:Real}
 
     # Surface contribution
     lω = l
-    lωFV = if qtype isa(GaussLobattoQuadrature)
-        lω
-    else
-        let
-            l1 = zeros(RT, np)
-            l1[1] = one(RT)
-            l2 = zeros(RT, np)
-            l2[end] = one(RT)
-            (l1, l2)
-        end
-    end
     l = l .|> transpose |> Tuple
     Ks = -Ks + B
     K♯ = -K♯ + B
@@ -187,7 +175,6 @@ function StdSegment{RT}(np::Integer, qtype::AbstractQuadrature) where {RT<:Real}
         K♯ |> transpose |> collect |> transpose |> tuple,
         l,
         lω,
-        lωFV,
         _n2e |> transpose |> collect |> transpose,
     )
 end
@@ -251,7 +238,6 @@ struct StdQuad{QT,Dims,RT,MM,CI,LI,FS1,FS2} <: AbstractStdRegion{2,QT,Dims}
     K♯::NTuple{2,Transpose{RT,SparseMatrixCSC{RT,Int}}}
     l::NTuple{4,Transpose{RT,SparseMatrixCSC{RT,Int}}}
     lω::NTuple{4,Transpose{RT,SparseMatrixCSC{RT,Int}}}
-    lωFV::NTuple{4,Transpose{RT,SparseMatrixCSC{RT,Int}}}
     _n2e::Transpose{RT,SparseMatrixCSC{RT,Int}}
 end
 
@@ -319,12 +305,6 @@ function StdQuad{RT}(np::AbstractVecOrTuple, qtype::AbstractQuadrature) where {R
         kron(fstd[1].lω[1], Iω[1]),
         kron(fstd[1].lω[2], Iω[1]),
     )
-    lωFV = (
-        kron(Iω[2], fstd[2].lωFV[1]),
-        kron(Iω[2], fstd[2].lωFV[2]),
-        kron(fstd[1].lωFV[1], Iω[1]),
-        kron(fstd[1].lωFV[2], Iω[1]),
-    )
 
     return StdQuad{
         typeof(qtype),
@@ -350,7 +330,6 @@ function StdQuad{RT}(np::AbstractVecOrTuple, qtype::AbstractQuadrature) where {R
         K♯ .|> transpose .|> collect .|> transpose |> Tuple,
         l .|> transpose .|> sparse .|> transpose |> Tuple,
         lω .|> transpose .|> sparse .|> transpose |> Tuple,
-        lωFV .|> transpose .|> sparse .|> transpose |> Tuple,
         _n2e |> transpose |> sparse |> transpose,
     )
 end
