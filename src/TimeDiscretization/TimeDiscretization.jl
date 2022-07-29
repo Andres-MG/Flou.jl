@@ -68,14 +68,19 @@ function get_monitors_callback(rt, monitors...)
         saved_vals = SavedValues(rt, rt)
         save_func = (u, _, integrator) -> begin
             disc = integrator.p
-            (; dofhandler, stdvec, equation) = disc
-            s = zero(eltype(rt))
+            (; dofhandler, physelem, stdvec, equation) = disc
             Q = StateVector(u, dofhandler, stdvec, nvariables(equation))
             s = zero(rt)
-            @inbounds for ir in eachregion(Q), ie in eachelement(Q, ir)
+            @inbounds for ir in eachregion(Q)
                 std = stdvec[ir]
-                for i in eachindex(std)
-                    s += math_entropy(view(Q[ir], i, :, ie), equation) * std.ω[i]
+                svec = MVector{ndofs(std),rt}(undef)
+                for ie in eachelement(Q, ir)
+                    ieglob = reg2loc(dofhandler, ir, ie)
+                    pelem = element(physelem, ieglob)
+                    for i in eachindex(std)
+                        svec[i] = math_entropy(view(Q[ir], i, :, ie), equation)
+                    end
+                    s += sum(pelem.M * svec)
                 end
             end
             return s
