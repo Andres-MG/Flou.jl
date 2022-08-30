@@ -22,6 +22,7 @@ struct StepMesh{RT,FV,EV,MT} <: AbstractMesh{2,RT}
     intfaces::Vector{Int}
     bdfaces::Vector{Vector{Int}}
     periodic::Dict{Int,Int}
+    bdnames::Vector{String}
     bdmap::Dict{Int,Int}
     regionmap::Vector{Int}
     mappings::MT
@@ -30,7 +31,7 @@ struct StepMesh{RT,FV,EV,MT} <: AbstractMesh{2,RT}
 end
 
 nregions(::StepMesh) = 3
-region(m::StepMesh, i) = m.regionmap[i]
+get_region(m::StepMesh, i) = m.regionmap[i]
 eachregion(m::StepMesh) = Base.OneTo(nregions(m))
 
 nelements(m::StepMesh, i) = count(prod(m.nelements[i]))
@@ -79,7 +80,7 @@ function Base.show(io::IO, ::MIME"text/plain", m::StepMesh{RT}) where {RT}
     println(io, "2D StepMesh{", RT, "}:")
 
     # Box limits
-    lims = (first(vertices(m)), last(vertices(m)))
+    lims = (first(get_vertices(m)), last(get_vertices(m)))
     print(io, " Domain: x ∈ [", lims[1][1], ", ", lims[2][1], "],")
     println(io, " y ∈ [", lims[1][2], ", ", lims[2][2], "]")
 
@@ -140,7 +141,7 @@ function _step_merge_meshes(
     li2 = LinearIndices((nx2, ny2 + 1))
     for (i1, i2) in zip(li1[:, end], li2[:, 1])
         facemap[2][nvfaces2 + i2] = facemap[1][nvfaces1 + i1]
-        bdmap[2][nvfaces2 + i2] = face(mesh2, nvfaces2 + i2).eleminds[1]
+        bdmap[2][nvfaces2 + i2] = get_face(mesh2, nvfaces2 + i2).eleminds[1]
     end
     for (i0, i) in enumerate(li2[:, 2:end])
         facemap[2][nvfaces2 + i] = nfaces1 + nvfaces2 + i0
@@ -166,7 +167,7 @@ function _step_merge_meshes(
     li3 = LinearIndices((nx3 + 1, ny3))
     for (i2, i3) in zip(li2[end, :], li3[1, :])
         facemap[3][i3] = facemap[2][i2]
-        bdmap[3][i3] = face(mesh3, i3).eleminds[1]
+        bdmap[3][i3] = get_face(mesh3, i3).eleminds[1]
     end
     cnt = 0
     for (i0, i) in enumerate(li3[2:end, :])
@@ -186,13 +187,13 @@ function _step_merge_meshes(
     nodes2del = ntuple(_ -> Int[], 3)
     faces2del = ntuple(_ -> Int[], 3)
     for iface in eachbdface(mesh2, 3)
-        append!(nodes2del[2], face(mesh2, iface).nodeinds)
+        append!(nodes2del[2], get_face(mesh2, iface).nodeinds)
     end
     append!(faces2del[2], eachbdface(mesh2, 3))
     unique!(nodes2del[2])
 
     for iface in eachbdface(mesh3, 1)
-        append!(nodes2del[3], face(mesh3, iface).nodeinds)
+        append!(nodes2del[3], get_face(mesh3, iface).nodeinds)
     end
     append!(faces2del[3], eachbdface(mesh3, 1))
     unique!(nodes2del[3])
@@ -313,6 +314,7 @@ function _step_merge_meshes(
     end
     sort!.(bdfaces)
 
+    bdnames = [string(i) for i in 1:6]
     bdmap = Dict((i, i) for i in 1:6)
     regionmap = fill(1, nelems1)
     append!(regionmap, fill(2, nelems2))
@@ -328,6 +330,7 @@ function _step_merge_meshes(
         intfaces,
         bdfaces,
         Dict{Int,Int}(),
+        bdnames,
         bdmap,
         regionmap,
         mappings,

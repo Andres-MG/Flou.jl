@@ -1,6 +1,6 @@
 module Flou
 
-using LinearAlgebra: LinearAlgebra, dot, mul!, diag, Diagonal, factorize, ldiv!
+using LinearAlgebra: LinearAlgebra, norm, dot, cross, mul!, diag, Diagonal, factorize, ldiv!
 using LinearAlgebra: transpose, Transpose
 using SparseArrays: SparseArrays, SparseMatrixCSC, sparse, mul!
 using StaticArrays: StaticArrays, SVector, MVector, SMatrix, MMatrix, MArray, SDiagonal
@@ -44,17 +44,17 @@ export nregions, nvariables, eachregion, eachvariable
 export nvariables, eachvariable, variablenames
 
 # SpatialDiscretization.jl
-export CartesianMesh, StepMesh
+export CartesianMesh, StepMesh, UnstructuredMesh
 export apply_periodicBCs!
-export spatialdim, coords
-export nelements, nboundaries, nfaces, nintfaces, nbdfaces, nperiodic, nvertices
-export elements, faces, intfaces, bdfaces, periodic, vertices
-export element, face, intface, bdface, vertex
-export eachelement, eachboundary, eachface, eachintface, eachbdface, eachvertex
+export get_spatialdim, phys_coords
+export nelements, nboundaries, nfaces, nintfaces, nbdfaces, nperiodic, nvertices, nregions
+export get_elements, get_faces, get_intfaces, get_bdfaces, get_periodic, get_vertices
+export get_element, get_face, get_intface, get_bdface, get_vertex, get_region
+export eachelement, eachboundary, eachface, eachintface, eachbdface, eachvertex, eachregion
 
 export GaussQuadrature, GL, GaussLobattoQuadrature, GLL
 export StdSegment, StdQuad
-export ndofs, is_tensor_product, ndirections, eachdirection, ndofs, quadrature
+export ndofs, is_tensor_product, ndirections, eachdirection, ndofs, get_quadrature
 
 export DirichletBC
 

@@ -33,11 +33,11 @@ function slave2master end
 
 function master2slave end
 
-spatialdim(::AbstractStdRegion{ND}) where {ND} = ND
+get_spatialdim(::AbstractStdRegion{ND}) where {ND} = ND
 ndofs(s::AbstractStdRegion) = length(s)
-faces(s::AbstractStdRegion{ND}) where {ND} = s.fstd
-face(s::AbstractStdRegion{ND}, i) where {ND} = s.fstd[i]
-quadrature(::AbstractStdRegion{ND,Q}) where {ND,Q} = Q
+get_faces(s::AbstractStdRegion{ND}) where {ND} = s.fstd
+get_face(s::AbstractStdRegion{ND}, i) where {ND} = s.fstd[i]
+get_quadrature(::AbstractStdRegion{ND,Q}) where {ND,Q} = Q
 eachdirection(s::AbstractStdRegion) = Base.OneTo(ndirections(s))
 
 #==========================================================================================#
@@ -199,18 +199,18 @@ end
 end
 
 function slave2master(i, orientation, std::StdSegment)
-    return if orientation == 1
+    return if orientation == 0
         i
-    else # orientation == 2
-        length(std) - i
+    else # orientation == 1
+        length(std) - (i - 1)
     end
 end
 
 function master2slave(i, orientation, std::StdSegment)
-    return if orientation == 1
+    return if orientation == 0
         i
-    else # orientation == 2
-        length(std) - i
+    else # orientation == 1
+        length(std) - (i - 1)
     end
 end
 
@@ -246,8 +246,8 @@ end
 is_tensor_product(::StdQuad) = true
 ndirections(::StdQuad) = 2
 nvertices(::StdQuad) = 4
-faces(s::StdQuad) = (s.fstd[1], s.fstd[1], s.fstd[2], s.fstd[2])
-face(s::StdQuad, i) = s.fstd[(i - 1) ÷ 2 + 1]
+get_faces(s::StdQuad) = (s.fstd[1], s.fstd[1], s.fstd[2], s.fstd[2])
+get_face(s::StdQuad, i) = s.fstd[(i - 1) ÷ 2 + 1]
 
 function StdQuad{RT}(np::AbstractVecOrTuple, qtype::AbstractQuadrature) where {RT<:Real}
     # Quadratures

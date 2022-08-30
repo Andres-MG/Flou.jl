@@ -11,8 +11,8 @@ function surface_contribution!(
     # Unpack
     (; mesh) = dg
 
-    iface = element(mesh, ielem).faceinds
-    facepos = element(mesh, ielem).facepos
+    iface = get_element(mesh, ielem).faceinds
+    facepos = get_element(mesh, ielem).facepos
 
     @inbounds for (s, (face, pos)) in enumerate(zip(iface, facepos))
         mul!(
@@ -39,11 +39,11 @@ function volume_contribution!(
     (; dofhandler, physelem, equation) = dg
 
     ireg, ieloc = loc2reg(dofhandler, ielem)
-    ndim = spatialdim(std)
+    ndim = get_spatialdim(std)
 
     # Volume fluxes
     F̃ = MArray{Tuple{ndim,ndofs(std),nvariables(equation)},eltype(Q)}(undef)
-    Ja = element(physelem, ielem).Ja
+    Ja = get_element(physelem, ielem).Ja
     @inbounds for i in eachindex(std)
         F = volumeflux(view(Q[ireg], i, :, ieloc), equation)
         for ivar in eachvariable(equation)
@@ -78,11 +78,11 @@ function volume_contribution!(
     (; dofhandler, physelem, equation) = dg
 
     ireg, ieloc = loc2reg(dofhandler, ielem)
-    ndim = spatialdim(std)
+    ndim = get_spatialdim(std)
 
     # Volume fluxes
     F̃ = MArray{Tuple{ndim,ndofs(std),nvariables(equation)},eltype(Q)}(undef)
-    Ja = element(physelem, ielem).Ja
+    Ja = get_element(physelem, ielem).Ja
     @inbounds for i in eachindex(std)
         F = volumeflux(view(Q[ireg], i, :, ieloc), equation)
         for ivar in eachvariable(equation)
@@ -141,7 +141,7 @@ function volume_contribution!(
     ci = CartesianIndices(std)
 
     # Volume fluxes (diagonal of F♯ matrices)
-    Ja = element(physelem, ielem).Ja
+    Ja = get_element(physelem, ielem).Ja
     @inbounds for i in eachindex(std)
         F = volumeflux(view(Q[ireg], i, :, ieloc), equation)
         for ivar in eachvariable(equation)
@@ -267,7 +267,7 @@ function volume_contribution!(
     # Fluxes at the subcell interfaces
     Qr = reshape(view(Q[ireg], :, :, ieloc), (size(std)..., nvariables(equation)))
     dQr = reshape(dQ, (size(std)..., nvariables(equation)))
-    Jar = reshape(element(physelem, ielem).Ja, size(std))
+    Jar = reshape(get_element(physelem, ielem).Ja, size(std))
     ns = elementgrid(physelem, ielem).n
     ts = elementgrid(physelem, ielem).t
     bs = elementgrid(physelem, ielem).b
@@ -320,7 +320,7 @@ function volume_contribution!(
 
     # 2D
     elseif ND == 2
-        Qmat = (face(std, 3).Q[1], face(std, 1).Q[1])
+        Qmat = (get_face(std, 3).Q[1], get_face(std, 1).Q[1])
         F̄r = (
             reshape(F̄[1], (size(std, 1) + 1, size(std, 2), nvariables(equation))),
             reshape(F̄[2], (size(std, 1), size(std, 2) + 1, nvariables(equation))),
@@ -472,9 +472,9 @@ function volume_contribution!(
         @inbounds for v in eachvariable(equation)
             for j in eachindex(std, 2), i in eachindex(std, 1)
                 dQr[i, j, v] += (F̄r[1][i, j, v] - F̄r[1][(i + 1), j, v]) *
-                                face(std, 2).ω[j]
+                                get_face(std, 2).ω[j]
                 dQr[i, j, v] += (F̄r[2][i, j, v] - F̄r[2][i, (j + 1), v]) *
-                                face(std, 1).ω[i]
+                                get_face(std, 1).ω[i]
             end
         end
 
