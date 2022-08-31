@@ -83,7 +83,7 @@ function UnstructuredMesh{ND,RT}() where {ND,RT}
     numfaces = length(eleminds)
     intfaces = Int[]
     for (i, face) in eleminds
-        if length(face) == 2
+        if face[2] != 0
             push!(intfaces, i)
         end
     end
