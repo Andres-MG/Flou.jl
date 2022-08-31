@@ -106,90 +106,28 @@ function Base.show(io::IO, ::MIME"text/plain", m::CartesianMesh{ND,RT}) where {N
 end
 
 function apply_periodicBCs!(mesh::CartesianMesh, BCs::Pair{String,String}...)
-    faces2del = Int[]
+    # Mapped boundaries
+    intbcs = Dict{Int,Int}()
+
+    # Check pairs
     for bc in BCs
-        # Check pair
-        bd1 = parse(Int, bc.first)
-        bd2 = parse(Int, bc.second)
+        bd1 = tryparse(Int, bc.first)
+        bd2 = tryparse(Int, bc.second)
+        !isnothing(bd1) && !isnothing(bd2) || throw(ArgumentError(
+            "Boundary IDs must be integers."
+        ))
+        1 <= bd1 <= nboundaries(mesh) && 1 <= bd2 <= nboundaries(mesh) || throw(
+            ArgumentError(
+                "Boundary IDs must be between 1 and $(nboundaries(mesh))."
+            )
+        )
         bd2 % 2 == 0 && bd1 + 1 == bd2 || throw(ArgumentError(
             "Boundaries $(bc.first) and $(bc.second) cannot be made periodic."
         ))
-        bd1 in keys(mesh.bdmap) && bd2 in keys(mesh.bdmap) || throw(
-            ArgumentError("Boundaries $(bc.first) and $(bc.second) are already periodic.")
-        )
-
-        # Update connectivities
-        bdind = mesh.bdmap[bd1] => mesh.bdmap[bd2]
-        for (if1, if2) in zip(eachbdface(mesh, bdind.first), eachbdface(mesh, bdind.second))
-            face1 = get_face(mesh, if1)
-            face2 = get_face(mesh, if2)
-            elmind = face2.eleminds[1]
-            elmpos = face2.elempos[1]
-            face1.eleminds[2] = elmind
-            face1.elempos[2] = elmpos
-            elem = get_element(mesh, elmind)
-            elem.faceinds[elmpos] = if1
-            elem.facepos[elmpos] = 2
-        end
-
-        # Modify face indices and faces to delete
-        append!(mesh.intfaces, mesh.bdfaces[bdind.first])
-        append!(faces2del, mesh.bdfaces[bdind.second])
-        deleteat!(mesh.bdfaces, bdind)
-
-        # Boundary mappings
-        delete!(mesh.bdmap, bd1)
-        delete!(mesh.bdmap, bd2)
-        for i in keys(mesh.bdmap)
-            if mesh.bdmap[i] > bdind.second
-                mesh.bdmap[i] -= 2
-            end
-        end
-        push!(mesh.periodic, bd1 => bd2)
+        intbcs[bd1] = bd2
     end
 
-    # Update face indices
-    sort!(mesh.intfaces)
-    sort!(faces2del)
-    for i in eachindex(get_intfaces(mesh))
-        Δ = findfirst(>(mesh.intfaces[i]), faces2del)
-        if isnothing(Δ)
-            Δ = length(faces2del)
-        else
-            Δ -= 1
-        end
-        mesh.intfaces[i] -= Δ
-    end
-    for ib in eachboundary(mesh)
-        for i in eachindex(get_bdfaces(mesh, ib))
-            Δ = findfirst(>(mesh.bdfaces[ib][i]), faces2del)
-            if isnothing(Δ)
-                Δ = length(faces2del)
-            else
-                Δ -= 1
-            end
-            mesh.bdfaces[ib][i] -= Δ
-        end
-    end
-
-    # Delete duplicated faces
-    StructArrays.foreachfield(x -> deleteat!(x, faces2del), mesh.faces)
-
-    # Update indices in element connectivities
-    for iface in eachface(mesh)
-        f = get_face(mesh, iface)
-        # Master element
-        elmind = f.eleminds[1]
-        elmpos = f.elempos[1]
-        get_element(mesh, elmind).faceinds[elmpos] = iface
-        # Slave element
-        elmind = f.eleminds[2]
-        if elmind != 0
-            elmpos = f.elempos[2]
-            get_element(mesh, elmind).faceinds[elmpos] = iface
-        end
-    end
-    return nothing
+    return _apply_periodicBCs!(mesh, intbcs)
 end
 
 function _cartesian_element_connectivities(::Val{1}, nx)

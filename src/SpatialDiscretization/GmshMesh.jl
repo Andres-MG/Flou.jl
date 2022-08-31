@@ -182,8 +182,53 @@ function Base.show(io::IO, ::MIME"text/plain", m::UnstructuredMesh{ND,RT}) where
     return nothing
 end
 
-function _facemap_1d(_, _)
-    error("Not implemented yet!")
+function apply_periodicBCs!(mesh::UnstructuredMesh, BCs::Pair{String,String}...)
+    # Mapped boundaries
+    intbcs = Dict{Int,Int}()
+
+    # Check pairs
+    for bc in BCs
+        bd1 = findfirst(==(bc.first), mesh.bdnames)
+        bd2 = findfirst(==(bc.second), mesh.bdnames)
+        !isnothing(bd1) && !isnothing(bd2) || throw(ArgumentError(
+            "Boundaries $(bc.first) and $(bc.second) do not exist."
+        ))
+        intbcs[bd1] = bd2
+    end
+
+    return _apply_periodicBCs!(mesh, intbcs)
+end
+
+function _facemap_1d(_, nelems)
+    _, _, enodes = gmsh.model.mesh.get_elements(1)
+    enodes = enodes[1]
+
+    # Nodes for each element
+    element2node = Dict{UInt,Vector{UInt}}()
+    cnt::UInt = 0
+    for i in 1:nelems
+        element2node[i] = [
+            enodes[cnt + 1],
+            enodes[cnt + 2],
+        ]
+        cnt += 2
+    end
+
+    # Elements, nodes and orientations for each node
+    node2element = Dict{UInt,Vector{UInt}}()
+    node2node = Dict{UInt,Vector{UInt}}()
+    orientations = zeros(Int32, nelems + 1)
+    for (i, enode) in enumerate(enodes)
+        ielem = (i - 1) ÷ 2 + 1
+        if enode in keys(node2element)
+            node2element[enode][2] = ielem
+        else
+            node2element[enode] = [ielem, 0]
+            node2node[enode] = [enode]
+        end
+    end
+
+    return (element2node, node2element, node2node, orientations)
 end
 
 function _facemap_2d(etype, nelems)
