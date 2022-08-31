@@ -91,10 +91,10 @@ function SodTube1D()
         end
         return Flou.vars_prim2cons(P, eq)
     end
-    ∂Ω = [
+    ∂Ω = Dict(
         "1" => DirichletBC(Qext),
         "2" => DirichletBC(Qext),
-    ]
+    )
     equation = EulerEquation{1}(div, 1.4)
     DG = DGSEM(mesh, std, equation, ∂Ω, numflux)
 
@@ -148,10 +148,10 @@ function Shockwave2D()
         x = xy[1]
         return (x < 0) ? Q0 : Q1
     end
-    ∂Ω = [
+    ∂Ω = Dict(
         "1" => DirichletBC(Qext),
         "2" => DirichletBC(Qext),
-    ]
+    )
     DG = DGSEM(mesh, std, equation, ∂Ω, numflux)
 
     Q = StateVector{Float64}(undef, DG.dofhandler, DG.stdvec, nvariables(equation))
@@ -185,12 +185,12 @@ function Implosion2D()
     )
 
     mesh = CartesianMesh{2,Float64}((0, 0), (0.3, 0.3), (100, 100))
-    ∂Ω = [
+    ∂Ω = Dict(
         "1" => EulerSlipBC(),
         "2" => EulerSlipBC(),
         "3" => EulerSlipBC(),
         "4" => EulerSlipBC(),
-    ]
+    )
     equation = EulerEquation{2}(div, 1.4)
     DG = DGSEM(mesh, std, equation, ∂Ω, numflux)
 
@@ -245,14 +245,14 @@ function ForwardFacingStep2D()
     M0 = 3.0
     a0 = soundvelocity(1.0, 1.0, equation)
     Q0 = Flou.vars_prim2cons((1.0, M0*a0, 0.0, 1.0), equation)
-    ∂Ω = [
+    ∂Ω = Dict(
         "1" => EulerInflowBC(Q0),
         "2" => EulerOutflowBC(),
         "3" => EulerSlipBC(),
         "4" => EulerSlipBC(),
         "5" => EulerSlipBC(),
         "6" => EulerSlipBC(),
-    ]
+    )
     DG = DGSEM(mesh, std, equation, ∂Ω, numflux)
 
     Q = StateVector{Float64}(undef, DG.dofhandler, DG.stdvec, nvariables(equation))

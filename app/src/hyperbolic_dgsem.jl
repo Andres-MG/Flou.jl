@@ -64,15 +64,15 @@ equation = EulerEquation{1}(div, 1.4)
 
 # Q0 = Flou.vars_prim2cons((5.997, -98.5914, 0.0, 11_666.5), equation)
 # Q1 = Flou.vars_prim2cons((1.0, 0.0, 0.0, 1.0), equation)
-# ∂Ω = [
+# ∂Ω = Dict(
 #     1 => EulerOutflowBC(),
 #     2 => EulerInflowBC(Q0),
 #     3 => EulerSlipBC(),
 #     4 => EulerSlipBC(),
 #     5 => EulerSlipBC(),
 #     6 => EulerSlipBC(),
-# ]
-∂Ω = []
+# )
+∂Ω = Dict()
 DG = DGSEM(mesh, std, equation, ∂Ω, numflux)
 
 # x0 = 0.5
