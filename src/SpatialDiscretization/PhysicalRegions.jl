@@ -287,11 +287,46 @@ function PhysicalFace(std, mesh::CartesianMesh{3,RT}, iface) where {RT}
     pos = get_face(mesh, iface).elempos[1]
     if pos == 1 || pos == 2  # X faces
         fstd = get_face(std, 1)
+        J = fill(Δx[2] * Δx[3] / 4, ndofs(fstd))
+        if pos == 1
+            n = fill(SVector(-one(RT), zero(RT), zero(RT)), ndofs(fstd))
+            t = fill(SVector(zero(RT), -one(RT), zero(RT)), ndofs(fstd))
+            b = fill(SVector(zero(RT), zero(RT), one(RT)), ndofs(fstd))
+        else # pos == 2
+            n = fill(SVector(one(RT), zero(RT), zero(RT)), ndofs(fstd))
+            t = fill(SVector(zero(RT), one(RT), zero(RT)), ndofs(fstd))
+            b = fill(SVector(zero(RT), zero(RT), one(RT)), ndofs(fstd))
+        end
     elseif pos == 3 || pos == 4  # Y faces
         fstd = get_face(std, 2)
+        J = fill(Δx[1] * Δx[3] / 4, ndofs(fstd))
+        if pos == 3
+            n = fill(SVector(zero(RT), -one(RT), zero(RT)), ndofs(fstd))
+            t = fill(SVector(zero(RT), zero(RT), -one(RT)), ndofs(fstd))
+            b = fill(SVector(one(RT), zero(RT), zero(RT)), ndofs(fstd))
+        else # pos == 4
+            n = fill(SVector(zero(RT), one(RT), zero(RT)), ndofs(fstd))
+            t = fill(SVector(zero(RT), zero(RT), one(RT)), ndofs(fstd))
+            b = fill(SVector(one(RT), zero(RT), zero(RT)), ndofs(fstd))
+        end
     else # pos == 5 || pos == 6  # Z faces
         fstd = get_face(std, 3)
+        J = fill(Δx[1] * Δx[2] / 4, ndofs(fstd))
+        if pos == 5
+            n = fill(SVector(zero(RT), zero(RT), -one(RT)), ndofs(fstd))
+            t = fill(SVector(-one(RT), zero(RT), zero(RT)), ndofs(fstd))
+            b = fill(SVector(zero(RT), one(RT), zero(RT)), ndofs(fstd))
+        else # pos == 6
+            n = fill(SVector(zero(RT), zero(RT), one(RT)), ndofs(fstd))
+            t = fill(SVector(one(RT), zero(RT), zero(RT)), ndofs(fstd))
+            b = fill(SVector(zero(RT), one(RT), zero(RT)), ndofs(fstd))
+        end
     end
+
+    xy = [face_phys_coords(ξ, mesh, iface) for ξ in fstd.ξ]
+    M = massmatrix(fstd, J)
+    surf = sum(M)
+    return PhysicalFace(xy, n, t, b, J, M, surf)
 end
 
 function PhysicalFace(std, mesh::StepMesh{RT}, iface) where {RT}
