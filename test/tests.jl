@@ -11,7 +11,7 @@ function Advection1D()
     )
 
     mesh = CartesianMesh{1,Float64}(0, 1, 20)
-    apply_periodicBCs!(mesh, 1 => 2)
+    apply_periodicBCs!(mesh, "1" => "2")
     equation = LinearAdvection(div, 2.0)
     DG = DGSEM(mesh, std, equation, (), numflux)
 
@@ -21,7 +21,7 @@ function Advection1D()
     Q = StateVector{Float64}(undef, DG.dofhandler, DG.stdvec, nvariables(equation))
     for ie in eachelement(mesh)
         for i in eachindex(DG.stdvec[1])
-            x = coords(DG.physelem, ie)[i][1]
+            x = phys_coords(DG.physelem, ie)[i][1]
             Q[1][i, 1, ie] = Flou.gaussian_bump(x, 0.0, 0.0, x0, 0.0, 0.0, sx, 1.0, 1.0, h)
         end
     end
@@ -46,7 +46,7 @@ function Advection2D()
     )
 
     mesh = CartesianMesh{2,Float64}((0, 0), (1.5, 2), (20, 10))
-    apply_periodicBCs!(mesh, 1 => 2, 3 => 4)
+    apply_periodicBCs!(mesh, "1" => "2", "3" => "4")
     equation = LinearAdvection(div, 3.0, 4.0)
     DG = DGSEM(mesh, std, equation, (), numflux)
 
@@ -56,7 +56,7 @@ function Advection2D()
     Q = StateVector{Float64}(undef, DG.dofhandler, DG.stdvec, nvariables(equation))
     for ie in eachelement(mesh)
         for i in eachindex(DG.stdvec[1])
-            x, y = coords(DG.physelem, ie)[i]
+            x, y = phys_coords(DG.physelem, ie)[i]
             Q[1][i, 1, ie] = Flou.gaussian_bump(x, y, 0.0, x0, y0, 0.0, sx, sy, 1.0, h)
         end
     end
@@ -92,8 +92,8 @@ function SodTube1D()
         return Flou.vars_prim2cons(P, eq)
     end
     ∂Ω = [
-        1 => DirichletBC(Qext),
-        2 => DirichletBC(Qext),
+        "1" => DirichletBC(Qext),
+        "2" => DirichletBC(Qext),
     ]
     equation = EulerEquation{1}(div, 1.4)
     DG = DGSEM(mesh, std, equation, ∂Ω, numflux)
@@ -101,7 +101,7 @@ function SodTube1D()
     Q = StateVector{Float64}(undef, DG.dofhandler, DG.stdvec, nvariables(equation))
     for ie in eachelement(mesh)
         for i in eachindex(DG.stdvec[1])
-            x = coords(DG.physelem, ie)[i]
+            x = phys_coords(DG.physelem, ie)[i]
             Q[1][i, :, ie] = Qext([], x, [], [], [], 0.0, equation)
         end
     end
@@ -133,7 +133,7 @@ function Shockwave2D()
     )
 
     mesh = CartesianMesh{2,Float64}((-1, 0), (1, 1), (11, 3))
-    apply_periodicBCs!(mesh, 3 => 4)
+    apply_periodicBCs!(mesh, "3" => "4")
 
     equation = EulerEquation{2}(div, 1.4)
 
@@ -149,15 +149,15 @@ function Shockwave2D()
         return (x < 0) ? Q0 : Q1
     end
     ∂Ω = [
-        1 => DirichletBC(Qext),
-        2 => DirichletBC(Qext),
+        "1" => DirichletBC(Qext),
+        "2" => DirichletBC(Qext),
     ]
     DG = DGSEM(mesh, std, equation, ∂Ω, numflux)
 
     Q = StateVector{Float64}(undef, DG.dofhandler, DG.stdvec, nvariables(equation))
     for ie in eachelement(mesh)
         for i in eachindex(DG.stdvec[1])
-            xy = coords(DG.physelem, ie)[i]
+            xy = phys_coords(DG.physelem, ie)[i]
             Q[1][i, :, ie] = Qext([], xy, [], [], [], 0.0, equation)
         end
     end
@@ -186,10 +186,10 @@ function Implosion2D()
 
     mesh = CartesianMesh{2,Float64}((0, 0), (0.3, 0.3), (100, 100))
     ∂Ω = [
-        1 => EulerSlipBC(),
-        2 => EulerSlipBC(),
-        3 => EulerSlipBC(),
-        4 => EulerSlipBC(),
+        "1" => EulerSlipBC(),
+        "2" => EulerSlipBC(),
+        "3" => EulerSlipBC(),
+        "4" => EulerSlipBC(),
     ]
     equation = EulerEquation{2}(div, 1.4)
     DG = DGSEM(mesh, std, equation, ∂Ω, numflux)
@@ -197,7 +197,7 @@ function Implosion2D()
     Q = StateVector{Float64}(undef, DG.dofhandler, DG.stdvec, nvariables(equation))
     for ie in eachelement(mesh)
         for i in eachindex(DG.stdvec[1])
-            x, y = coords(DG.physelem, ie)[i]
+            x, y = phys_coords(DG.physelem, ie)[i]
             if x <= 0.15 && y <= 0.15 - x
                 Q[1][i, 1, ie] = 0.125
                 Q[1][i, 2, ie] = 0.0
@@ -246,12 +246,12 @@ function ForwardFacingStep2D()
     a0 = soundvelocity(1.0, 1.0, equation)
     Q0 = Flou.vars_prim2cons((1.0, M0*a0, 0.0, 1.0), equation)
     ∂Ω = [
-        1 => EulerInflowBC(Q0),
-        2 => EulerOutflowBC(),
-        3 => EulerSlipBC(),
-        4 => EulerSlipBC(),
-        5 => EulerSlipBC(),
-        6 => EulerSlipBC(),
+        "1" => EulerInflowBC(Q0),
+        "2" => EulerOutflowBC(),
+        "3" => EulerSlipBC(),
+        "4" => EulerSlipBC(),
+        "5" => EulerSlipBC(),
+        "6" => EulerSlipBC(),
     ]
     DG = DGSEM(mesh, std, equation, ∂Ω, numflux)
 

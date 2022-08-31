@@ -26,7 +26,7 @@ function _save2vtu(filename, Q, disc)
             ie = reg2loc(dofhandler, ir, ieloc)
             padding = zeros(SVector{3 - spatialdim(mesh),eltype(points)})
             for ξ in std.ξe
-                append!(points, coords(ξ, mesh, ie))
+                append!(points, phys_coords(ξ, mesh, ie))
                 append!(points, padding)
             end
 

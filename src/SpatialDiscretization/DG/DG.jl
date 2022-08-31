@@ -26,10 +26,10 @@ end
 function MortarStateVector{RT}(value, mesh, stdvec, dh::DofHandlerDG, nvars) where {RT}
     dims = Vector{NTuple{2,NTuple{2,Int}}}(undef, nfaces(mesh))
     for i in eachface(mesh)
-        elem = face(mesh, i).eleminds[1]
+        elem = get_face(mesh, i).eleminds[1]
         reg, _ = loc2reg(dh, elem)
         std = stdvec[reg]
-        pos = face(mesh, i).elempos[1]
+        pos = get_face(mesh, i).elempos[1]
         idir = (pos - 1) ÷ 2 + 1
         ndof = ndofs(std) ÷ size(std, idir)
         dims[i] = (
@@ -62,9 +62,9 @@ function open_for_write!(file::HDF5.File, dg::DiscontinuousGalerkin{EQ,RT}) wher
         for ieloc in eachelement(dofhandler, ir)
             # Point coordinates
             ie = reg2loc(dofhandler, ir, ieloc)
-            padding = zeros(SVector{3 - spatialdim(mesh),eltype(points)})
+            padding = zeros(SVector{3 - get_spatialdim(mesh),eltype(points)})
             for ξ in std.ξe
-                append!(points, coords(ξ, mesh, ie))
+                append!(points, phys_coords(ξ, mesh, ie))
                 append!(points, padding)
             end
 
@@ -154,8 +154,8 @@ function project2faces!(Qf, Q, dg::DiscontinuousGalerkin)
         std = stdvec[ireg]
         @flouthreads for ieloc in eachelement(dofhandler, ireg)
             ie = reg2loc(dofhandler, ireg, ieloc)
-            iface = element(mesh, ie).faceinds
-            facepos = element(mesh, ie).facepos
+            iface = get_element(mesh, ie).faceinds
+            facepos = get_element(mesh, ie).facepos
 
             @inbounds for (s, (face, pos)) in enumerate(zip(iface, facepos))
                 mul!(Qf[face][pos], std.l[s], view(Q[ireg], :, :, ieloc))
@@ -172,10 +172,10 @@ function applyBCs!(Qf, dg::DiscontinuousGalerkin, time)
             _dg_applyBC!(
                 Qf[iface][2],
                 Qf[iface][1],
-                coords(physface, iface),
-                face(physface, iface).n,
-                face(physface, iface).t,
-                face(physface, iface).b,
+                phys_coords(physface, iface),
+                get_face(physface, iface).n,
+                get_face(physface, iface).t,
+                get_face(physface, iface).b,
                 time,
                 equation,
                 bcs[ibc],
@@ -188,15 +188,15 @@ end
 function interface_fluxes!(Fn, Qf, dg::DiscontinuousGalerkin, riemannsolver)
     (; mesh, dofhandler, stdvec, physface, equation) = dg
     @flouthreads for iface in eachface(mesh)
-        (; eleminds, elempos, orientation) = face(mesh, iface)
-        n = face(physface, iface).n
-        t = face(physface, iface).t
-        b = face(physface, iface).b
+        (; eleminds, elempos, orientation) = get_face(mesh, iface)
+        n = get_face(physface, iface).n
+        t = get_face(physface, iface).t
+        b = get_face(physface, iface).b
 
         Ql = Qf[iface][1]
         Qr = Qf[iface][2]
         ireg = loc2reg(dofhandler, eleminds[1]).first
-        std = face(stdvec[ireg], elempos[1])
+        std = get_face(stdvec[ireg], elempos[1])
         @inbounds for i in eachindex(std)
             j = slave2master(i, orientation, std)
             Qln = rotate2face(view(Ql, i, :), n[i], t[i], b[i], equation)
@@ -204,7 +204,7 @@ function interface_fluxes!(Fn, Qf, dg::DiscontinuousGalerkin, riemannsolver)
             Fni = numericalflux(Qln, Qrn, n[i], equation, riemannsolver)
             Fn[iface][1][i, :] = rotate2phys(Fni, n[i], t[i], b[i], equation)
             for ivar in eachvariable(equation)
-                Fn[iface][1][i, ivar] *= face(physface, iface).J[i]
+                Fn[iface][1][i, ivar] *= get_face(physface, iface).J[i]
                 Fn[iface][2][j, ivar] = -Fn[iface][1][i, ivar]
             end
         end
@@ -217,7 +217,7 @@ function apply_massmatrix!(dQ, dg::DiscontinuousGalerkin)
     @flouthreads for ie in eachelement(dofhandler)
         ireg, ieloc = loc2reg(dofhandler, ie)
         ldiv!(
-            element(physelem, ie).M,
+            get_element(physelem, ie).M,
             view(dQ[ireg], :, :, ieloc),
         )
     end
@@ -228,7 +228,7 @@ function apply_sourceterm!(dQ, Q, dg::DiscontinuousGalerkin, time)
     (; dofhandler, physelem, source!) = dg
     for ie in eachelement(dofhandler)
         ireg, ieloc = loc2reg(dofhandler, ie)
-        x = coords(physelem, ie)
+        x = phys_coords(physelem, ie)
         source!(view(dQ[ireg], :, :, ieloc), view(Q[ireg], :, :, ieloc), x, time, ireg)
     end
     return nothing

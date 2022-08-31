@@ -6,13 +6,14 @@ struct CartesianMesh{ND,RT,FV,EV,MT} <: AbstractMesh{ND,RT}
     elements::EV
     intfaces::Vector{Int}
     bdfaces::Vector{Vector{Int}}
+    bdnames::Vector{String}
     bdmap::Dict{Int,Int}
     periodic::Dict{Int,Int}
     mappings::MT
 end
 
 nregions(::CartesianMesh) = 1
-region(::CartesianMesh, i) = 1
+get_region(::CartesianMesh, i) = 1
 eachregion(m::CartesianMesh) = Base.OneTo(nregions(m))
 
 nelements(m::CartesianMesh, _) = nelements(m)
@@ -58,6 +59,7 @@ function CartesianMesh{ND,RT}(start, finish, nxyz) where {ND,RT<:Real}
     intfaces, bdfaces, faces = _cartesian_face_connectivities(Val(ND), nxyz)
 
     # Boundary indices map
+    bdnames = [string(i) for i in 1:2ND]
     bdmap = Dict((i, i) for i in 1:2ND)
 
     return CartesianMesh(
@@ -68,6 +70,7 @@ function CartesianMesh{ND,RT}(start, finish, nxyz) where {ND,RT<:Real}
             StructVector(elements),
             intfaces,
             bdfaces,
+            bdnames,
             bdmap,
             Dict{Int,Int}(),
             mappings,
@@ -81,7 +84,7 @@ function Base.show(io::IO, ::MIME"text/plain", m::CartesianMesh{ND,RT}) where {N
     dirs = ("x", "y", "z")
 
     # Box limits
-    lims = (first(vertices(m)), last(vertices(m)))
+    lims = (first(get_vertices(m)), last(get_vertices(m)))
     print(io, " Domain: x ∈ [", lims[1][1], ", ", lims[2][1], "]")
     for idim in 2:ND
         print(io, ", ", dirs[idim], " ∈ [", lims[1][idim], ", ", lims[2][idim], "]")
@@ -102,27 +105,29 @@ function Base.show(io::IO, ::MIME"text/plain", m::CartesianMesh{ND,RT}) where {N
     return nothing
 end
 
-function apply_periodicBCs!(mesh::CartesianMesh, BCs::Pair{Int,Int}...)
+function apply_periodicBCs!(mesh::CartesianMesh, BCs::Pair{String,String}...)
     faces2del = Int[]
     for bc in BCs
         # Check pair
-        bc.second % 2 == 0 && bc.first + 1 == bc.second || throw(ArgumentError(
-            "Boundaries $(bc) cannot be made periodic."
+        bd1 = parse(Int, bc.first)
+        bd2 = parse(Int, bc.second)
+        bd2 % 2 == 0 && bd1 + 1 == bd2 || throw(ArgumentError(
+            "Boundaries $(bc.first) and $(bc.second) cannot be made periodic."
         ))
-        bc.first in keys(mesh.bdmap) && bc.second in keys(mesh.bdmap) || throw(
-            ArgumentError("Boundaries $(bc) are already periodic.")
+        bd1 in keys(mesh.bdmap) && bd2 in keys(mesh.bdmap) || throw(
+            ArgumentError("Boundaries $(bc.first) and $(bc.second) are already periodic.")
         )
 
         # Update connectivities
-        bdind = mesh.bdmap[bc.first] => mesh.bdmap[bc.second]
+        bdind = mesh.bdmap[bd1] => mesh.bdmap[bd2]
         for (if1, if2) in zip(eachbdface(mesh, bdind.first), eachbdface(mesh, bdind.second))
-            face1 = face(mesh, if1)
-            face2 = face(mesh, if2)
+            face1 = get_face(mesh, if1)
+            face2 = get_face(mesh, if2)
             elmind = face2.eleminds[1]
             elmpos = face2.elempos[1]
             face1.eleminds[2] = elmind
             face1.elempos[2] = elmpos
-            elem = element(mesh, elmind)
+            elem = get_element(mesh, elmind)
             elem.faceinds[elmpos] = if1
             elem.facepos[elmpos] = 2
         end
@@ -133,20 +138,20 @@ function apply_periodicBCs!(mesh::CartesianMesh, BCs::Pair{Int,Int}...)
         deleteat!(mesh.bdfaces, bdind)
 
         # Boundary mappings
-        delete!(mesh.bdmap, bc.first)
-        delete!(mesh.bdmap, bc.second)
+        delete!(mesh.bdmap, bd1)
+        delete!(mesh.bdmap, bd2)
         for i in keys(mesh.bdmap)
             if mesh.bdmap[i] > bdind.second
                 mesh.bdmap[i] -= 2
             end
         end
-        push!(mesh.periodic, bc)
+        push!(mesh.periodic, bd1 => bd2)
     end
 
     # Update face indices
     sort!(mesh.intfaces)
     sort!(faces2del)
-    for i in eachindex(intfaces(mesh))
+    for i in eachindex(get_intfaces(mesh))
         Δ = findfirst(>(mesh.intfaces[i]), faces2del)
         if isnothing(Δ)
             Δ = length(faces2del)
@@ -156,7 +161,7 @@ function apply_periodicBCs!(mesh::CartesianMesh, BCs::Pair{Int,Int}...)
         mesh.intfaces[i] -= Δ
     end
     for ib in eachboundary(mesh)
-        for i in eachindex(bdfaces(mesh, ib))
+        for i in eachindex(get_bdfaces(mesh, ib))
             Δ = findfirst(>(mesh.bdfaces[ib][i]), faces2del)
             if isnothing(Δ)
                 Δ = length(faces2del)
@@ -172,16 +177,16 @@ function apply_periodicBCs!(mesh::CartesianMesh, BCs::Pair{Int,Int}...)
 
     # Update indices in element connectivities
     for iface in eachface(mesh)
-        f = face(mesh, iface)
+        f = get_face(mesh, iface)
         # Master element
         elmind = f.eleminds[1]
         elmpos = f.elempos[1]
-        element(mesh, elmind).faceinds[elmpos] = iface
+        get_element(mesh, elmind).faceinds[elmpos] = iface
         # Slave element
         elmind = f.eleminds[2]
         if elmind != 0
             elmpos = f.elempos[2]
-            element(mesh, elmind).faceinds[elmpos] = iface
+            get_element(mesh, elmind).faceinds[elmpos] = iface
         end
     end
     return nothing
@@ -274,7 +279,7 @@ function _cartesian_face_connectivities(::Val{1}, nx)
                 fnodeinds[i],
                 eleminds[i],
                 elempos[i],
-                UInt8(1),
+                UInt8(0),
                 2,
             )
             for i in 1:nfaces
@@ -366,7 +371,7 @@ function _cartesian_face_connectivities(::Val{2}, nxy)
                 fnodeinds[i],
                 eleminds[i],
                 elempos[i],
-                UInt8(1),
+                UInt8(0),
                 2,
             )
             for i in 1:nfaces

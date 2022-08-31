@@ -76,7 +76,7 @@ function get_monitors_callback(rt, monitors...)
                 svec = MVector{ndofs(std),rt}(undef)
                 for ie in eachelement(Q, ir)
                     ieglob = reg2loc(dofhandler, ir, ie)
-                    pelem = element(physelem, ieglob)
+                    pelem = get_element(physelem, ieglob)
                     for i in eachindex(std)
                         svec[i] = math_entropy(view(Q[ir], i, :, ie), equation)
                     end

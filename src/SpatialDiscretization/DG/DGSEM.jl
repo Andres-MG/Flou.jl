@@ -46,9 +46,10 @@ function DGSEM(
         "The number of BCs does not match the number of boundaries."
     ))
     _bcs = Vector{Any}(undef, nbounds)
-    for (key, values) in bcs
-        i = mesh.bdmap[key]
-        _bcs[i] = values
+    for (key, value) in bcs
+        j = findfirst(==(key), mesh.bdnames)
+        i = mesh.bdmap[j]
+        _bcs[i] = value
     end
     _bcs = Tuple(_bcs)
 

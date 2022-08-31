@@ -12,8 +12,8 @@ function surface_contribution!(
     # Unpack
     (; mesh) = dg
 
-    iface = element(mesh, ielem).faceinds
-    facepos = element(mesh, ielem).facepos
+    iface = get_element(mesh, ielem).faceinds
+    facepos = get_element(mesh, ielem).facepos
 
     @inbounds for (s, (face, pos)) in enumerate(zip(iface, facepos))
         mul!(
@@ -39,11 +39,11 @@ function volume_contribution!(
     # Unpack
     (; physelem, equation) = dg
 
-    ndim = spatialdim(std)
+    ndim = get_spatialdim(std)
 
     # Volume fluxes
     F̃ = MArray{Tuple{ndim,ndofs(std),nvariables(equation)},eltype(Q)}(undef)
-    Ja = element(physelem, ielem).Ja
+    Ja = get_element(physelem, ielem).Ja
     @inbounds for i in eachindex(std)
         F = volumeflux(view(Q, i, :), equation)
         for ivar in eachvariable(equation)
@@ -77,11 +77,11 @@ function volume_contribution!(
     # Unpack
     (; physelem, equation) = dg
 
-    ndim = spatialdim(std)
+    ndim = get_spatialdim(std)
 
     # Volume fluxes
     F̃ = MArray{Tuple{ndim,ndofs(std),nvariables(equation)},eltype(Q)}(undef)
-    Ja = element(physelem, ielem).Ja
+    Ja = get_element(physelem, ielem).Ja
     @inbounds for i in eachindex(std)
         F = volumeflux(view(Q, i, :), equation)
         for ivar in eachvariable(equation)
@@ -175,12 +175,12 @@ function surface_contribution!(
     # Unpack
     (; mesh, physelem, equation) = dg
 
-    iface = element(mesh, ielem).faceinds
-    facepos = element(mesh, ielem).facepos
+    iface = get_element(mesh, ielem).faceinds
+    facepos = get_element(mesh, ielem).facepos
 
     Qr = reshape(Q, (size(std)..., nvariables(equation)))
     dQr = reshape(dQ, (size(std)..., nvariables(equation)))
-    Ja = reshape(element(physelem, ielem).Ja, size(std))
+    Ja = reshape(get_element(physelem, ielem).Ja, size(std))
     ns = elementgrid(physelem, ielem).n
     Js = elementgrid(physelem, ielem).Jf
 
@@ -198,8 +198,8 @@ function surface_contribution!(
         W = MMatrix{size(std, 1),nvariables(equation),eltype(Q)}(undef)
         Fli = MMatrix{size(std, 1),nvariables(equation),eltype(Q)}(undef)
         Fri = MMatrix{size(std, 1),nvariables(equation),eltype(Q)}(undef)
-        l = face(std, 3).l[1]
-        r = face(std, 3).l[2]
+        l = get_face(std, 3).l[1]
+        r = get_face(std, 3).l[2]
         @inbounds for j in eachindex(std, 2)
             @views _split_gauss_deriv_1d!(
                 dQr[:, j, :],
@@ -213,8 +213,8 @@ function surface_contribution!(
         W = MMatrix{size(std, 2),nvariables(equation),eltype(Q)}(undef)
         Fli = MMatrix{size(std, 2),nvariables(equation),eltype(Q)}(undef)
         Fri = MMatrix{size(std, 2),nvariables(equation),eltype(Q)}(undef)
-        l = face(std, 1).l[1]
-        r = face(std, 1).l[2]
+        l = get_face(std, 1).l[1]
+        r = get_face(std, 1).l[2]
         @inbounds for i in eachindex(std, 1)
             @views _split_gauss_deriv_1d!(
                 dQr[i, :, :],
@@ -283,7 +283,7 @@ function volume_contribution!(
     ci = CartesianIndices(std)
 
     # Volume fluxes (diagonal of F♯ matrices)
-    Ja = element(physelem, ielem).Ja
+    Ja = get_element(physelem, ielem).Ja
     @inbounds for i in eachindex(std)
         F = volumeflux(view(Q, i, :), equation)
         for ivar in eachvariable(equation)
@@ -497,7 +497,7 @@ function surface_contribution!(
     ci = CartesianIndices(std)
 
     # Volume fluxes (diagonal of F♯ matrices)
-    Ja = element(physelem, ielem).Ja
+    Ja = get_element(physelem, ielem).Ja
     @inbounds for i in eachindex(std)
         F = volumeflux(view(Q, i, :), equation)
         for ivar in eachvariable(equation)
@@ -508,8 +508,8 @@ function surface_contribution!(
         end
     end
 
-    iface = element(dg.mesh, ielem).faceinds
-    facepos = element(dg.mesh, ielem).facepos
+    iface = get_element(dg.mesh, ielem).faceinds
+    facepos = get_element(dg.mesh, ielem).facepos
 
     Qr = reshape(Q, (size(std)..., nvariables(equation)))
     dQr = reshape(dQ, (size(std)..., nvariables(equation)))
@@ -545,9 +545,9 @@ function surface_contribution!(
         W = MMatrix{size(std, 1),nvariables(equation),eltype(Q)}(undef)
         Fli = MMatrix{size(std, 1),nvariables(equation),eltype(Q)}(undef)
         Fri = MMatrix{size(std, 1),nvariables(equation),eltype(Q)}(undef)
-        K♯ = face(std, 3).K♯[1]
-        l = face(std, 3).l[1]
-        r = face(std, 3).l[2]
+        K♯ = get_face(std, 3).K♯[1]
+        l = get_face(std, 3).l[1]
+        r = get_face(std, 3).l[2]
         @inbounds for j in eachindex(std, 2)
             @views _ssfv_gauss_flux_1d!(
                 F̄c, F♯r[:, :, j, :],
@@ -558,7 +558,7 @@ function surface_contribution!(
             )
 
             # Strong derivative
-            ωj = face(std, 1).ω[j]
+            ωj = get_face(std, 1).ω[j]
             for v in eachvariable(equation), i in eachindex(std, 1)
                 @views dQr[i, j, v] += (F̄c[i, v] - F̄c[(i + 1), v]) * ωj
             end
@@ -570,9 +570,9 @@ function surface_contribution!(
         W = MMatrix{size(std, 2),nvariables(equation),eltype(Q)}(undef)
         Fli = MMatrix{size(std, 2),nvariables(equation),eltype(Q)}(undef)
         Fri = MMatrix{size(std, 2),nvariables(equation),eltype(Q)}(undef)
-        K♯ = face(std, 1).K♯[1]
-        l = face(std, 1).l[1]
-        r = face(std, 1).l[2]
+        K♯ = get_face(std, 1).K♯[1]
+        l = get_face(std, 1).l[1]
+        r = get_face(std, 1).l[2]
         @inbounds for i in eachindex(std, 1)
             @views _ssfv_gauss_flux_1d!(
                 F̄c, F♯r[:, i, :, :],
@@ -583,7 +583,7 @@ function surface_contribution!(
             )
 
             # Strong derivative
-            ωi = face(std, 1).ω[i]
+            ωi = get_face(std, 1).ω[i]
             for v in eachvariable(equation), j in eachindex(std, 2)
                 @views dQr[i, j, v] += (F̄c[j, v] - F̄c[(j + 1), v]) * ωi
             end
@@ -653,7 +653,7 @@ function volume_contribution!(
 
     Qr = reshape(Q, (size(std)..., nvariables(equation)))
     dQr = reshape(dQ, (size(std)..., nvariables(equation)))
-    Ja = reshape(element(physelem, ielem).Ja, size(std))
+    Ja = reshape(get_element(physelem, ielem).Ja, size(std))
     ns = elementgrid(physelem, ielem).n
     ts = elementgrid(physelem, ielem).t
     bs = elementgrid(physelem, ielem).b
@@ -672,7 +672,7 @@ function volume_contribution!(
     # 2D
     elseif ND == 2
         # X direction
-        Qmat = face(std, 3).Q[1]
+        Qmat = get_face(std, 3).Q[1]
         F̄ = MMatrix{size(std, 1) + 1,nvariables(equation),eltype(Q)}(undef)
         @inbounds for j in eachindex(std, 2)
             @views _ssfv_flux_1d!(
@@ -682,14 +682,14 @@ function volume_contribution!(
             )
 
             # Strong derivative
-            ωj = face(std, 1).ω[j]
+            ωj = get_face(std, 1).ω[j]
             for v in eachvariable(equation), i in eachindex(std, 1)
                 @views dQr[i, j, v] += (F̄[i, v] - F̄[(i + 1), v]) * ωj
             end
         end
 
         # Y derivative
-        Qmat = face(std, 1).Q[1]
+        Qmat = get_face(std, 1).Q[1]
         F̄ = MMatrix{size(std, 2) + 1,nvariables(equation),eltype(Q)}(undef)
         @inbounds for i in eachindex(std, 1)
             @views _ssfv_flux_1d!(
@@ -699,7 +699,7 @@ function volume_contribution!(
             )
 
             # Strong derivative
-            ωi = face(std, 3).ω[i]
+            ωi = get_face(std, 3).ω[i]
             for v in eachvariable(equation), j in eachindex(std, 2)
                 @views dQr[i, j, v] += (F̄[j, v] - F̄[(j + 1), v]) * ωi
             end
