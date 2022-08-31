@@ -112,8 +112,6 @@ struct SplitDivOperator{T} <: AbstractDivOperator
     tpflux::T
 end
 
-requires_subgrid(::SplitDivOperator) = true   # TODO: only required for GL nodes
-
 function twopointflux end
 
 function _split_gauss_deriv_1d!(
