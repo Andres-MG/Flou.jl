@@ -187,7 +187,7 @@ function PhysicalSubgrid(std, mesh::CartesianMesh{3,RT}, _) where {RT}
         fill(Δx[1] * Δx[3] / 4, nx, ny + 1, nz),
         fill(Δx[1] * Δx[2] / 4, nx, ny, nz + 1),
     )
-    return PhysicalElement(n, t, b, Jf)
+    return PhysicalSubgrid(n, t, b, Jf)
 end
 
 function PhysicalSubgrid(std, mesh::StepMesh{RT}, ie) where {RT}
@@ -250,7 +250,7 @@ function PhysicalFace(std, mesh::CartesianMesh{2,RT}, iface) where {RT}
     (; Δx) = mesh
     pos = get_face(mesh, iface).elempos[1]
     if pos == 1 || pos == 2  # Vertical
-        fstd = get_face(std, 2)
+        fstd = get_face(std, 1)
         J = fill(Δx[2] / 2, ndofs(fstd))
         if pos == 1
             n = fill(SVector(-one(RT), zero(RT)), ndofs(fstd))
@@ -263,7 +263,7 @@ function PhysicalFace(std, mesh::CartesianMesh{2,RT}, iface) where {RT}
         end
 
     else  # pos == 3 || pos == 4  # Horizontal
-        fstd = get_face(std, 1)
+        fstd = get_face(std, 2)
         J = fill(Δx[1] / 2, ndofs(fstd))
         if pos == 3
             n = fill(SVector(zero(RT), -one(RT)), ndofs(fstd))
@@ -282,8 +282,16 @@ function PhysicalFace(std, mesh::CartesianMesh{2,RT}, iface) where {RT}
     return PhysicalFace(xy, n, t, b, J, M, surf)
 end
 
-function PhysicalFace(_, ::CartesianMesh{3,RT}, _) where {RT}
-    error("Not implemented yet!")
+function PhysicalFace(std, mesh::CartesianMesh{3,RT}, iface) where {RT}
+    (; Δx) = mesh
+    pos = get_face(mesh, iface).elempos[1]
+    if pos == 1 || pos == 2  # X faces
+        fstd = get_face(std, 1)
+    elseif pos == 3 || pos == 4  # Y faces
+        fstd = get_face(std, 2)
+    else # pos == 5 || pos == 6  # Z faces
+        fstd = get_face(std, 3)
+    end
 end
 
 function PhysicalFace(std, mesh::StepMesh{RT}, iface) where {RT}
@@ -293,7 +301,7 @@ function PhysicalFace(std, mesh::StepMesh{RT}, iface) where {RT}
     pos = get_face(mesh, iface).elempos[1]
 
     if pos == 1 || pos == 2  # Vertical
-        fstd = get_face(std, 2)
+        fstd = get_face(std, 1)
         J = fill(Δx[ireg][2] / 2, ndofs(fstd))
         xy = [face_phys_coords(ξ, mesh, iface) for ξ in fstd.ξ]
         if pos == 1
@@ -307,7 +315,7 @@ function PhysicalFace(std, mesh::StepMesh{RT}, iface) where {RT}
         end
 
     else  # pos == 3 || pos == 4  # Horizontal
-        fstd = get_face(std, 1)
+        fstd = get_face(std, 2)
         J = fill(Δx[ireg][1] / 2, ndofs(fstd))
         xy = [face_phys_coords(ξ, mesh, iface) for ξ in fstd.ξ]
         if pos == 3
@@ -350,9 +358,9 @@ function PhysicalFace(std, mesh::UnstructuredMesh{2,RT}, iface) where {RT}
     ielem = face.eleminds[1]
     pos = face.elempos[1]
     if pos == 1 || pos == 2  # Vertical
-        fstd = get_face(std, 2)
-    else # pos == 3 || pos == 4  # Horizontal
         fstd = get_face(std, 1)
+    else # pos == 3 || pos == 4  # Horizontal
+        fstd = get_face(std, 2)
     end
 
     xy = Vector{SVector{2,RT}}(undef, ndofs(fstd))

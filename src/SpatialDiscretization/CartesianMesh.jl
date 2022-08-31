@@ -178,7 +178,42 @@ function _cartesian_element_connectivities(::Val{2}, nxy)
 end
 
 function _cartesian_element_connectivities(::Val{3}, nxyz)
-    error("Not implemented yet!")
+    nx, ny, nz = nxyz
+    npx, npy, _ = nxyz .+ 1
+    nelements = nx * ny * nz
+    enodeinds = Vector{Vector{Int}}(undef, nelements)
+    faceinds = Vector{Vector{Int}}(undef, nelements)
+    facepos = Vector{Vector{Int}}(undef, nelements)
+    for k in 1:nz, j in 1:ny, i in 1:nx
+        ielem = (k-1)*nx*ny + (j-1)*nx + i
+        enodeinds[ielem] = [
+            (k-1)*npx*npy + (j-1)*npx + i,
+            (k-1)*npx*npy + (j-1)*npx + i + 1,
+            (k-1)*npx*npy + (j-1)*npx + i + 1 + npx,
+            (k-1)*npx*npy + (j-1)*npx + i + npx,
+            npx*npy + (k-1)*npx*npy + (j-1)*npx + i,
+            npx*npy + (k-1)*npx*npy + (j-1)*npx + i + 1,
+            npx*npy + (k-1)*npx*npy + (j-1)*npx + i + 1 + npx,
+            npx*npy + (k-1)*npx*npy + (j-1)*npx + i + npx,
+        ]
+        faceinds[ielem] = [
+            (k-1)*npx*ny + (j-1)*npx + i,
+            (k-1)*npx*ny + (j-1)*npx + i + 1,
+            npx*ny*nz + (k-1)*nx*npy + (j-1)*nx + i,
+            npx*ny*nz + (k-1)*nx*npy + (j-1)*nx + i + nx,
+            npx*ny*nz + nx*npy*nz + (k-1)*nx*ny + (j-1)*nx + i,
+            npx*ny*nz + nx*npy*nz + (k-1)*nx*ny + (j-1)*nx + i + nx*ny,
+        ]
+        facepos[ielem] = [
+            (i == 1) ? 1 : 2,
+            1,
+            (j == 1) ? 1 : 2,
+            1,
+            (k == 1) ? 1 : 2,
+            1,
+        ]
+    end
+    return [MeshElement(enodeinds[i], faceinds[i], facepos[i], 1) for i in 1:nelements]
 end
 
 function _cartesian_face_connectivities(::Val{1}, nx)
@@ -318,5 +353,129 @@ function _cartesian_face_connectivities(::Val{2}, nxy)
 end
 
 function _cartesian_face_connectivities(::Val{3}, nxyz)
-    error("Not implemented yet!")
+    nx, ny, nz = nxyz
+    npx, npy, npz = nxyz .+ 1
+    nfaces = npx*ny*nz + npy*nx*nz + npz*nx*ny
+    nbdfaces = 2*nx + 2*ny + 2*nz
+    nintfaces = nfaces - nbdfaces
+
+    fnodeinds = Vector{Vector{Int}}(undef, nfaces)
+    eleminds = Vector{Vector{Int}}(undef, nfaces)
+    elempos = Vector{Vector{Int}}(undef, nfaces)
+    intfaces = Int[]; sizehint!(intfaces, nintfaces)
+    bdfaces = [Int[] for _ in 1:6]
+
+    # X faces
+    for k in 1:nz, j in 1:ny, i in 1:npx
+        iface = (k-1)*npx*ny + (j-1)*npx + i
+        if i == 1
+            push!(bdfaces[1], iface)
+            eleminds[iface] = [
+                (k-1)*nx*ny + (j-1)*nx + 1,
+                0,
+            ]
+            elempos[iface] = [1, 0]
+        elseif i == npx
+            push!(bdfaces[2], iface)
+            eleminds[iface] = [
+                (k-1)*nx*ny + (j-1)*nx + nx,
+                0,
+            ]
+            elempos[iface] = [2, 0]
+        else
+            push!(intfaces, iface)
+            eleminds[iface] = [
+                (k-1)*nx*ny + (j-1)*nx + i - 1,
+                (k-1)*nx*ny + (j-1)*nx + i,
+            ]
+            elempos[iface] = [2, 1]
+        end
+        fnodeinds[iface] = [
+            (k-1)*npx*npy + (j-1)*npx + i,
+            (k-1)*npx*npy + (j-1)*npx + i + npx,
+            npx*npy + (k-1)*npx*npy + (j-1)*npx + i + npx,
+            npx*npy + (k-1)*npx*npy + (j-1)*npx + i,
+        ]
+    end
+
+    # Y faces
+    for k in 1:nz, j in 1:npy, i in 1:nx
+        iface = npx*ny*nz + (k-1)*nx*npy + (j-1)*nx + i
+        if j == 1
+            push!(bdfaces[3], iface)
+            eleminds[iface] = [
+                (k-1)*nx*ny + i,
+                0,
+            ]
+            elempos[iface] = [3, 0]
+        elseif j == npy
+            push!(bdfaces[4], iface)
+            eleminds[iface] = [
+                (k-1)*nx*ny + (ny-1)*nx + i,
+                0,
+            ]
+            elempos[iface] = [4, 0]
+        else
+            push!(intfaces, iface)
+            eleminds[iface] = [
+            (k-1)*nx*ny + (j-2)*nx + i,
+            (k-1)*nx*ny + (j-2)*nx + i + nx,
+            ]
+            elempos[iface] = [4, 3]
+        end
+        fnodeinds[iface] = [
+            (k-1)*npx*npy + (j-1)*npx + i,
+            (k-1)*npx*npy + (j-1)*npx + i + 1,
+            npx*npy + (k-1)*npx*npy + (j-1)*npx + i + 1,
+            npx*npy + (k-1)*npx*npy + (j-1)*npx + i,
+        ]
+    end
+
+    # Z faces
+    for k in 1:npz, j in 1:ny, i in 1:nx
+        iface = npx*ny*nz + npy*nx*nz + (k-1)*nx*ny + (j-1)*nx + i
+        if k == 1
+            push!(bdfaces[5], iface)
+            eleminds[iface] = [
+                (j-1)*nx + i,
+                0,
+            ]
+            elempos[iface] = [5, 0]
+        elseif k == npz
+            push!(bdfaces[6], iface)
+            eleminds[iface] = [
+                (nz-1)*nx*ny + (j-1)*nx + i,
+                0,
+            ]
+            elempos[iface] = [6, 0]
+        else
+            push!(intfaces, iface)
+            eleminds[iface] = [
+                (k-2)*nx*ny + (j-1)*nx + i,
+                (k-2)*nx*ny + (j-1)*nx + i + nx*ny,
+            ]
+            elempos[iface] = [6, 5]
+        end
+        fnodeinds[iface] = [
+            (k-1)*npx*npy + (j-1)*npx + i,
+            (k-1)*npx*npy + (j-1)*npx + i + 1,
+            npx + (k-1)*npx*npy + (j-1)*npx + i + 1,
+            npx + (k-1)*npx*npy + (j-1)*npx + i,
+        ]
+    end
+
+    return (
+        intfaces,
+        bdfaces,
+        [
+            MeshFace(
+                fnodeinds[i],
+                eleminds[i],
+                elempos[i],
+                UInt8(0),
+                2,
+            )
+            for i in 1:nfaces
+        ],
+    )
 end

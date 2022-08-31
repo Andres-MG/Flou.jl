@@ -397,3 +397,169 @@ _VTK_type(::StdTri) = UInt8(69)
 function _VTK_connectivities(::StdTri)
     error("Not implemented yet!")
 end
+
+#==========================================================================================#
+#                                       Standard hex                                       #
+
+struct StdHex{QT,Dims,RT,MM,CI,LI,FS1,FS2,FS3} <: AbstractStdRegion{3,QT,Dims}
+    fstd::Tuple{FS1,FS2,FS3}
+    cindices::CI
+    lindices::LI
+    ξe::Vector{SVector{2,RT}}
+    ξ::Vector{SVector{2,RT}}
+    ω::Vector{RT}
+    M::MM
+    D::NTuple{2,Transpose{RT,SparseMatrixCSC{RT,Int}}}
+    Q::NTuple{2,Transpose{RT,SparseMatrixCSC{RT,Int}}}
+    K::NTuple{2,Transpose{RT,SparseMatrixCSC{RT,Int}}}
+    Ks::NTuple{2,Transpose{RT,SparseMatrixCSC{RT,Int}}}
+    K♯::NTuple{2,Transpose{RT,SparseMatrixCSC{RT,Int}}}
+    l::NTuple{4,Transpose{RT,SparseMatrixCSC{RT,Int}}}
+    lω::NTuple{4,Transpose{RT,SparseMatrixCSC{RT,Int}}}
+    _n2e::Transpose{RT,SparseMatrixCSC{RT,Int}}
+end
+
+is_tensor_product(::StdHex) = true
+ndirections(::StdHex) = 3
+nvertices(::StdHex) = 8
+get_faces(s::StdHex) = (s.fstd[1], s.fstd[1], s.fstd[2], s.fstd[2], s.fstd[3], s.fstd[3])
+get_face(s::StdHex, i) = s.fstd[(i - 1) ÷ 2 + 1]
+
+function StdHex{RT}(np::AbstractVecOrTuple, qtype::AbstractQuadrature) where {RT<:Real}
+    # Quadratures
+    fstd = (
+        StdQuad{RT}((np[2], np[3]), qtype),
+        StdQuad{RT}((np[1], np[3]), qtype),
+        StdQuad{RT}((np[1], np[2]), qtype),
+    )
+    lstd = (get_face(fstd[3], 1), get_face(fstd[3], 2), get_face(fstd[1], 2))
+    ξ = vec([
+        SVector(ξx[1], ξy[1], ξz[1])
+        for ξx in lstd[1].ξ, ξy in lstd[2].ξ, ξz in lstd[3].ξ
+    ])
+    ω = vec([ωx * ωy * ωz for ωx in lstd[1].ω, ωy in lstd[2].ω, ωz in lstd[3].ω])
+
+    # Equispaced nodes
+    ξe = vec([
+        SVector(ξx[1], ξy[1], ξz[1])
+        for ξx in lstd[1].ξe, ξy in lstd[2].ξe, ξz in lstd[3].ξe
+    ])
+
+    cindices = CartesianIndices((np...,)) |> collect
+    lindices = LinearIndices((np...,)) |> collect
+
+    # Mass matrix
+    M = Diagonal(ω)
+
+    # Derivative matrices (TODO)
+    I = (Diagonal(ones(np[1])), Diagonal(ones(np[2])), Diagonal(ones(np[3])))
+    Iω = (Diagonal(lstd[1].ω), Diagonal(lstd[2].ω), Diagonal(lstd[3].ω))
+    D = (
+        kron(I[2], fstd[2].D[1]),
+        kron(fstd[1].D[1], I[1]),
+    )
+    Q = (
+        kron(I[2], fstd[2].Q[1]),
+        kron(fstd[1].Q[1], I[2]),
+    )
+    _n2e = kron(fstd[1]._n2e, fstd[2]._n2e)
+    K = (
+        kron(Iω[2], fstd[2].K[1]),
+        kron(fstd[1].K[1], Iω[1]),
+    )
+    Ks = (
+        kron(Iω[2], fstd[2].Ks[1]),
+        kron(fstd[1].Ks[1], Iω[1]),
+    )
+    K♯ = (
+        kron(diag(Iω[2]), fstd[2].K♯[1]),
+        kron(fstd[1].K♯[1], diag(Iω[1])),
+    )
+
+    # Projection operator
+    l = (
+        kron(I[2], fstd[2].l[1]),
+        kron(I[2], fstd[2].l[2]),
+        kron(fstd[1].l[1], I[1]),
+        kron(fstd[1].l[2], I[1]),
+    )
+
+    # Surface contribution
+    lω = (
+        kron(Iω[2], fstd[2].lω[1]),
+        kron(Iω[2], fstd[2].lω[2]),
+        kron(fstd[1].lω[1], Iω[1]),
+        kron(fstd[1].lω[2], Iω[1]),
+    )
+
+    return StdQuad{
+        typeof(qtype),
+        Tuple(np),
+        eltype(ω),
+        typeof(M),
+        typeof(cindices),
+        typeof(lindices),
+        typeof(fstd[1]),
+        typeof(fstd[2]),
+        typeof(fstd[3]),
+    }(
+        fstd,
+        cindices,
+        lindices,
+        ξe,
+        ξ,
+        ω,
+        M,
+        D .|> transpose .|> sparse .|> transpose |> Tuple,
+        Q .|> transpose .|> sparse .|> transpose |> Tuple,
+        K .|> transpose .|> sparse .|> transpose |> Tuple,
+        Ks .|> transpose .|> sparse .|> transpose |> Tuple,
+        K♯ .|> transpose .|> collect .|> transpose |> Tuple,
+        l .|> transpose .|> sparse .|> transpose |> Tuple,
+        lω .|> transpose .|> sparse .|> transpose |> Tuple,
+        _n2e |> transpose |> sparse |> transpose,
+    )
+end
+
+function Base.show(io::IO, ::MIME"text/plain", s::StdHex{QT,D,RT}) where {QT,D,RT}
+    @nospecialize
+    println(io, "StdRegion{", RT, "}: ")
+    if QT == GaussQuadrature
+        println(io, " ξ: Gauss quadrature with ", D[1], " nodes")
+        println(io, " η: Gauss quadrature with ", D[2], " nodes")
+        print(io, " ζ: Gauss quadrature with ", D[3], " nodes")
+    elseif QT == GaussLobattoQuadrature
+        println(io, " ξ: Gauss-Lobatto quadrature with ", D[1], " nodes")
+        println(io, " η: Gauss-Lobatto quadrature with ", D[2], " nodes")
+        print(io, " ζ: Gauss-Lobatto quadrature with ", D[3], " nodes")
+    else
+        @assert false "[StdRegion.show] You shouldn't be here..."
+    end
+    return nothing
+end
+
+function massmatrix(std::StdQuad, J)
+    return Diagonal(J) * std.M
+end
+
+function slave2master(_, _, _)
+    error("Not implemented yet!")
+end
+
+function master2slave(_, _, _)
+    error("Not implemented yet!")
+end
+
+_VTK_type(::StdHex) = UInt8(72)
+
+function _VTK_connectivities(s::StdQuad)
+    nx, ny = size(s)
+    li = LinearIndices(s)
+    conns = [
+        li[1, 1], li[nx, 1], li[nx, ny], li[1, ny],
+        li[2:(end - 1), 1]..., li[nx, 2:(end - 1)]...,
+        li[2:(end - 1), ny]..., li[1, 2:(end - 1)]...,
+        li[2:(end - 1), 2:(end - 1)]...,
+    ]
+    return conns .- 1
+end
