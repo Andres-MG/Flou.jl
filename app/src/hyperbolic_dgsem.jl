@@ -19,10 +19,13 @@ end
 Δt = 1e-4
 tf = 0.25
 save_steps = (0, Int(round(tf/Δt)))
+# save_steps = range(0, Int(round(tf/Δt)), 11) .|> Int
+# save_steps = 0:Int(round(tf/Δt))
 solver = ORK256(williamson_condition=false)
 # solver = DGLDDRK84_F()
 
 std = StdSegment{Float64}(4, GL())
+# std = StdQuad{Float64}((4, 4), GLL())
 div = SSFVDivOperator(
     ChandrasekharAverage(),
     # LxFNumericalFlux(
@@ -49,30 +52,39 @@ div = SSFVDivOperator(
 #     1.0,
 # )
 # numflux = ChandrasekharAverage()
-numflux = ScalarDissipation(
+numflux = MatrixDissipation(
     ChandrasekharAverage(),
     1.0,
 )
 
+mesh = CartesianMesh{1,Float64}(0, 1, 21)
 # mesh = CartesianMesh{2,Float64}((0, 0), (1, 0.5), (11, 5))
 # mesh = StepMesh{Float64}((0, 0), (3, 1), 0.6, 0.2, ((16, 8), (16, 24), (32, 24)))
 # mesh = StepMesh{Float64}((0, 0), (2, 2), 1.5, 1.0, ((30, 20), (30, 20), (10, 20)))
-mesh = CartesianMesh{1,Float64}(0, 1, 21)
-apply_periodicBCs!(mesh, 1 => 2)
+# mesh = UnstructuredMesh{2,Float64}("../test/meshes/mesh2d_refined.msh")
+apply_periodicBCs!(mesh, "1" => "2")
 
-equation = EulerEquation{1}(div, 1.4)
+equation = EulerEquation{2}(div, 1.4)
 
 # Q0 = Flou.vars_prim2cons((5.997, -98.5914, 0.0, 11_666.5), equation)
 # Q1 = Flou.vars_prim2cons((1.0, 0.0, 0.0, 1.0), equation)
 # ∂Ω = Dict(
-#     1 => EulerOutflowBC(),
-#     2 => EulerInflowBC(Q0),
-#     3 => EulerSlipBC(),
-#     4 => EulerSlipBC(),
-#     5 => EulerSlipBC(),
-#     6 => EulerSlipBC(),
+#     "1" => EulerOutflowBC(),
+#     "2" => EulerInflowBC(Q0),
+#     "3" => EulerSlipBC(),
+#     "4" => EulerSlipBC(),
+#     "5" => EulerSlipBC(),
+#     "6" => EulerSlipBC(),
 # )
 ∂Ω = Dict()
+# Q0 = Flou.vars_prim2cons((1.0, 2.0, 0.0, 1.0), equation)
+# ∂Ω = Dict(
+#     "Left" => EulerInflowBC(Q0),
+#     "Bottom" => EulerSlipBC(),
+#     "Right" => EulerOutflowBC(),
+#     "Top" => EulerSlipBC(),
+#     "Hole" => EulerSlipBC(),
+# )
 DG = DGSEM(mesh, std, equation, ∂Ω, numflux)
 
 # x0 = 0.5
@@ -102,6 +114,12 @@ for ie in eachelement(mesh)
         Q[1][i, :, ie] .= Flou.vars_prim2cons(P, equation)
     end
 end
+# Q = StateVector{Float64}(undef, DG.dofhandler, DG.stdvec, nvariables(equation))
+# for ie in eachelement(mesh)
+#     for i in eachindex(DG.stdvec[1])
+#         Q[1][i, :, ie] .= Q0
+#     end
+# end
 
 display(DG)
 println()
