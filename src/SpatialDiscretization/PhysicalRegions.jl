@@ -411,7 +411,7 @@ function PhysicalFace(std, mesh::UnstructuredMesh{2,RT}, iface) where {RT}
             main = map_basis(ξ, mesh, ielem)
             dual = map_dual_basis(main, mesh, ielem)
             n[i] = -dual[1]
-            t[i] = -main[2] / norm(main[2])
+            t[i] = -normalize(main[2])
             b[i] = SVector(zero(RT), zero(RT))
             J[i] = norm(n[i])
             n[i] /= J[i]
@@ -423,7 +423,7 @@ function PhysicalFace(std, mesh::UnstructuredMesh{2,RT}, iface) where {RT}
             main = map_basis(ξ, mesh, ielem)
             dual = map_dual_basis(main, mesh, ielem)
             n[i] = dual[1]
-            t[i] = main[2] / norm(main[2])
+            t[i] = normalize(main[2])
             b[i] = SVector(zero(RT), zero(RT))
             J[i] = norm(n[i])
             n[i] /= J[i]
@@ -435,7 +435,7 @@ function PhysicalFace(std, mesh::UnstructuredMesh{2,RT}, iface) where {RT}
             main = map_basis(ξ, mesh, ielem)
             dual = map_dual_basis(main, mesh, ielem)
             n[i] = -dual[2]
-            t[i] = main[1] / norm(main[1])
+            t[i] = normalize(main[1])
             b[i] = SVector(zero(RT), zero(RT))
             J[i] = norm(n[i])
             n[i] /= J[i]
@@ -447,7 +447,7 @@ function PhysicalFace(std, mesh::UnstructuredMesh{2,RT}, iface) where {RT}
             main = map_basis(ξ, mesh, ielem)
             dual = map_dual_basis(main, mesh, ielem)
             n[i] = dual[2]
-            t[i] = -main[1] / norm(main[1])
+            t[i] = -normalize(main[1])
             b[i] = SVector(zero(RT), zero(RT))
             J[i] = norm(n[i])
             n[i] /= J[i]
@@ -459,9 +459,100 @@ function PhysicalFace(std, mesh::UnstructuredMesh{2,RT}, iface) where {RT}
     return PhysicalFace(xy, n, t, b, J, M, surf)
 end
 
-# TODO
-function PhysicalFace(_, ::UnstructuredMesh{3,RT}, _) where {RT}
-    error("Not implemented yet!")
+function PhysicalFace(std, mesh::UnstructuredMesh{3,RT}, iface) where {RT}
+    face = get_face(mesh, iface)
+    ielem = face.eleminds[1]
+    pos = face.elempos[1]
+    if pos == 1 || pos == 2  # X faces
+        fstd = get_face(std, 1)
+    elseif pos == 3 || pos == 4  # Y faces
+        fstd = get_face(std, 2)
+    else # pos == 5 || pos == 6  # Z faces
+        fstd = get_face(std, 3)
+    end
+
+    xyz = Vector{SVector{3,RT}}(undef, ndofs(fstd))
+    n = Vector{SVector{3,RT}}(undef, ndofs(fstd))
+    t = Vector{SVector{3,RT}}(undef, ndofs(fstd))
+    b = Vector{SVector{3,RT}}(undef, ndofs(fstd))
+    J = Vector{RT}(undef, ndofs(fstd))
+    if pos == 1  # -X face
+        for i in eachindex(fstd)
+            ξ = SVector(-one(RT), fstd.ξ[i][1], fstd.ξ[i][2])
+            xyz[i] = phys_coords(ξ, mesh, ielem)
+            main = map_basis(ξ, mesh, ielem)
+            dual = map_dual_basis(main, mesh, ielem)
+            n[i] = -dual[1]
+            t[i] = -normalize(main[2])
+            b[i] = normalize(cross(n[i], t[i]))
+            J[i] = norm(n[i])
+            n[i] /= J[i]
+        end
+    elseif pos == 2  # +X face
+        for i in eachindex(fstd)
+            ξ = SVector(one(RT), fstd.ξ[i][1], fstd.ξ[i][2])
+            xyz[i] = phys_coords(ξ, mesh, ielem)
+            main = map_basis(ξ, mesh, ielem)
+            dual = map_dual_basis(main, mesh, ielem)
+            n[i] = dual[1]
+            t[i] = normalize(main[2])
+            b[i] = normalize(cross(n[i], t[i]))
+            J[i] = norm(n[i])
+            n[i] /= J[i]
+        end
+    elseif pos == 3  # -Y face
+        for i in eachindex(fstd)
+            ξ = SVector(fstd.ξ[i][1], -one(RT), fstd.ξ[i][2])
+            xyz[i] = phys_coords(ξ, mesh, ielem)
+            main = map_basis(ξ, mesh, ielem)
+            dual = map_dual_basis(main, mesh, ielem)
+            n[i] = -dual[2]
+            t[i] = -normalize(main[3])
+            b[i] = normalize(cross(n[i], t[i]))
+            J[i] = norm(n[i])
+            n[i] /= J[i]
+        end
+    elseif pos == 4  # +Y face
+        for i in eachindex(fstd)
+            ξ = SVector(fstd.ξ[i][1], one(RT), fstd.ξ[i][2])
+            xyz[i] = phys_coords(ξ, mesh, ielem)
+            main = map_basis(ξ, mesh, ielem)
+            dual = map_dual_basis(main, mesh, ielem)
+            n[i] = dual[2]
+            t[i] = normalize(main[3])
+            b[i] = normalize(cross(n[i], t[i]))
+            J[i] = norm(n[i])
+            n[i] /= J[i]
+        end
+    elseif pos == 5  # -Z face
+        for i in eachindex(fstd)
+            ξ = SVector(fstd.ξ[i][1], fstd.ξ[i][2], -one(RT))
+            xyz[i] = phys_coords(ξ, mesh, ielem)
+            main = map_basis(ξ, mesh, ielem)
+            dual = map_dual_basis(main, mesh, ielem)
+            n[i] = -dual[3]
+            t[i] = -normalize(main[1])
+            b[i] = normalize(cross(n[i], t[i]))
+            J[i] = norm(n[i])
+            n[i] /= J[i]
+        end
+    else # pos == 6  # +Z face
+        for i in eachindex(fstd)
+            ξ = SVector(fstd.ξ[i][1], fstd.ξ[i][2], one(RT))
+            xyz[i] = phys_coords(ξ, mesh, ielem)
+            main = map_basis(ξ, mesh, ielem)
+            dual = map_dual_basis(main, mesh, ielem)
+            n[i] = dual[3]
+            t[i] = normalize(main[1])
+            b[i] = normalize(cross(n[i], t[i]))
+            J[i] = norm(n[i])
+            n[i] /= J[i]
+        end
+    end
+
+    M = massmatrix(fstd, J)
+    surf = sum(M)
+    return PhysicalFace(xyz, n, t, b, J, M, surf)
 end
 
 function compute_metric_terms(stdvec, dh, mesh, subgrid=false)
