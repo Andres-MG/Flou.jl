@@ -112,8 +112,6 @@ struct SplitDivOperator{T} <: AbstractDivOperator
     tpflux::T
 end
 
-requires_subgrid(::SplitDivOperator) = true   # TODO: only required for GL nodes
-
 function twopointflux end
 
 function _split_gauss_deriv_1d!(
@@ -233,7 +231,7 @@ function surface_contribution!(
 end
 
 function _split_flux_1d!(F♯, Q, Ja, std, equation, op, idir)
-    @inbounds for i in eachindex(std, idir), l in (i + 1):ndofs(std)
+    @inbounds for i in eachindex(std, idir), l in (i + 1):size(std, idir)
         F♯[l, i, :] = twopointflux(
             view(Q, i, :),
             view(Q, l, :),
@@ -637,7 +635,7 @@ function volume_contribution!(
     dQ,
     Q,
     ielem,
-    std::AbstractStdRegion{ND,<:GaussLobattoQuadrature},
+    std::AbstractStdRegion{ND},
     dg::DiscontinuousGalerkin,
     op::SSFVDivOperator,
 ) where {ND}
