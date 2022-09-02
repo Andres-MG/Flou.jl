@@ -336,7 +336,7 @@ end
 
 function Base.show(io::IO, ::MIME"text/plain", s::StdQuad{QT,D,RT}) where {QT,D,RT}
     @nospecialize
-    println(io, "StdRegion{", RT, "}: ")
+    println(io, "StdQuad{", RT, "}: ")
     if QT == GaussQuadrature
         println(io, " ξ: Gauss quadrature with ", D[1], " nodes")
         print(io, " η: Gauss quadrature with ", D[2], " nodes")
@@ -354,11 +354,47 @@ function massmatrix(std::StdQuad, J)
 end
 
 function slave2master(i, orientation, std::StdQuad)
-    error("Not implemented yet!")
+    s = CartesianIndices(std)[i]
+    li = LinearIndices(std)
+    return if orientation == 0
+        i
+    elseif orientation == 1
+        li[size(std, 1) - s[2], s[1]]
+    elseif orientation == 2
+        li[size(std, 1) - s[1], size(std, 2) - s[2]]
+    elseif orientation == 3
+        li[s[2], size(std, 2) - s[1]]
+    elseif orientation == 4
+        li[s[2], s[1]]
+    elseif orientation == 5
+        li[size(std, 1) - s[1], s[2]]
+    elseif orientation == 6
+        li[size(std, 1) - s[2], size(std, 2) - s[1]]
+    else # orientation == 7
+        li[s[1], size(std, 2) - s[2]]
+    end
 end
 
-function master2slave(i, orientation, shape::Vararg{<:Integer,1})
-    error("Not implemented yet!")
+function master2slave(i, orientation, std::StdQuad)
+    m = CartesianIndices(std)[i]
+    li = LinearIndices(std)
+    return if orientation == 0
+        i
+    elseif orientation == 1
+        li[m[2], size(std, 1) - m[1]]
+    elseif orientation == 2
+        li[size(std, 1) - m[1], size(std, 2) - m[2]]
+    elseif orientation == 3
+        li[size(std, 2) - m[2], m[1]]
+    elseif orientation == 4
+        li[m[2], m[1]]
+    elseif orientation == 5
+        li[size(std, 1) - m[1], m[2]]
+    elseif orientation == 6
+        li[size(std, 2) - m[2], size(std, 1) - m[1]]
+    else # orientation == 7
+        li[m[1], size(std, 2) - m[2]]
+    end
 end
 
 _VTK_type(::StdQuad) = UInt8(70)
@@ -366,13 +402,13 @@ _VTK_type(::StdQuad) = UInt8(70)
 function _VTK_connectivities(s::StdQuad)
     nx, ny = size(s)
     li = LinearIndices(s)
-    conns = [
-        li[1, 1], li[nx, 1], li[nx, ny], li[1, ny],
-        li[2:(end - 1), 1]..., li[nx, 2:(end - 1)]...,
-        li[2:(end - 1), ny]..., li[1, 2:(end - 1)]...,
-        li[2:(end - 1), 2:(end - 1)]...,
-    ]
-    return conns .- 1
+    corners = [li[1, 1], li[nx, 1], li[nx, ny], li[1, ny]]
+    edges = reduce(vcat, [
+        li[2:(end - 1), 1], li[nx, 2:(end - 1)],
+        li[2:(end - 1), ny], li[1, 2:(end - 1)],
+    ])
+    interior = vec(li[2:(end - 1), 2:(end - 1)])
+    return mapreduce(x -> x .- 1, vcat, (corners, edges, interior))
 end
 
 #==========================================================================================#
@@ -384,11 +420,11 @@ is_tensor_product(::StdTri) = false
 ndirections(::StdTri) = 3
 nvertices(::StdTri) = 3
 
-function slave2master(i, orientation, std::StdTri)
+function slave2master(_, _, _::StdTri)
     error("Not implemented yet!")
 end
 
-function master2slave(i, orientation, std::StdTri)
+function master2slave(_, _, _::StdTri)
     error("Not implemented yet!")
 end
 
@@ -405,17 +441,17 @@ struct StdHex{QT,Dims,RT,MM,CI,LI,FS1,FS2,FS3} <: AbstractStdRegion{3,QT,Dims}
     fstd::Tuple{FS1,FS2,FS3}
     cindices::CI
     lindices::LI
-    ξe::Vector{SVector{2,RT}}
-    ξ::Vector{SVector{2,RT}}
+    ξe::Vector{SVector{3,RT}}
+    ξ::Vector{SVector{3,RT}}
     ω::Vector{RT}
     M::MM
-    D::NTuple{2,Transpose{RT,SparseMatrixCSC{RT,Int}}}
-    Q::NTuple{2,Transpose{RT,SparseMatrixCSC{RT,Int}}}
-    K::NTuple{2,Transpose{RT,SparseMatrixCSC{RT,Int}}}
-    Ks::NTuple{2,Transpose{RT,SparseMatrixCSC{RT,Int}}}
-    K♯::NTuple{2,Transpose{RT,SparseMatrixCSC{RT,Int}}}
-    l::NTuple{4,Transpose{RT,SparseMatrixCSC{RT,Int}}}
-    lω::NTuple{4,Transpose{RT,SparseMatrixCSC{RT,Int}}}
+    D::NTuple{3,Transpose{RT,SparseMatrixCSC{RT,Int}}}
+    Q::NTuple{3,Transpose{RT,SparseMatrixCSC{RT,Int}}}
+    K::NTuple{3,Transpose{RT,SparseMatrixCSC{RT,Int}}}
+    Ks::NTuple{3,Transpose{RT,SparseMatrixCSC{RT,Int}}}
+    K♯::NTuple{3,Transpose{RT,SparseMatrixCSC{RT,Int}}}
+    l::NTuple{6,Transpose{RT,SparseMatrixCSC{RT,Int}}}
+    lω::NTuple{6,Transpose{RT,SparseMatrixCSC{RT,Int}}}
     _n2e::Transpose{RT,SparseMatrixCSC{RT,Int}}
 end
 
@@ -432,7 +468,7 @@ function StdHex{RT}(np::AbstractVecOrTuple, qtype::AbstractQuadrature) where {RT
         StdQuad{RT}((np[1], np[3]), qtype),
         StdQuad{RT}((np[1], np[2]), qtype),
     )
-    lstd = (get_face(fstd[3], 1), get_face(fstd[3], 2), get_face(fstd[1], 2))
+    lstd = (get_face(fstd[3], 3), get_face(fstd[3], 1), get_face(fstd[1], 1))
     ξ = vec([
         SVector(ξx[1], ξy[1], ξz[1])
         for ξx in lstd[1].ξ, ξy in lstd[2].ξ, ξz in lstd[3].ξ
@@ -451,48 +487,57 @@ function StdHex{RT}(np::AbstractVecOrTuple, qtype::AbstractQuadrature) where {RT
     # Mass matrix
     M = Diagonal(ω)
 
-    # Derivative matrices (TODO)
+    # Derivative matrices
     I = (Diagonal(ones(np[1])), Diagonal(ones(np[2])), Diagonal(ones(np[3])))
     Iω = (Diagonal(lstd[1].ω), Diagonal(lstd[2].ω), Diagonal(lstd[3].ω))
     D = (
-        kron(I[2], fstd[2].D[1]),
-        kron(fstd[1].D[1], I[1]),
+        kron(I[3], kron(I[2], lstd[1].D[1])),
+        kron(I[3], kron(lstd[2].D[1], I[1])),
+        kron(lstd[3].D[1], kron(I[2], I[1])),
     )
     Q = (
-        kron(I[2], fstd[2].Q[1]),
-        kron(fstd[1].Q[1], I[2]),
+        kron(I[3], kron(I[2], lstd[1].Q[1])),
+        kron(I[3], kron(lstd[2].Q[1], I[1])),
+        kron(lstd[3].Q[1], kron(I[2], I[1])),
     )
-    _n2e = kron(fstd[1]._n2e, fstd[2]._n2e)
+    _n2e = kron(lstd[3]._n2e, lstd[2]._n2e, lstd[1]._n2e)
     K = (
-        kron(Iω[2], fstd[2].K[1]),
-        kron(fstd[1].K[1], Iω[1]),
+        kron(Iω[3], kron(Iω[2], lstd[1].K[1])),
+        kron(Iω[3], kron(lstd[2].K[1], Iω[1])),
+        kron(lstd[3].K[1], kron(Iω[2], Iω[1])),
     )
     Ks = (
-        kron(Iω[2], fstd[2].Ks[1]),
-        kron(fstd[1].Ks[1], Iω[1]),
+        kron(Iω[3], kron(Iω[2], lstd[1].Ks[1])),
+        kron(Iω[3], kron(lstd[2].Ks[1], Iω[1])),
+        kron(lstd[3].Ks[1], kron(Iω[2], Iω[1])),
     )
     K♯ = (
-        kron(diag(Iω[2]), fstd[2].K♯[1]),
-        kron(fstd[1].K♯[1], diag(Iω[1])),
+        kron(diag(Iω[3]), kron(diag(Iω[2]), lstd[1].K♯[1])),
+        kron(diag(Iω[3]), kron(lstd[2].K♯[1], diag(Iω[1]))),
+        kron(lstd[3].K♯[1], kron(diag(Iω[2]), diag(Iω[1]))),
     )
 
     # Projection operator
     l = (
-        kron(I[2], fstd[2].l[1]),
-        kron(I[2], fstd[2].l[2]),
-        kron(fstd[1].l[1], I[1]),
-        kron(fstd[1].l[2], I[1]),
+        kron(I[3], kron(I[2], lstd[1].l[1])),
+        kron(I[3], kron(I[2], lstd[1].l[2])),
+        kron(I[3], kron(lstd[2].l[1], I[1])),
+        kron(I[3], kron(lstd[2].l[2], I[1])),
+        kron(lstd[3].l[1], kron(I[1], I[2])),
+        kron(lstd[3].l[2], kron(I[1], I[2])),
     )
 
     # Surface contribution
     lω = (
-        kron(Iω[2], fstd[2].lω[1]),
-        kron(Iω[2], fstd[2].lω[2]),
-        kron(fstd[1].lω[1], Iω[1]),
-        kron(fstd[1].lω[2], Iω[1]),
+        kron(Iω[3], kron(Iω[2], lstd[1].lω[1])),
+        kron(Iω[3], kron(Iω[2], lstd[1].lω[2])),
+        kron(Iω[3], kron(lstd[2].lω[1], Iω[1])),
+        kron(Iω[3], kron(lstd[2].lω[2], Iω[1])),
+        kron(lstd[3].lω[1], kron(Iω[2], Iω[1])),
+        kron(lstd[3].lω[2], kron(Iω[2], Iω[1])),
     )
 
-    return StdQuad{
+    return StdHex{
         typeof(qtype),
         Tuple(np),
         eltype(ω),
@@ -523,7 +568,7 @@ end
 
 function Base.show(io::IO, ::MIME"text/plain", s::StdHex{QT,D,RT}) where {QT,D,RT}
     @nospecialize
-    println(io, "StdRegion{", RT, "}: ")
+    println(io, "StdHex{", RT, "}: ")
     if QT == GaussQuadrature
         println(io, " ξ: Gauss quadrature with ", D[1], " nodes")
         println(io, " η: Gauss quadrature with ", D[2], " nodes")
@@ -538,28 +583,40 @@ function Base.show(io::IO, ::MIME"text/plain", s::StdHex{QT,D,RT}) where {QT,D,R
     return nothing
 end
 
-function massmatrix(std::StdQuad, J)
+function massmatrix(std::StdHex, J)
     return Diagonal(J) * std.M
 end
 
-function slave2master(_, _, _)
+function slave2master(_, _, _::StdHex)
     error("Not implemented yet!")
 end
 
-function master2slave(_, _, _)
+function master2slave(_, _, _::StdHex)
     error("Not implemented yet!")
 end
 
 _VTK_type(::StdHex) = UInt8(72)
 
-function _VTK_connectivities(s::StdQuad)
-    nx, ny = size(s)
+function _VTK_connectivities(s::StdHex)
+    nx, ny, nz = size(s)
     li = LinearIndices(s)
-    conns = [
-        li[1, 1], li[nx, 1], li[nx, ny], li[1, ny],
-        li[2:(end - 1), 1]..., li[nx, 2:(end - 1)]...,
-        li[2:(end - 1), ny]..., li[1, 2:(end - 1)]...,
-        li[2:(end - 1), 2:(end - 1)]...,
+    corners = [
+        li[1, 1, 1], li[nx, 1, 1], li[nx, ny, 1], li[1, ny, 1],
+        li[1, 1, nz], li[nx, 1, nz], li[nx, ny, nz], li[1, ny, nz],
     ]
-    return conns .- 1
+    edges = reduce(vcat, [
+        li[2:(end - 1), 1, 1], li[nx, 2:(end - 1), 1],
+        li[2:(end - 1), ny, 1], li[1, 2:(end - 1), 1],
+        li[2:(end - 1), 1, nz], li[nx, 2:(end - 1), nz],
+        li[2:(end - 1), ny, nz], li[1, 2:(end - 1), nz],
+        li[1, 1, 2:(end - 1)], li[nx, 1, 2:(end - 1)],
+        li[nx, ny, 2:(end - 1)], li[1, ny, 2:(end - 1)],
+    ])
+    faces = reduce(vcat, [
+        li[1, 2:(end - 1), 2:(end - 1)], li[nx, 2:(end - 1), 2:(end - 1)],
+        li[2:(end - 1), 1, 2:(end - 1)], li[2:(end - 1), ny, 2:(end - 1)],
+        li[2:(end - 1), 2:(end - 1), 1], li[2:(end - 1), 2:(end - 1), nz],
+    ] .|> vec)
+    interior = vec(li[2:(end - 1), 2:(end - 1), 2:(end - 1)])
+    return mapreduce(x -> x .- 1, vcat, (corners, edges, faces, interior))
 end

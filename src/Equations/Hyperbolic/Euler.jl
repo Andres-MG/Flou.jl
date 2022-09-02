@@ -73,15 +73,15 @@ function volumeflux(Q, eq::EulerEquation{3})
     )
 end
 
-function rotate2face(Qf, n, t, b, ::EulerEquation{1})
+function rotate2face(Qf, n, _, _, ::EulerEquation{1})
     return SVector(Qf[1], Qf[2] * n[1], Qf[3])
 end
 
-function rotate2phys(Qrot, n, t, b, ::EulerEquation{1})
+function rotate2phys(Qrot, n, _, _, ::EulerEquation{1})
     return SVector(Qrot[1], Qrot[2] * n[1], Qrot[3])
 end
 
-function rotate2face(Qf, n, t, b, ::EulerEquation{2})
+function rotate2face(Qf, n, t, _, ::EulerEquation{2})
     return SVector(
         Qf[1],
         Qf[2] * n[1] + Qf[3] * n[2],
@@ -90,7 +90,7 @@ function rotate2face(Qf, n, t, b, ::EulerEquation{2})
     )
 end
 
-function rotate2phys(Qrot, n, t, b, ::EulerEquation{2})
+function rotate2phys(Qrot, n, t, _, ::EulerEquation{2})
     return SVector(
         Qrot[1],
         Qrot[2] * n[1] + Qrot[3] * t[1],

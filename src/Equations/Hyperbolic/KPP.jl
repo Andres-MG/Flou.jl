@@ -24,11 +24,11 @@ function volumeflux(Q, ::KPPEquation)
     return SMatrix{2,1}(sin(Q[1]), cos(Q[1]))
 end
 
-function rotate2face(Qf, n, t, b, ::KPPEquation)
+function rotate2face(Qf, _, _, _, ::KPPEquation)
     return SVector(Qf[1])
 end
 
-function rotate2phys(Qrot, n, t, b, ::KPPEquation)
+function rotate2phys(Qrot, _, _, _, ::KPPEquation)
     return SVector(Qrot[1])
 end
 

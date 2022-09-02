@@ -237,12 +237,47 @@ function map_dual_basis(main, ::QuadLinearMapping)
     )
 end
 
-function phys_coords(::AbstractVector, ::AbstractVector, ::HexLinearMapping)
-    error("Not implemented yet!")
+function phys_coords(ξ::AbstractVector, nodes::AbstractVector, ::HexLinearMapping)
+    ξrel, ηrel, ζrel = (ξ .+ 1) ./ 2
+    return SVector(
+        nodes[1] .* (1 - ξrel) .* (1 - ηrel) .* (1 - ζrel) .+
+        nodes[2] .* ξrel .* (1 - ηrel) .* (1 - ζrel) .+
+        nodes[3] .* ξrel .* ηrel .* (1 - ζrel) .+
+        nodes[4] .* (1 - ξrel) .* ηrel .* (1 - ζrel) .+
+        nodes[5] .* (1 - ξrel) .* (1 - ηrel) .* ζrel .+
+        nodes[6] .* ξrel .* (1 - ηrel) .* ζrel .+
+        nodes[7] .* ξrel .* ηrel .* ζrel .+
+        nodes[8] .* (1 - ξrel) .* ηrel .* ζrel
+    )
 end
 
-function map_basis(::AbstractVector, ::AbstractVector, ::HexLinearMapping)
-    error("Not implemented yet!")
+function map_basis(ξ::AbstractVector, nodes::AbstractVector, ::HexLinearMapping)
+    ξrel, ηrel, ζrel = (ξ .+ 1) ./ 2
+    dxdξ = SVector(
+        (1 - ζrel) .* (
+            (nodes[2] .- nodes[1]) ./ 2 .* (1 - ηrel) .+
+            (nodes[3] .- nodes[4]) ./ 2 .* ηrel) .+
+        ζrel .* (
+            (nodes[6] .- nodes[5]) ./ 2 .* (1 - ηrel) .+
+            (nodes[7] .- nodes[8]) ./ 2 .* ηrel)
+    )
+    dxdη = SVector(
+        (1 - ξrel) .* (
+            (nodes[4] .- nodes[1]) ./ 2 .* (1 - ζrel) .+
+            (nodes[8] .- nodes[5]) ./ 2 .* ζrel) .+
+        ξrel .* (
+            (nodes[3] .- nodes[2]) ./ 2 .* (1 - ζrel) .+
+            (nodes[7] .- nodes[6]) ./ 2 .* ζrel)
+    )
+    dxdζ = SVector(
+        (1 - ηrel) .* (
+            (nodes[5] .- nodes[1]) ./ 2 .* (1 - ξrel) .+
+            (nodes[6] .- nodes[2]) ./ 2 .* ξrel) .+
+        ηrel .* (
+            (nodes[8] .- nodes[4]) ./ 2 .* (1 - ξrel) .+
+            (nodes[7] .- nodes[3]) ./ 2 .* ξrel)
+    )
+    return (dxdξ, dxdη, dxdζ)
 end
 
 function map_dual_basis(main, ::HexLinearMapping)
