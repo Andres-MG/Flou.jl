@@ -359,19 +359,19 @@ function slave2master(i, orientation, std::StdQuad)
     return if orientation == 0
         i
     elseif orientation == 1
-        li[size(std, 1) - s[2], s[1]]
+        li[size(std, 1) - s[2] + 1, s[1]]
     elseif orientation == 2
-        li[size(std, 1) - s[1], size(std, 2) - s[2]]
+        li[size(std, 1) - s[1] + 1, size(std, 2) - s[2] + 1]
     elseif orientation == 3
-        li[s[2], size(std, 2) - s[1]]
+        li[s[2], size(std, 2) - s[1] + 1]
     elseif orientation == 4
         li[s[2], s[1]]
     elseif orientation == 5
-        li[size(std, 1) - s[1], s[2]]
+        li[size(std, 1) - s[1] + 1, s[2]]
     elseif orientation == 6
-        li[size(std, 1) - s[2], size(std, 2) - s[1]]
+        li[size(std, 1) - s[2] + 1, size(std, 2) - s[1] + 1]
     else # orientation == 7
-        li[s[1], size(std, 2) - s[2]]
+        li[s[1], size(std, 2) - s[2] + 1]
     end
 end
 
@@ -381,19 +381,19 @@ function master2slave(i, orientation, std::StdQuad)
     return if orientation == 0
         i
     elseif orientation == 1
-        li[m[2], size(std, 1) - m[1]]
+        li[m[2], size(std, 1) - m[1] + 1]
     elseif orientation == 2
-        li[size(std, 1) - m[1], size(std, 2) - m[2]]
+        li[size(std, 1) - m[1] + 1, size(std, 2) - m[2] + 1]
     elseif orientation == 3
-        li[size(std, 2) - m[2], m[1]]
+        li[size(std, 2) - m[2] + 1, m[1]]
     elseif orientation == 4
         li[m[2], m[1]]
     elseif orientation == 5
-        li[size(std, 1) - m[1], m[2]]
+        li[size(std, 1) - m[1] + 1, m[2]]
     elseif orientation == 6
-        li[size(std, 2) - m[2], size(std, 1) - m[1]]
+        li[size(std, 2) - m[2] + 1, size(std, 1) - m[1] + 1]
     else # orientation == 7
-        li[m[1], size(std, 2) - m[2]]
+        li[m[1], size(std, 2) - m[2] + 1]
     end
 end
 
