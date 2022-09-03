@@ -98,7 +98,7 @@ is_tensor_product(::StdSegment) = true
 ndirections(::StdSegment) = 1
 nvertices(::StdSegment) = 2
 
-function StdSegment{RT}(np::Integer, qtype::AbstractQuadrature) where {RT<:Real}
+function StdSegment{RT}(np::Integer, qtype::AbstractQuadrature, npe=np) where {RT<:Real}
     fstd = (StdPoint(), StdPoint())
     _ξ, ω = if qtype isa(GaussQuadrature)
         gausslegendre(np)
@@ -111,7 +111,7 @@ function StdSegment{RT}(np::Integer, qtype::AbstractQuadrature) where {RT<:Real}
     ξ = [SVector(ξi) for ξi in _ξ]
 
     # Equispaced nodes
-    _ξe = convert.(RT, range(-1, 1, np))
+    _ξe = convert.(RT, range(-1, 1, npe))
     ξe = [SVector(ξ) for ξ in _ξe]
 
     cindices = CartesianIndices((np,)) |> collect
@@ -122,14 +122,14 @@ function StdSegment{RT}(np::Integer, qtype::AbstractQuadrature) where {RT<:Real}
 
     # Lagrange basis
     D = Matrix{RT}(undef, np, np)
-    _n2e = similar(D)
+    _n2e = Matrix{RT}(undef, npe, np)
     l = (Vector{RT}(undef, np), Vector{RT}(undef, np))
     y = fill(zero(RT), np)
     for i in 1:np
         y[i] = one(RT)
         Li = convert(Polynomial, Lagrange(_ξ, y))
-        ∂Li = derivative(Li)
-        D[:, i] .= ∂Li.(_ξ)
+        dLi = derivative(Li)
+        D[:, i] .= dLi.(_ξ)
         l[1][i] = Li(-one(RT))
         l[2][i] = Li(+one(RT))
         _n2e[:, i] .= Li.(_ξe)
@@ -249,15 +249,17 @@ get_face(s::StdQuad, i) = s.fstd[(i - 1) ÷ 2 + 1]
 
 function StdQuad{RT}(np::AbstractVecOrTuple, qtype::AbstractQuadrature) where {RT<:Real}
     # Quadratures
+    maxnp = maximum(np)
     fstd = (
-        StdSegment{RT}(np[2], qtype),   # Note the swap!!
-        StdSegment{RT}(np[1], qtype),
+        StdSegment{RT}(np[2], qtype, maxnp),
+        StdSegment{RT}(np[1], qtype, maxnp),
     )
     ξ = vec([SVector(ξx[1], ξy[1]) for ξx in fstd[2].ξ, ξy in fstd[1].ξ])
     ω = vec([ωx * ωy for ωx in fstd[2].ω, ωy in fstd[1].ω])
 
     # Equispaced nodes
     ξe = vec([SVector(ξx[1], ξy[1]) for ξx in fstd[2].ξe, ξy in fstd[1].ξe])
+    _n2e = kron(fstd[1]._n2e, fstd[2]._n2e)
 
     cindices = CartesianIndices((np...,)) |> collect
     lindices = LinearIndices((np...,)) |> collect
@@ -276,7 +278,6 @@ function StdQuad{RT}(np::AbstractVecOrTuple, qtype::AbstractQuadrature) where {R
         kron(I[2], fstd[2].Q[1]),
         kron(fstd[1].Q[1], I[2]),
     )
-    _n2e = kron(fstd[1]._n2e, fstd[2]._n2e)
     K = (
         kron(Iω[2], fstd[2].K[1]),
         kron(fstd[1].K[1], Iω[1]),
@@ -330,7 +331,7 @@ function StdQuad{RT}(np::AbstractVecOrTuple, qtype::AbstractQuadrature) where {R
         K♯ .|> transpose .|> collect .|> transpose |> Tuple,
         l .|> transpose .|> sparse .|> transpose |> Tuple,
         lω .|> transpose .|> sparse .|> transpose |> Tuple,
-        _n2e |> transpose |> sparse |> transpose,
+        _n2e |> transpose |> collect |> transpose,
     )
 end
 
@@ -463,10 +464,11 @@ get_face(s::StdHex, i) = s.fstd[(i - 1) ÷ 2 + 1]
 
 function StdHex{RT}(np::AbstractVecOrTuple, qtype::AbstractQuadrature) where {RT<:Real}
     # Quadratures
+    maxnp = maximum(np)
     fstd = (
-        StdQuad{RT}((np[2], np[3]), qtype),
-        StdQuad{RT}((np[1], np[3]), qtype),
-        StdQuad{RT}((np[1], np[2]), qtype),
+        StdQuad{RT}((np[2], np[3]), qtype, maxnp),
+        StdQuad{RT}((np[1], np[3]), qtype, maxnp),
+        StdQuad{RT}((np[1], np[2]), qtype, maxnp),
     )
     lstd = (get_face(fstd[3], 3), get_face(fstd[3], 1), get_face(fstd[1], 1))
     ξ = vec([
@@ -480,6 +482,7 @@ function StdHex{RT}(np::AbstractVecOrTuple, qtype::AbstractQuadrature) where {RT
         SVector(ξx[1], ξy[1], ξz[1])
         for ξx in lstd[1].ξe, ξy in lstd[2].ξe, ξz in lstd[3].ξe
     ])
+    _n2e = kron(lstd[3]._n2e, lstd[2]._n2e, lstd[1]._n2e)
 
     cindices = CartesianIndices((np...,)) |> collect
     lindices = LinearIndices((np...,)) |> collect
@@ -491,50 +494,49 @@ function StdHex{RT}(np::AbstractVecOrTuple, qtype::AbstractQuadrature) where {RT
     I = (Diagonal(ones(np[1])), Diagonal(ones(np[2])), Diagonal(ones(np[3])))
     Iω = (Diagonal(lstd[1].ω), Diagonal(lstd[2].ω), Diagonal(lstd[3].ω))
     D = (
-        kron(I[3], kron(I[2], lstd[1].D[1])),
-        kron(I[3], kron(lstd[2].D[1], I[1])),
-        kron(lstd[3].D[1], kron(I[2], I[1])),
+        kron(I[3], I[2], lstd[1].D[1]),
+        kron(I[3], lstd[2].D[1], I[1]),
+        kron(lstd[3].D[1], I[2], I[1]),
     )
     Q = (
-        kron(I[3], kron(I[2], lstd[1].Q[1])),
-        kron(I[3], kron(lstd[2].Q[1], I[1])),
-        kron(lstd[3].Q[1], kron(I[2], I[1])),
+        kron(I[3], I[2], lstd[1].Q[1]),
+        kron(I[3], lstd[2].Q[1], I[1]),
+        kron(lstd[3].Q[1], I[2], I[1]),
     )
-    _n2e = kron(lstd[3]._n2e, lstd[2]._n2e, lstd[1]._n2e)
     K = (
-        kron(Iω[3], kron(Iω[2], lstd[1].K[1])),
-        kron(Iω[3], kron(lstd[2].K[1], Iω[1])),
-        kron(lstd[3].K[1], kron(Iω[2], Iω[1])),
+        kron(Iω[3], Iω[2], lstd[1].K[1]),
+        kron(Iω[3], lstd[2].K[1], Iω[1]),
+        kron(lstd[3].K[1], Iω[2], Iω[1]),
     )
     Ks = (
-        kron(Iω[3], kron(Iω[2], lstd[1].Ks[1])),
-        kron(Iω[3], kron(lstd[2].Ks[1], Iω[1])),
-        kron(lstd[3].Ks[1], kron(Iω[2], Iω[1])),
+        kron(Iω[3], Iω[2], lstd[1].Ks[1]),
+        kron(Iω[3], lstd[2].Ks[1], Iω[1]),
+        kron(lstd[3].Ks[1], Iω[2], Iω[1]),
     )
     K♯ = (
-        kron(diag(Iω[3]), kron(diag(Iω[2]), lstd[1].K♯[1])),
-        kron(diag(Iω[3]), kron(lstd[2].K♯[1], diag(Iω[1]))),
-        kron(lstd[3].K♯[1], kron(diag(Iω[2]), diag(Iω[1]))),
+        kron(diag(Iω[3]), diag(Iω[2]), lstd[1].K♯[1]),
+        kron(diag(Iω[3]), lstd[2].K♯[1], diag(Iω[1])),
+        kron(lstd[3].K♯[1], diag(Iω[2]), diag(Iω[1])),
     )
 
     # Projection operator
     l = (
-        kron(I[3], kron(I[2], lstd[1].l[1])),
-        kron(I[3], kron(I[2], lstd[1].l[2])),
-        kron(I[3], kron(lstd[2].l[1], I[1])),
-        kron(I[3], kron(lstd[2].l[2], I[1])),
-        kron(lstd[3].l[1], kron(I[1], I[2])),
-        kron(lstd[3].l[2], kron(I[1], I[2])),
+        kron(I[3], I[2], lstd[1].l[1]),
+        kron(I[3], I[2], lstd[1].l[2]),
+        kron(I[3], lstd[2].l[1], I[1]),
+        kron(I[3], lstd[2].l[2], I[1]),
+        kron(lstd[3].l[1], I[1], I[2]),
+        kron(lstd[3].l[2], I[1], I[2]),
     )
 
     # Surface contribution
     lω = (
-        kron(Iω[3], kron(Iω[2], lstd[1].lω[1])),
-        kron(Iω[3], kron(Iω[2], lstd[1].lω[2])),
-        kron(Iω[3], kron(lstd[2].lω[1], Iω[1])),
-        kron(Iω[3], kron(lstd[2].lω[2], Iω[1])),
-        kron(lstd[3].lω[1], kron(Iω[2], Iω[1])),
-        kron(lstd[3].lω[2], kron(Iω[2], Iω[1])),
+        kron(Iω[3], Iω[2], lstd[1].lω[1]),
+        kron(Iω[3], Iω[2], lstd[1].lω[2]),
+        kron(Iω[3], lstd[2].lω[1], Iω[1]),
+        kron(Iω[3], lstd[2].lω[2], Iω[1]),
+        kron(lstd[3].lω[1], Iω[2], Iω[1]),
+        kron(lstd[3].lω[2], Iω[2], Iω[1]),
     )
 
     return StdHex{
@@ -562,7 +564,7 @@ function StdHex{RT}(np::AbstractVecOrTuple, qtype::AbstractQuadrature) where {RT
         K♯ .|> transpose .|> collect .|> transpose |> Tuple,
         l .|> transpose .|> sparse .|> transpose |> Tuple,
         lω .|> transpose .|> sparse .|> transpose |> Tuple,
-        _n2e |> transpose |> sparse |> transpose,
+        _n2e |> transpose |> collect |> transpose,
     )
 end
 
