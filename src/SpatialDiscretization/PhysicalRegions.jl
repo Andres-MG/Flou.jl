@@ -99,14 +99,12 @@ function PhysicalElement(std, mesh::UnstructuredMesh{ND,RT}, ie, sub=false) wher
         dual = map_dual_basis(main, mesh, ie)
         if ND == 1
             Ja[i] = SMatrix{1,1}(dual[1])
-            J[i] = main[1][1]
         elseif ND == 2
             Ja[i] = SMatrix{2,2}(vcat(dual[1], dual[2]))
-            J[i] = dual[1][1] * dual[2][2] - dual[1][2] * dual[2][1]
         else # ND == 3
             Ja[i] = SMatrix{3,3}(vcat(dual[1], dual[2], dual[3]))
-            J[i] = dot(main[1], cross(dual[2], dual[3]))
         end
+        J[i] = map_jacobian(main, mesh, ie) |> abs
     end
 
     # Mass matrix
@@ -213,9 +211,112 @@ function PhysicalSubgrid(std, mesh::StepMesh{RT}, ie) where {RT}
     return PhysicalSubgrid(n, t, b, Jf)
 end
 
-# TODO
-function PhysicalSubgrid(_, ::UnstructuredMesh, _)
-    error("Not implemented")
+function PhysicalSubgrid(std, mesh::UnstructuredMesh{1,RT}, ie) where {RT}
+    nx = length(std)
+    n = (Vector{SVector{1,RT}}(undef, nx + 1),)
+    t = (Vector{SVector{1,RT}}(undef, nx + 1),)
+    b = (Vector{SVector{1,RT}}(undef, nx + 1),)
+    Jf = (Vector{RT}(undef, nx + 1),)
+    for i in 1:(nx + 1)
+        ξ = std.ξc[1][i]
+        main = map_basis(ξ, mesh, ie)
+        dual = map_dual_basis(main, mesh, ie)
+        s = map_jacobian(main, mesh, ie) |> sign
+        n[1][i] = dual[1] * s
+        t[1][i] = SVector(zero(RT))
+        b[1][i] = SVector(zero(RT))
+        Jf[1][i] = one(RT)
+    end
+    return PhysicalSubgrid(n, t, b, Jf)
+end
+
+function PhysicalSubgrid(std, mesh::UnstructuredMesh{2,RT}, ie) where {RT}
+    nx, ny = size(std)
+    n = (Matrix{SVector{2,RT}}(undef, nx + 1, ny), Matrix{SVector{2,RT}}(undef, nx, ny + 1))
+    t = (Matrix{SVector{2,RT}}(undef, nx + 1, ny), Matrix{SVector{2,RT}}(undef, nx, ny + 1))
+    b = (Matrix{SVector{2,RT}}(undef, nx + 1, ny), Matrix{SVector{2,RT}}(undef, nx, ny + 1))
+    Jf = (Matrix{RT}(undef, nx + 1, ny), Matrix{RT}(undef, nx, ny + 1))
+    for j in 1:ny, i in 1:(nx + 1)  # Vertical faces
+        ξ = std.ξc[1][i, j]
+        main = map_basis(ξ, mesh, ie)
+        dual = map_dual_basis(main, mesh, ie)
+        s = map_jacobian(main, mesh, ie) |> sign
+        n[1][i, j] = dual[1] * s
+        t[1][i, j] = normalize(main[2]) * s
+        b[1][i, j] = SVector(zero(RT), zero(RT))
+        Jf[1][i, j] = norm(n[1][i, j])
+        n[1][i, j] /= Jf[1][i, j]
+    end
+    for j in 1:(ny + 1), i in 1:nx  # Horizontal faces
+        ξ = std.ξc[2][i, j]
+        main = map_basis(ξ, mesh, ie)
+        dual = map_dual_basis(main, mesh, ie)
+        s = map_jacobian(main, mesh, ie) |> sign
+        n[2][i, j] = dual[2] * s
+        t[2][i, j] = -normalize(main[1]) * s
+        b[2][i, j] = SVector(zero(RT), zero(RT))
+        Jf[2][i, j] = norm(n[2][i, j])
+        n[2][i, j] /= Jf[2][i, j]
+    end
+    return PhysicalSubgrid(n, t, b, Jf)
+end
+
+function PhysicalSubgrid(std, mesh::UnstructuredMesh{3,RT}, ie) where {RT}
+    nx, ny, nz = size(std)
+    n = (
+        Array{SVector{3,RT},3}(undef, nx + 1, ny, nz),
+        Array{SVector{3,RT},3}(undef, nx, ny + 1, nz),
+        Array{SVector{3,RT},3}(undef, nx, ny, nz + 1),
+    )
+    t = (
+        Array{SVector{3,RT},3}(undef, nx + 1, ny, nz),
+        Array{SVector{3,RT},3}(undef, nx, ny + 1, nz),
+        Array{SVector{3,RT},3}(undef, nx, ny, nz + 1),
+    )
+    b = (
+        Array{SVector{3,RT},3}(undef, nx + 1, ny, nz),
+        Array{SVector{3,RT},3}(undef, nx, ny + 1, nz),
+        Array{SVector{3,RT},3}(undef, nx, ny, nz + 1),
+    )
+    Jf = (
+        Array{RT,3}(undef, nx + 1, ny, nz),
+        Array{RT,3}(undef, nx, ny + 1, nz),
+        Array{RT,3}(undef, nx, ny, nz + 1),
+    )
+    for k in 1:nz, j in 1:ny, i in 1:(nx + 1)  # X faces
+        ξ = std.ξc[1][i, j, k]
+        main = map_basis(ξ, mesh, ie)
+        dual = map_dual_basis(main, mesh, ie)
+        s = map_jacobian(main, mesh, ie) |> sign
+        n[1][i, j, k] = dual[1] * s
+        t[1][i, j, k] = normalize(main[2]) * s
+        b[1][i, j, k] = normalize(cross(n[1][i, j, k], t[1][i, j, k]))
+        Jf[1][i, j, k] = norm(n[1][i, j, k])
+        n[1][i, j, k] /= Jf[1][i, j, k]
+    end
+    for k in 1:nz, j in 1:(ny + 1), i in 1:nx  # Y faces
+        ξ = std.ξc[2][i, j, k]
+        main = map_basis(ξ, mesh, ie)
+        dual = map_dual_basis(main, mesh, ie)
+        s = map_jacobian(main, mesh, ie) |> sign
+        n[2][i, j, k] = dual[2] * s
+        t[2][i, j, k] = normalize(main[3]) * s
+        b[2][i, j, k] = normalize(cross(n[2][i, j, k], t[2][i, j, k]))
+        Jf[2][i, j, k] = norm(n[2][i, j, k])
+        n[2][i, j, k] /= Jf[2][i, j, k]
+    end
+    for k in 1:(nz + 1), j in 1:ny, i in 1:nx  # Z faces
+        ξ = std.ξc[3][i, j, k]
+        main = map_basis(ξ, mesh, ie)
+        dual = map_dual_basis(main, mesh, ie)
+        s = map_jacobian(main, mesh, ie) |> sign
+        n[3][i, j, k] = dual[3] * s
+        t[3][i, j, k] = normalize(main[1]) * s
+        b[3][i, j, k] = normalize(cross(n[3][i, j, k], t[3][i, j, k]))
+        Jf[3][i, j, k] = norm(n[3][i, j, k])
+        n[3][i, j, k] /= Jf[3][i, j, k]
+    end
+    return PhysicalSubgrid(n, t, b, Jf)
 end
 
 struct PhysicalFace{ND,RT,MM}
@@ -370,19 +471,37 @@ function PhysicalFace(std, mesh::StepMesh{RT}, iface) where {RT}
     return PhysicalFace(xy, n, t, b, J, M, surf)
 end
 
-function PhysicalFace(_, mesh::UnstructuredMesh{1,RT}, iface) where {RT}
-    pos = get_face(mesh, iface).elempos[1]
-    nind = get_face(mesh, iface).nodeinds[1]
-    x = [get_vertex(mesh, nind)]
-    J = [one(RT)]
+function PhysicalFace(std, mesh::UnstructuredMesh{1,RT}, iface) where {RT}
+    face = get_face(mesh, iface)
+    ielem = face.eleminds[1]
+    pos = face.elempos[1]
+    x = Vector{SVector{1,RT}}(undef, 1)
+    n = Vector{SVector{1,RT}}(undef, 1)
+    t = Vector{SVector{1,RT}}(undef, 1)
+    b = Vector{SVector{1,RT}}(undef, 1)
+    J = Vector{RT}(undef, 1)
     if pos == 1
-        n = [SVector(-one(RT))]
-        t = [SVector(zero(RT))]
-        b = [SVector(zero(RT))]
+        ξ = SVector(-one(RT))
+        x[1] = phys_coords(ξ, mesh, ielem)
+        main = map_basis(ξ, mesh, ielem)
+        dual = map_dual_basis(main, mesh, ielem)
+        s = map_jacobian(main, mesh, ielem) |> sign
+        n[1] = -dual[1] * s
+        t[1] = SVector(zero(RT))
+        b[1] = SVector(zero(RT))
+        J[1] = norm(n[1])
+        n[1] /= J[1]
     else # pos == 2
-        n = [SVector(one(RT))]
-        t = [SVector(zero(RT))]
-        b = [SVector(zero(RT))]
+        ξ = SVector(one(RT))
+        x[1] = phys_coords(ξ, mesh, ielem)
+        main = map_basis(ξ, mesh, ielem)
+        dual = map_dual_basis(main, mesh, ielem)
+        s = map_jacobian(main, mesh, ielem) |> sign
+        n[1] = dual[1] * s
+        t[1] = SVector(zero(RT))
+        b[1] = SVector(zero(RT))
+        J[1] = norm(n[1])
+        n[1] /= J[1]
     end
     M = SMatrix{1,1}(zero(RT))
     surf = one(RT)
@@ -410,8 +529,9 @@ function PhysicalFace(std, mesh::UnstructuredMesh{2,RT}, iface) where {RT}
             xy[i] = phys_coords(ξ, mesh, ielem)
             main = map_basis(ξ, mesh, ielem)
             dual = map_dual_basis(main, mesh, ielem)
-            n[i] = -dual[1]
-            t[i] = -normalize(main[2])
+            s = map_jacobian(main, mesh, ielem) |> sign
+            n[i] = -dual[1] * s
+            t[i] = -normalize(main[2]) * s
             b[i] = SVector(zero(RT), zero(RT))
             J[i] = norm(n[i])
             n[i] /= J[i]
@@ -422,8 +542,9 @@ function PhysicalFace(std, mesh::UnstructuredMesh{2,RT}, iface) where {RT}
             xy[i] = phys_coords(ξ, mesh, ielem)
             main = map_basis(ξ, mesh, ielem)
             dual = map_dual_basis(main, mesh, ielem)
-            n[i] = dual[1]
-            t[i] = normalize(main[2])
+            s = map_jacobian(main, mesh, ielem) |> sign
+            n[i] = dual[1] * s
+            t[i] = normalize(main[2]) * s
             b[i] = SVector(zero(RT), zero(RT))
             J[i] = norm(n[i])
             n[i] /= J[i]
@@ -434,8 +555,9 @@ function PhysicalFace(std, mesh::UnstructuredMesh{2,RT}, iface) where {RT}
             xy[i] = phys_coords(ξ, mesh, ielem)
             main = map_basis(ξ, mesh, ielem)
             dual = map_dual_basis(main, mesh, ielem)
-            n[i] = -dual[2]
-            t[i] = normalize(main[1])
+            s = map_jacobian(main, mesh, ielem) |> sign
+            n[i] = -dual[2] * s
+            t[i] = normalize(main[1]) * s
             b[i] = SVector(zero(RT), zero(RT))
             J[i] = norm(n[i])
             n[i] /= J[i]
@@ -446,8 +568,9 @@ function PhysicalFace(std, mesh::UnstructuredMesh{2,RT}, iface) where {RT}
             xy[i] = phys_coords(ξ, mesh, ielem)
             main = map_basis(ξ, mesh, ielem)
             dual = map_dual_basis(main, mesh, ielem)
-            n[i] = dual[2]
-            t[i] = -normalize(main[1])
+            s = map_jacobian(main, mesh, ielem) |> sign
+            n[i] = dual[2] * s
+            t[i] = -normalize(main[1]) * s
             b[i] = SVector(zero(RT), zero(RT))
             J[i] = norm(n[i])
             n[i] /= J[i]
@@ -482,8 +605,9 @@ function PhysicalFace(std, mesh::UnstructuredMesh{3,RT}, iface) where {RT}
             xyz[i] = phys_coords(ξ, mesh, ielem)
             main = map_basis(ξ, mesh, ielem)
             dual = map_dual_basis(main, mesh, ielem)
-            n[i] = -dual[1]
-            t[i] = -normalize(main[2])
+            s = map_jacobian(main, mesh, ielem) |> sign
+            n[i] = -dual[1] * s
+            t[i] = -normalize(main[2]) * s
             b[i] = normalize(cross(n[i], t[i]))
             J[i] = norm(n[i])
             n[i] /= J[i]
@@ -494,8 +618,9 @@ function PhysicalFace(std, mesh::UnstructuredMesh{3,RT}, iface) where {RT}
             xyz[i] = phys_coords(ξ, mesh, ielem)
             main = map_basis(ξ, mesh, ielem)
             dual = map_dual_basis(main, mesh, ielem)
-            n[i] = dual[1]
-            t[i] = normalize(main[2])
+            s = map_jacobian(main, mesh, ielem) |> sign
+            n[i] = dual[1] * s
+            t[i] = normalize(main[2]) * s
             b[i] = normalize(cross(n[i], t[i]))
             J[i] = norm(n[i])
             n[i] /= J[i]
@@ -506,8 +631,9 @@ function PhysicalFace(std, mesh::UnstructuredMesh{3,RT}, iface) where {RT}
             xyz[i] = phys_coords(ξ, mesh, ielem)
             main = map_basis(ξ, mesh, ielem)
             dual = map_dual_basis(main, mesh, ielem)
-            n[i] = -dual[2]
-            t[i] = -normalize(main[3])
+            s = map_jacobian(main, mesh, ielem) |> sign
+            n[i] = -dual[2] * s
+            t[i] = -normalize(main[3]) * s
             b[i] = normalize(cross(n[i], t[i]))
             J[i] = norm(n[i])
             n[i] /= J[i]
@@ -518,8 +644,9 @@ function PhysicalFace(std, mesh::UnstructuredMesh{3,RT}, iface) where {RT}
             xyz[i] = phys_coords(ξ, mesh, ielem)
             main = map_basis(ξ, mesh, ielem)
             dual = map_dual_basis(main, mesh, ielem)
-            n[i] = dual[2]
-            t[i] = normalize(main[3])
+            s = map_jacobian(main, mesh, ielem) |> sign
+            n[i] = dual[2] * s
+            t[i] = normalize(main[3]) * s
             b[i] = normalize(cross(n[i], t[i]))
             J[i] = norm(n[i])
             n[i] /= J[i]
@@ -530,8 +657,9 @@ function PhysicalFace(std, mesh::UnstructuredMesh{3,RT}, iface) where {RT}
             xyz[i] = phys_coords(ξ, mesh, ielem)
             main = map_basis(ξ, mesh, ielem)
             dual = map_dual_basis(main, mesh, ielem)
-            n[i] = -dual[3]
-            t[i] = -normalize(main[1])
+            s = map_jacobian(main, mesh, ielem) |> sign
+            n[i] = -dual[3] * s
+            t[i] = -normalize(main[1]) * s
             b[i] = normalize(cross(n[i], t[i]))
             J[i] = norm(n[i])
             n[i] /= J[i]
@@ -542,8 +670,9 @@ function PhysicalFace(std, mesh::UnstructuredMesh{3,RT}, iface) where {RT}
             xyz[i] = phys_coords(ξ, mesh, ielem)
             main = map_basis(ξ, mesh, ielem)
             dual = map_dual_basis(main, mesh, ielem)
-            n[i] = dual[3]
-            t[i] = normalize(main[1])
+            s = map_jacobian(main, mesh, ielem) |> sign
+            n[i] = dual[3] * s
+            t[i] = normalize(main[1]) * s
             b[i] = normalize(cross(n[i], t[i]))
             J[i] = norm(n[i])
             n[i] /= J[i]

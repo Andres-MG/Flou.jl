@@ -179,6 +179,12 @@ function map_dual_basis(main, mesh::AbstractMesh, ie)
     return map_dual_basis(main, mapping)
 end
 
+function map_jacobian(main, mesh::AbstractMesh, ie)
+    elem = get_element(mesh, ie)
+    mapping = get_mapping(mesh, elem.mapind)
+    return map_jacobian(main, mapping)
+end
+
 function phys_coords(::AbstractVector, nodes::AbstractVector, ::PointMapping)
     return SVector{length(nodes[1])}(nodes[1])
 end
@@ -189,6 +195,10 @@ end
 
 function map_dual_basis(main, ::PointMapping)
     return main
+end
+
+function map_jacobian(main, ::PointMapping)
+    return one(eltype(main))
 end
 
 function phys_coords(ξ::AbstractVector, nodes::AbstractVector, ::SegmentLinearMapping)
@@ -205,6 +215,10 @@ end
 function map_dual_basis(main, ::SegmentLinearMapping)
     rt = eltype(main[1])
     return (SVector(one(rt)),)
+end
+
+function map_jacobian(main, ::SegmentLinearMapping)
+    return main[1][1]
 end
 
 function phys_coords(ξ::AbstractVector, nodes::AbstractVector, ::QuadLinearMapping)
@@ -235,6 +249,10 @@ function map_dual_basis(main, ::QuadLinearMapping)
         SVector(main[2][2], -main[2][1]),
         SVector(-main[1][2], main[1][1]),
     )
+end
+
+function map_jacobian(main, ::QuadLinearMapping)
+    return main[1][1] * main[2][2] - main[1][2] * main[2][1]
 end
 
 function phys_coords(ξ::AbstractVector, nodes::AbstractVector, ::HexLinearMapping)
@@ -286,6 +304,10 @@ function map_dual_basis(main, ::HexLinearMapping)
         cross(main[3], main[1]),
         cross(main[1], main[2]),
     )
+end
+
+function map_jacobian(main, ::HexLinearMapping)
+    return dot(main[1], cross(main[2], main[3]))
 end
 
 include("CartesianMesh.jl")

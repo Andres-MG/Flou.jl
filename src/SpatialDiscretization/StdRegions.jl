@@ -81,6 +81,7 @@ struct StdSegment{QT,Dims,RT,MM,CI,LI,FS1,FS2} <: AbstractStdRegion{1,QT,Dims}
     cindices::CI
     lindices::LI
     ξe::Vector{SVector{1,RT}}
+    ξc::Tuple{Vector{SVector{1,RT}}}
     ξ::Vector{SVector{1,RT}}
     ω::Vector{RT}
     M::MM
@@ -113,6 +114,22 @@ function StdSegment{RT}(np::Integer, qtype::AbstractQuadrature, npe=np) where {R
     # Equispaced nodes
     _ξe = convert.(RT, range(-1, 1, npe))
     ξe = [SVector(ξ) for ξ in _ξe]
+
+    # Complementary nodes
+    ξc1 = Vector{SVector{1,RT}}(undef, np + 1)
+    ξc1[1] = SVector(-one(RT))
+    for i in 1:np
+        ξc1[i + 1] = ξc1[i] .+ ω[i]
+    end
+    ξc2 = Vector{SVector{1,RT}}(undef, np + 1)
+    ξc2[np + 1] = SVector(one(RT))
+    for i in np:-1:1
+        ξc2[i] = ξc2[i + 1] .- ω[i]
+    end
+    ξc = (ξc1 .+ ξc2) ./ 2
+    ξc[1] = SVector(-one(RT))
+    ξc[np + 1] = SVector(one(RT))
+    ξc = tuple(ξc)
 
     cindices = CartesianIndices((np,)) |> collect
     lindices = LinearIndices((np,)) |> collect
@@ -165,6 +182,7 @@ function StdSegment{RT}(np::Integer, qtype::AbstractQuadrature, npe=np) where {R
         cindices,
         lindices,
         ξe,
+        ξc,
         ξ,
         ω,
         M,
@@ -228,6 +246,7 @@ struct StdQuad{QT,Dims,RT,MM,CI,LI,FS1,FS2} <: AbstractStdRegion{2,QT,Dims}
     cindices::CI
     lindices::LI
     ξe::Vector{SVector{2,RT}}
+    ξc::NTuple{2,Matrix{SVector{2,RT}}}
     ξ::Vector{SVector{2,RT}}
     ω::Vector{RT}
     M::MM
@@ -235,10 +254,10 @@ struct StdQuad{QT,Dims,RT,MM,CI,LI,FS1,FS2} <: AbstractStdRegion{2,QT,Dims}
     Q::NTuple{2,Transpose{RT,SparseMatrixCSC{RT,Int}}}
     K::NTuple{2,Transpose{RT,SparseMatrixCSC{RT,Int}}}
     Ks::NTuple{2,Transpose{RT,SparseMatrixCSC{RT,Int}}}
-    K♯::NTuple{2,Transpose{RT,SparseMatrixCSC{RT,Int}}}
+    K♯::NTuple{2,Transpose{RT,Matrix{RT}}}
     l::NTuple{4,Transpose{RT,SparseMatrixCSC{RT,Int}}}
     lω::NTuple{4,Transpose{RT,SparseMatrixCSC{RT,Int}}}
-    _n2e::Transpose{RT,SparseMatrixCSC{RT,Int}}
+    _n2e::Transpose{RT,Matrix{RT}}
 end
 
 is_tensor_product(::StdQuad) = true
@@ -247,12 +266,20 @@ nvertices(::StdQuad) = 4
 get_faces(s::StdQuad) = (s.fstd[1], s.fstd[1], s.fstd[2], s.fstd[2])
 get_face(s::StdQuad, i) = s.fstd[(i - 1) ÷ 2 + 1]
 
-function StdQuad{RT}(np::AbstractVecOrTuple, qtype::AbstractQuadrature) where {RT<:Real}
+function StdQuad{RT}(
+    np::AbstractVecOrTuple,
+    qtype::AbstractQuadrature,
+    npe=nothing,
+) where {
+    RT<:Real,
+}
     # Quadratures
-    maxnp = maximum(np)
+    if isnothing(npe)
+        npe = maximum(np)
+    end
     fstd = (
-        StdSegment{RT}(np[2], qtype, maxnp),
-        StdSegment{RT}(np[1], qtype, maxnp),
+        StdSegment{RT}(np[2], qtype, npe),
+        StdSegment{RT}(np[1], qtype, npe),
     )
     ξ = vec([SVector(ξx[1], ξy[1]) for ξx in fstd[2].ξ, ξy in fstd[1].ξ])
     ω = vec([ωx * ωy for ωx in fstd[2].ω, ωy in fstd[1].ω])
@@ -260,6 +287,11 @@ function StdQuad{RT}(np::AbstractVecOrTuple, qtype::AbstractQuadrature) where {R
     # Equispaced nodes
     ξe = vec([SVector(ξx[1], ξy[1]) for ξx in fstd[2].ξe, ξy in fstd[1].ξe])
     _n2e = kron(fstd[1]._n2e, fstd[2]._n2e)
+
+    # Complementary nodes
+    ξc1 = [SVector(ξx[1], ξy[1]) for ξx in fstd[2].ξc[1], ξy in fstd[1].ξ]
+    ξc2 = [SVector(ξx[1], ξy[1]) for ξx in fstd[2].ξ, ξy in fstd[1].ξc[1]]
+    ξc = (ξc1, ξc2)
 
     cindices = CartesianIndices((np...,)) |> collect
     lindices = LinearIndices((np...,)) |> collect
@@ -321,6 +353,7 @@ function StdQuad{RT}(np::AbstractVecOrTuple, qtype::AbstractQuadrature) where {R
         cindices,
         lindices,
         ξe,
+        ξc,
         ξ,
         ω,
         M,
@@ -443,6 +476,7 @@ struct StdHex{QT,Dims,RT,MM,CI,LI,FS1,FS2,FS3} <: AbstractStdRegion{3,QT,Dims}
     cindices::CI
     lindices::LI
     ξe::Vector{SVector{3,RT}}
+    ξc::NTuple{3,Array{SVector{3,RT},3}}
     ξ::Vector{SVector{3,RT}}
     ω::Vector{RT}
     M::MM
@@ -450,10 +484,10 @@ struct StdHex{QT,Dims,RT,MM,CI,LI,FS1,FS2,FS3} <: AbstractStdRegion{3,QT,Dims}
     Q::NTuple{3,Transpose{RT,SparseMatrixCSC{RT,Int}}}
     K::NTuple{3,Transpose{RT,SparseMatrixCSC{RT,Int}}}
     Ks::NTuple{3,Transpose{RT,SparseMatrixCSC{RT,Int}}}
-    K♯::NTuple{3,Transpose{RT,SparseMatrixCSC{RT,Int}}}
+    K♯::NTuple{3,Transpose{RT,Matrix{RT}}}
     l::NTuple{6,Transpose{RT,SparseMatrixCSC{RT,Int}}}
     lω::NTuple{6,Transpose{RT,SparseMatrixCSC{RT,Int}}}
-    _n2e::Transpose{RT,SparseMatrixCSC{RT,Int}}
+    _n2e::Transpose{RT,Matrix{RT}}
 end
 
 is_tensor_product(::StdHex) = true
@@ -462,13 +496,21 @@ nvertices(::StdHex) = 8
 get_faces(s::StdHex) = (s.fstd[1], s.fstd[1], s.fstd[2], s.fstd[2], s.fstd[3], s.fstd[3])
 get_face(s::StdHex, i) = s.fstd[(i - 1) ÷ 2 + 1]
 
-function StdHex{RT}(np::AbstractVecOrTuple, qtype::AbstractQuadrature) where {RT<:Real}
+function StdHex{RT}(
+    np::AbstractVecOrTuple,
+    qtype::AbstractQuadrature,
+    npe=nothing,
+) where {
+    RT<:Real,
+}
     # Quadratures
-    maxnp = maximum(np)
+    if isnothing(npe)
+        npe = maximum(np)
+    end
     fstd = (
-        StdQuad{RT}((np[2], np[3]), qtype, maxnp),
-        StdQuad{RT}((np[1], np[3]), qtype, maxnp),
-        StdQuad{RT}((np[1], np[2]), qtype, maxnp),
+        StdQuad{RT}((np[2], np[3]), qtype, npe),
+        StdQuad{RT}((np[1], np[3]), qtype, npe),
+        StdQuad{RT}((np[1], np[2]), qtype, npe),
     )
     lstd = (get_face(fstd[3], 3), get_face(fstd[3], 1), get_face(fstd[1], 1))
     ξ = vec([
@@ -483,6 +525,21 @@ function StdHex{RT}(np::AbstractVecOrTuple, qtype::AbstractQuadrature) where {RT
         for ξx in lstd[1].ξe, ξy in lstd[2].ξe, ξz in lstd[3].ξe
     ])
     _n2e = kron(lstd[3]._n2e, lstd[2]._n2e, lstd[1]._n2e)
+
+    # Complementary nodes
+    ξc1 = [
+        SVector(ξx[1], ξy[1], ξz[1])
+        for ξx in lstd[1].ξc[1], ξy in lstd[2].ξ, ξz in lstd[3].ξ
+    ]
+    ξc2 = [
+        SVector(ξx[1], ξy[1], ξz[1])
+        for ξx in lstd[1].ξ, ξy in lstd[2].ξc[1], ξz in lstd[3].ξ
+    ]
+    ξc3 = [
+        SVector(ξx[1], ξy[1], ξz[1])
+        for ξx in lstd[1].ξ, ξy in lstd[2].ξ, ξz in lstd[3].ξc[1]
+    ]
+    ξc = (ξc1, ξc2, ξc3)
 
     cindices = CartesianIndices((np...,)) |> collect
     lindices = LinearIndices((np...,)) |> collect
@@ -554,6 +611,7 @@ function StdHex{RT}(np::AbstractVecOrTuple, qtype::AbstractQuadrature) where {RT
         cindices,
         lindices,
         ξe,
+        ξc,
         ξ,
         ω,
         M,
