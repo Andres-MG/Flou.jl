@@ -353,8 +353,8 @@ end
 function PhysicalFace(std, mesh::CartesianMesh{2,RT}, iface) where {RT}
     (; Δx) = mesh
     pos = get_face(mesh, iface).elempos[1]
+    fstd = get_face(std, pos)
     if pos == 1 || pos == 2  # Vertical
-        fstd = get_face(std, 1)
         J = fill(Δx[2] / 2, ndofs(fstd))
         if pos == 1
             n = fill(SVector(-one(RT), zero(RT)), ndofs(fstd))
@@ -367,7 +367,6 @@ function PhysicalFace(std, mesh::CartesianMesh{2,RT}, iface) where {RT}
         end
 
     else  # pos == 3 || pos == 4  # Horizontal
-        fstd = get_face(std, 2)
         J = fill(Δx[1] / 2, ndofs(fstd))
         if pos == 3
             n = fill(SVector(zero(RT), -one(RT)), ndofs(fstd))
@@ -389,8 +388,8 @@ end
 function PhysicalFace(std, mesh::CartesianMesh{3,RT}, iface) where {RT}
     (; Δx) = mesh
     pos = get_face(mesh, iface).elempos[1]
+    fstd = get_face(std, pos)
     if pos == 1 || pos == 2  # X faces
-        fstd = get_face(std, 1)
         J = fill(Δx[2] * Δx[3] / 4, ndofs(fstd))
         if pos == 1
             n = fill(SVector(-one(RT), zero(RT), zero(RT)), ndofs(fstd))
@@ -402,7 +401,6 @@ function PhysicalFace(std, mesh::CartesianMesh{3,RT}, iface) where {RT}
             b = fill(SVector(zero(RT), zero(RT), one(RT)), ndofs(fstd))
         end
     elseif pos == 3 || pos == 4  # Y faces
-        fstd = get_face(std, 2)
         J = fill(Δx[1] * Δx[3] / 4, ndofs(fstd))
         if pos == 3
             n = fill(SVector(zero(RT), -one(RT), zero(RT)), ndofs(fstd))
@@ -414,7 +412,6 @@ function PhysicalFace(std, mesh::CartesianMesh{3,RT}, iface) where {RT}
             b = fill(SVector(one(RT), zero(RT), zero(RT)), ndofs(fstd))
         end
     else # pos == 5 || pos == 6  # Z faces
-        fstd = get_face(std, 3)
         J = fill(Δx[1] * Δx[2] / 4, ndofs(fstd))
         if pos == 5
             n = fill(SVector(zero(RT), zero(RT), -one(RT)), ndofs(fstd))
@@ -438,9 +435,9 @@ function PhysicalFace(std, mesh::StepMesh{RT}, iface) where {RT}
     ie = get_face(mesh, iface).eleminds[1]
     ireg = get_region(mesh, ie)
     pos = get_face(mesh, iface).elempos[1]
+    fstd = get_face(std, pos)
 
     if pos == 1 || pos == 2  # Vertical
-        fstd = get_face(std, 1)
         J = fill(Δx[ireg][2] / 2, ndofs(fstd))
         xy = [face_phys_coords(ξ, mesh, iface) for ξ in fstd.ξ]
         if pos == 1
@@ -454,7 +451,6 @@ function PhysicalFace(std, mesh::StepMesh{RT}, iface) where {RT}
         end
 
     else  # pos == 3 || pos == 4  # Horizontal
-        fstd = get_face(std, 2)
         J = fill(Δx[ireg][1] / 2, ndofs(fstd))
         xy = [face_phys_coords(ξ, mesh, iface) for ξ in fstd.ξ]
         if pos == 3
@@ -473,7 +469,7 @@ function PhysicalFace(std, mesh::StepMesh{RT}, iface) where {RT}
     return PhysicalFace(xy, n, t, b, J, M, surf)
 end
 
-function PhysicalFace(std, mesh::UnstructuredMesh{1,RT}, iface) where {RT}
+function PhysicalFace(_, mesh::UnstructuredMesh{1,RT}, iface) where {RT}
     face = get_face(mesh, iface)
     ielem = face.eleminds[1]
     pos = face.elempos[1]
@@ -514,11 +510,7 @@ function PhysicalFace(std, mesh::UnstructuredMesh{2,RT}, iface) where {RT}
     face = get_face(mesh, iface)
     ielem = face.eleminds[1]
     pos = face.elempos[1]
-    if pos == 1 || pos == 2  # Vertical
-        fstd = get_face(std, 1)
-    else # pos == 3 || pos == 4  # Horizontal
-        fstd = get_face(std, 2)
-    end
+    fstd = get_face(std, pos)
 
     xy = Vector{SVector{2,RT}}(undef, ndofs(fstd))
     n = Vector{SVector{2,RT}}(undef, ndofs(fstd))
@@ -588,13 +580,7 @@ function PhysicalFace(std, mesh::UnstructuredMesh{3,RT}, iface) where {RT}
     face = get_face(mesh, iface)
     ielem = face.eleminds[1]
     pos = face.elempos[1]
-    if pos == 1 || pos == 2  # X faces
-        fstd = get_face(std, 1)
-    elseif pos == 3 || pos == 4  # Y faces
-        fstd = get_face(std, 2)
-    else # pos == 5 || pos == 6  # Z faces
-        fstd = get_face(std, 3)
-    end
+    fstd = get_face(std, pos)
 
     xyz = Vector{SVector{3,RT}}(undef, ndofs(fstd))
     n = Vector{SVector{3,RT}}(undef, ndofs(fstd))
