@@ -115,22 +115,22 @@ eachvariable(s::StateVector) = Base.OneTo(nvariables(s))
 #                                    Mortar state vector                                   #
 
 struct MortarStateVector{RT<:Real} <: AbstractVector{RT}
-    data::Vector{Vector{Matrix{RT}}}   # [[ndofs, nvar] × nsides] × nfaces
+    data::Vector{NTuple{2,Matrix{RT}}}   # [[ndofs, nvar] × nsides] × nfaces
 end
 
 function Base.similar(m::MortarStateVector)
     data = similar(m.data)
     for i in eachindex(data, m.data)
-        data[i] = [similar(m.data[i][1]), similar(m.data[i][2])]
+        data[i] = (similar(m.data[i][1]), similar(m.data[i][2]))
     end
     return MortarStateVector(data)
 end
 
 function MortarStateVector{RT}(value, dims) where {RT}
     nfaces = length(dims)
-    data = Vector{Vector{Matrix{RT}}}(undef, nfaces)
+    data = Vector{NTuple{2,Matrix{RT}}}(undef, nfaces)
     for i in 1:nfaces
-        data[i] = [Matrix{RT}(value, d...) for d in dims[i]]
+        data[i] = (Matrix{RT}(value, dims[i][1]...), Matrix{RT}(value, dims[i][2]...))
     end
     return MortarStateVector(data)
 end
