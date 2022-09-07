@@ -234,7 +234,7 @@ end
 function _facemap_2d(etype, nelems)
     gmsh.model.mesh.create_edges()
     ntags = gmsh.model.mesh.get_element_edge_nodes(etype)
-    etags, _orientations = gmsh.model.mesh.get_edges(ntags)
+    etags, _ = gmsh.model.mesh.get_edges(ntags)
 
     # Edges for each element
     element2edge = Dict{UInt,Vector{UInt}}()
@@ -249,36 +249,41 @@ function _facemap_2d(etype, nelems)
         cnt += 4
     end
 
-    # Prepare orientations
-    map!(_orientations, _orientations) do o
-        o > 0 ? -1 : -2
-    end
-
-    # Elements, nodes and orientations for each edge
+    # Elements and nodes for each edge
+    nodemap = (
+        UInt.([1, 2]),
+        UInt.([1, 2]),
+        UInt.([2, 1]),
+        UInt.([2, 1]),
+    )
     edge2element = Dict{UInt,Vector{UInt}}()
     edge2node = Dict{UInt,Vector{UInt}}()
-    orientations = Vector{Int32}(undef, length(unique(etags)))
+    e2n_second = Dict{UInt,Vector{UInt}}()
     cnt = 0
     for (i, etag) in enumerate(etags)
         ielem = (i - 1) ÷ 4 + 1
+        pos = (i - 1) % 4 + 1
         if etag in keys(edge2element)
             edge2element[etag][2] = ielem
-            if _orientations[i] == orientations[etag]
-                orientations[etag] = 0
-            else
-                orientations[etag] = 1
-            end
+            e2n_second[etag] = ntags[cnt .+ nodemap[pos]]
         else
             edge2element[etag] = [ielem, 0]
-            edge2node[etag] = ntags[(cnt + 1):(cnt + 2)]
-            orientations[etag] = _orientations[i]
+            edge2node[etag] = ntags[cnt .+ nodemap[pos]]
         end
         cnt += 2
     end
 
-    # Set orientation of boundary edges
-    mask = orientations .< 0
-    orientations[mask] .= Int32(0)
+    # Orientations from the API are not useful
+    orientations = zeros(Int32, length(edge2node))
+    for (iedge, nodes2) in e2n_second
+        node = edge2node[iedge][1]
+        pos = findfirst(==(node), nodes2)
+        if pos == 1
+            orientations[iedge] = 0
+        else # pos == 2
+            orientations[iedge] = 1
+        end
+    end
 
     return (element2edge, edge2element, edge2node, orientations)
 end
@@ -304,18 +309,27 @@ function _facemap_3d(etype, nelems)
     end
 
     # Elements and nodes for each face
+    nodemap = (
+        UInt.([1, 4, 3, 2]),
+        UInt.([1, 2, 3, 4]),
+        UInt.([1, 4, 3, 2]),
+        UInt.([1, 2, 3, 4]),
+        UInt.([2, 1, 4, 3]),
+        UInt.([1, 2, 3, 4]),
+    )
     face2element = Dict{UInt,Vector{UInt}}()
     face2node = Dict{UInt,Vector{UInt}}()
     f2n_second = Dict{UInt,Vector{UInt}}()
     cnt = 0
     for (i, ftag) in enumerate(ftags)
         ielem = (i - 1) ÷ 6 + 1
+        pos = (i - 1) % 6 + 1
         if ftag in keys(face2element)
             face2element[ftag][2] = ielem
-            f2n_second[ftag] = ntags[(cnt + 1):(cnt + 4)]
+            f2n_second[ftag] = ntags[cnt .+ nodemap[pos]]
         else
             face2element[ftag] = [ielem, 0]
-            face2node[ftag] = ntags[(cnt + 1):(cnt + 4)]
+            face2node[ftag] = ntags[cnt .+ nodemap[pos]]
         end
         cnt += 4
     end

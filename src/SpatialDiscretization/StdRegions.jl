@@ -13,8 +13,8 @@ Base.size(::AbstractStdRegion{ND,Q,Dims}, i) where {ND,Q,Dims} = Dims[i]
 Base.length(::AbstractStdRegion{ND,Q,Dims}) where {ND,Q,Dims} = prod(Dims)
 Base.eachindex(s::AbstractStdRegion, i) = Base.OneTo(size(s, i))
 Base.eachindex(s::AbstractStdRegion) = Base.OneTo(length(s))
-Base.LinearIndices(s::AbstractStdRegion) = s.lindices
-Base.CartesianIndices(s::AbstractStdRegion) = s.cindices
+Base.LinearIndices(s::AbstractStdRegion, _=false) = s.lindices
+Base.CartesianIndices(s::AbstractStdRegion, _=false) = s.cindices
 
 """
     is_tensor_product(std)
@@ -245,6 +245,8 @@ struct StdQuad{QT,Dims,RT,MM,CI,LI,FS1,FS2} <: AbstractStdRegion{2,QT,Dims}
     fstd::Tuple{FS1,FS2}
     cindices::CI
     lindices::LI
+    cindices_t::CI
+    lindices_t::LI
     ξe::Vector{SVector{2,RT}}
     ξc::NTuple{2,Matrix{SVector{2,RT}}}
     ξ::Vector{SVector{2,RT}}
@@ -259,6 +261,9 @@ struct StdQuad{QT,Dims,RT,MM,CI,LI,FS1,FS2} <: AbstractStdRegion{2,QT,Dims}
     lω::NTuple{4,Transpose{RT,SparseMatrixCSC{RT,Int}}}
     _n2e::Transpose{RT,Matrix{RT}}
 end
+
+Base.LinearIndices(s::StdQuad, transpose=false) = transpose ? s.lindices_t : s.lindices
+Base.CartesianIndices(s::StdQuad, transpose=false) = transpose ? s.cindices_t : s.cindices
 
 is_tensor_product(::StdQuad) = true
 ndirections(::StdQuad) = 2
@@ -293,8 +298,10 @@ function StdQuad{RT}(
     ξc2 = [SVector(ξx[1], ξy[1]) for ξx in fstd[2].ξ, ξy in fstd[1].ξc[1]]
     ξc = (ξc1, ξc2)
 
-    cindices = CartesianIndices((np...,)) |> collect
-    lindices = LinearIndices((np...,)) |> collect
+    cindices = CartesianIndices((np[1], np[2])) |> collect
+    lindices = LinearIndices((np[1], np[2])) |> collect
+    cindices_t = CartesianIndices((np[2], np[1])) |> collect
+    lindices_t = LinearIndices((np[2], np[1])) |> collect
 
     # Mass matrix
     M = Diagonal(ω)
@@ -352,6 +359,8 @@ function StdQuad{RT}(
         fstd,
         cindices,
         lindices,
+        cindices_t,
+        lindices_t,
         ξe,
         ξc,
         ξ,
@@ -389,21 +398,22 @@ end
 
 function slave2master(i, orientation, std::StdQuad)
     s = CartesianIndices(std)[i]
+    st = CartesianIndices(std, true)[i]
     li = LinearIndices(std)
     return if orientation == 0
         i
     elseif orientation == 1
-        li[size(std, 1) - s[2] + 1, s[1]]
+        li[size(std, 1) - st[2] + 1, st[1]]
     elseif orientation == 2
         li[size(std, 1) - s[1] + 1, size(std, 2) - s[2] + 1]
     elseif orientation == 3
-        li[s[2], size(std, 2) - s[1] + 1]
+        li[st[2], size(std, 2) - st[1] + 1]
     elseif orientation == 4
-        li[s[2], s[1]]
+        li[st[2], st[1]]
     elseif orientation == 5
         li[size(std, 1) - s[1] + 1, s[2]]
     elseif orientation == 6
-        li[size(std, 1) - s[2] + 1, size(std, 2) - s[1] + 1]
+        li[size(std, 1) - st[2] + 1, size(std, 2) - st[1] + 1]
     else # orientation == 7
         li[s[1], size(std, 2) - s[2] + 1]
     end
@@ -412,20 +422,21 @@ end
 function master2slave(i, orientation, std::StdQuad)
     m = CartesianIndices(std)[i]
     li = LinearIndices(std)
+    lit = LinearIndices(std, true)
     return if orientation == 0
         i
     elseif orientation == 1
-        li[m[2], size(std, 1) - m[1] + 1]
+        lit[m[2], size(std, 1) - m[1] + 1]
     elseif orientation == 2
         li[size(std, 1) - m[1] + 1, size(std, 2) - m[2] + 1]
     elseif orientation == 3
-        li[size(std, 2) - m[2] + 1, m[1]]
+        lit[size(std, 2) - m[2] + 1, m[1]]
     elseif orientation == 4
-        li[m[2], m[1]]
+        lit[m[2], m[1]]
     elseif orientation == 5
         li[size(std, 1) - m[1] + 1, m[2]]
     elseif orientation == 6
-        li[size(std, 2) - m[2] + 1, size(std, 1) - m[1] + 1]
+        lit[size(std, 2) - m[2] + 1, size(std, 1) - m[1] + 1]
     else # orientation == 7
         li[m[1], size(std, 2) - m[2] + 1]
     end

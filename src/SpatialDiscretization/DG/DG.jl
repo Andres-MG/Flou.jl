@@ -198,7 +198,7 @@ function interface_fluxes!(Fn, Qf, dg::DiscontinuousGalerkin, riemannsolver)
         ireg = loc2reg(dofhandler, eleminds[1]).first
         std = get_face(stdvec[ireg], elempos[1])
         @inbounds for i in eachindex(std)
-            j = slave2master(i, orientation, std)
+            j = master2slave(i, orientation, std)
             Qln = rotate2face(view(Ql, i, :), n[i], t[i], b[i], equation)
             Qrn = rotate2face(view(Qr, j, :), n[i], t[i], b[i], equation)
             Fni = numericalflux(Qln, Qrn, n[i], equation, riemannsolver)
