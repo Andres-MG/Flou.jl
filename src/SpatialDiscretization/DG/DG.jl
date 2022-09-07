@@ -73,7 +73,7 @@ function open_for_write!(file::HDF5.File, dg::DiscontinuousGalerkin{EQ,RT}) wher
             append!(connectivities, conns)
 
             # Offsets
-            push!(offsets, ndofs(std) + last(offsets))
+            push!(offsets, ndofs(std, true) + last(offsets))
 
             # Types
             push!(types, _VTK_type(std))
@@ -104,7 +104,7 @@ function pointdata2VTKHDF(data, dg::DiscontinuousGalerkin)
     sizehint!(datavec, npoints)
     for ir in eachregion(dg.dofhandler)
         std = dg.stdvec[ir]
-        tmp = Vector{eltype(data)}(undef, ndofs(std))
+        tmp = Vector{eltype(data)}(undef, ndofs(std, true))
         for ie in eachelement(dg.dofhandler, ir)
             project2equispaced!(tmp, view(data[ir], :, ie), std)
             append!(datavec, tmp)
@@ -121,7 +121,7 @@ function solution2VTKHDF(Q, dg::DiscontinuousGalerkin)
     end
     for ir in eachregion(dg.dofhandler)
         std = dg.stdvec[ir]
-        tmp = Vector{eltype(Q)}(undef, ndofs(std))
+        tmp = Vector{eltype(Q)}(undef, ndofs(std, true))
         for ie in eachelement(dg.dofhandler, ir), iv in eachvariable(dg.equation)
             project2equispaced!(tmp, view(Q[ir], :, iv, ie), std)
             append!(Qe[iv], tmp)
@@ -156,7 +156,6 @@ function project2faces!(Qf, Q, dg::DiscontinuousGalerkin)
             ie = reg2loc(dofhandler, ireg, ieloc)
             iface = get_element(mesh, ie).faceinds
             facepos = get_element(mesh, ie).facepos
-
             @inbounds for (s, (face, pos)) in enumerate(zip(iface, facepos))
                 mul!(Qf[face][pos], std.l[s], view(Q[ireg], :, :, ieloc))
             end

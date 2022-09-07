@@ -28,10 +28,7 @@ function ndirections end
 function massmatrix end
 
 @inline function project2equispaced!(Qe, Q, s::AbstractStdRegion)
-    @boundscheck length(Qe) == length(Q) || throw(DimensionMismatch(
-        "`Qe` and `Q` must have the same length (== ndofs)."
-    ))
-    @inbounds Qe .= s._n2e * Q
+    Qe .= s._n2e * Q
     return nothing
 end
 
@@ -40,7 +37,7 @@ function slave2master end
 function master2slave end
 
 get_spatialdim(::AbstractStdRegion{ND}) where {ND} = ND
-ndofs(s::AbstractStdRegion) = length(s)
+ndofs(s::AbstractStdRegion, equispaced=false) = equispaced ? length(s.ξe) : length(s)
 get_faces(s::AbstractStdRegion{ND}) where {ND} = s.fstd
 get_face(s::AbstractStdRegion{ND}, i) where {ND} = s.fstd[i]
 get_quadrature(::AbstractStdRegion{ND,Q}) where {ND,Q} = Q
@@ -218,7 +215,7 @@ function slave2master(i, orientation, std::StdSegment)
     return if orientation == 0
         i
     else # orientation == 1
-        length(std) - (i - 1)
+        ndofs(std) - (i - 1)
     end
 end
 
@@ -226,15 +223,15 @@ function master2slave(i, orientation, std::StdSegment)
     return if orientation == 0
         i
     else # orientation == 1
-        length(std) - (i - 1)
+        ndofs(std) - (i - 1)
     end
 end
 
 _VTK_type(::StdSegment) = UInt8(68)
 
 function _VTK_connectivities(s::StdSegment)
-    conns = [1, length(s)]
-    append!(conns, 2:(length(s) - 1))
+    conns = [1, ndofs(s)]
+    append!(conns, 2:(ndofs(s) - 1))
     return conns .- 1
 end
 
@@ -445,14 +442,14 @@ end
 _VTK_type(::StdQuad) = UInt8(70)
 
 function _VTK_connectivities(s::StdQuad)
-    nx, ny = size(s)
-    li = LinearIndices(s)
-    corners = [li[1, 1], li[nx, 1], li[nx, ny], li[1, ny]]
+    n = size(s) |> maximum
+    li = LinearIndices((n, n))
+    corners = [li[1, 1], li[n, 1], li[n, n], li[1, n]]
     edges = reduce(vcat, [
-        li[2:(end - 1), 1], li[nx, 2:(end - 1)],
-        li[2:(end - 1), ny], li[1, 2:(end - 1)],
+        li[2:(n - 1), 1], li[n, 2:(n - 1)],
+        li[2:(n - 1), n], li[1, 2:(n - 1)],
     ])
-    interior = vec(li[2:(end - 1), 2:(end - 1)])
+    interior = vec(li[2:(n - 1), 2:(n - 1)])
     return mapreduce(x -> x .- 1, vcat, (corners, edges, interior))
 end
 
@@ -669,24 +666,24 @@ end
 _VTK_type(::StdHex) = UInt8(72)
 
 function _VTK_connectivities(s::StdHex)
-    nx, ny, nz = size(s)
-    li = LinearIndices(s)
+    n = size(s) |> maximum
+    li = LinearIndices((n, n, n))
     corners = [
-        li[1, 1, 1], li[nx, 1, 1], li[nx, ny, 1], li[1, ny, 1],
-        li[1, 1, nz], li[nx, 1, nz], li[nx, ny, nz], li[1, ny, nz],
+        li[1, 1, 1], li[n, 1, 1], li[n, n, 1], li[1, n, 1],
+        li[1, 1, n], li[n, 1, n], li[n, n, n], li[1, n, n],
     ]
     edges = reduce(vcat, [
-        li[2:(end - 1), 1, 1], li[nx, 2:(end - 1), 1],
-        li[2:(end - 1), ny, 1], li[1, 2:(end - 1), 1],
-        li[2:(end - 1), 1, nz], li[nx, 2:(end - 1), nz],
-        li[2:(end - 1), ny, nz], li[1, 2:(end - 1), nz],
-        li[1, 1, 2:(end - 1)], li[nx, 1, 2:(end - 1)],
-        li[nx, ny, 2:(end - 1)], li[1, ny, 2:(end - 1)],
+        li[2:(n - 1), 1, 1], li[n, 2:(n - 1), 1],
+        li[2:(n - 1), n, 1], li[1, 2:(n - 1), 1],
+        li[2:(n - 1), 1, n], li[n, 2:(n - 1), n],
+        li[2:(n - 1), n, n], li[1, 2:(n - 1), n],
+        li[1, 1, 2:(n - 1)], li[n, 1, 2:(n - 1)],
+        li[n, n, 2:(n - 1)], li[1, n, 2:(n - 1)],
     ])
     faces = reduce(vcat, [
-        li[1, 2:(end - 1), 2:(end - 1)], li[nx, 2:(end - 1), 2:(end - 1)],
-        li[2:(end - 1), 1, 2:(end - 1)], li[2:(end - 1), ny, 2:(end - 1)],
-        li[2:(end - 1), 2:(end - 1), 1], li[2:(end - 1), 2:(end - 1), nz],
+        li[1, 2:(n - 1), 2:(n - 1)], li[n, 2:(n - 1), 2:(n - 1)],
+        li[2:(n - 1), 1, 2:(n - 1)], li[2:(n - 1), n, 2:(n - 1)],
+        li[2:(n - 1), 2:(n - 1), 1], li[2:(n - 1), 2:(n - 1), n],
     ] .|> vec)
     interior = vec(li[2:(end - 1), 2:(end - 1), 2:(end - 1)])
     return mapreduce(x -> x .- 1, vcat, (corners, edges, faces, interior))

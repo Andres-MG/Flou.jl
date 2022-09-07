@@ -137,7 +137,7 @@ struct PhysicalSubgrid{ND,RT}
 end
 
 function PhysicalSubgrid(std, ::CartesianMesh{1,RT}, _) where {RT}
-    nx = length(std) + 1
+    nx = ndofs(std) + 1
     n = (fill(SVector(one(RT)), nx),)
     t = (fill(SVector(zero(RT)), nx),)
     b = (fill(SVector(zero(RT)), nx),)
@@ -217,7 +217,7 @@ function PhysicalSubgrid(std, mesh::StepMesh{RT}, ie) where {RT}
 end
 
 function PhysicalSubgrid(std, mesh::UnstructuredMesh{1,RT}, ie) where {RT}
-    nx = length(std)
+    nx = ndofs(std)
     n = (Vector{SVector{1,RT}}(undef, nx + 1),)
     t = (Vector{SVector{1,RT}}(undef, nx + 1),)
     b = (Vector{SVector{1,RT}}(undef, nx + 1),)
