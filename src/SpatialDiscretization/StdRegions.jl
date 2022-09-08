@@ -479,8 +479,9 @@ end
 #==========================================================================================#
 #                                       Standard hex                                       #
 
-struct StdHex{QT,Dims,RT,MM,CI,LI,FS1,FS2,FS3} <: AbstractStdRegion{3,QT,Dims}
+struct StdHex{QT,Dims,RT,MM,CI,LI,FS1,FS2,FS3,ES1,ES2,ES3} <: AbstractStdRegion{3,QT,Dims}
     fstd::Tuple{FS1,FS2,FS3}
+    estd::Tuple{ES1,ES2,ES3}
     cindices::CI
     lindices::LI
     ξe::Vector{SVector{3,RT}}
@@ -503,6 +504,8 @@ ndirections(::StdHex) = 3
 nvertices(::StdHex) = 8
 get_faces(s::StdHex) = (s.fstd[1], s.fstd[1], s.fstd[2], s.fstd[2], s.fstd[3], s.fstd[3])
 get_face(s::StdHex, i) = s.fstd[(i - 1) ÷ 2 + 1]
+get_edges(s::StdHex) = s.estd
+get_edge(s::StdHex, i) = s.estd[i]
 
 function StdHex{RT}(
     np::AbstractVecOrTuple,
@@ -520,32 +523,32 @@ function StdHex{RT}(
         StdQuad{RT}((np[1], np[3]), qtype, npe),
         StdQuad{RT}((np[1], np[2]), qtype, npe),
     )
-    lstd = (get_face(fstd[3], 3), get_face(fstd[3], 1), get_face(fstd[1], 1))
+    estd = (get_face(fstd[3], 3), get_face(fstd[3], 1), get_face(fstd[1], 1))
     ξ = vec([
         SVector(ξx[1], ξy[1], ξz[1])
-        for ξx in lstd[1].ξ, ξy in lstd[2].ξ, ξz in lstd[3].ξ
+        for ξx in estd[1].ξ, ξy in estd[2].ξ, ξz in estd[3].ξ
     ])
-    ω = vec([ωx * ωy * ωz for ωx in lstd[1].ω, ωy in lstd[2].ω, ωz in lstd[3].ω])
+    ω = vec([ωx * ωy * ωz for ωx in estd[1].ω, ωy in estd[2].ω, ωz in estd[3].ω])
 
     # Equispaced nodes
     ξe = vec([
         SVector(ξx[1], ξy[1], ξz[1])
-        for ξx in lstd[1].ξe, ξy in lstd[2].ξe, ξz in lstd[3].ξe
+        for ξx in estd[1].ξe, ξy in estd[2].ξe, ξz in estd[3].ξe
     ])
-    _n2e = kron(lstd[3]._n2e, lstd[2]._n2e, lstd[1]._n2e)
+    _n2e = kron(estd[3]._n2e, estd[2]._n2e, estd[1]._n2e)
 
     # Complementary nodes
     ξc1 = [
         SVector(ξx[1], ξy[1], ξz[1])
-        for ξx in lstd[1].ξc[1], ξy in lstd[2].ξ, ξz in lstd[3].ξ
+        for ξx in estd[1].ξc[1], ξy in estd[2].ξ, ξz in estd[3].ξ
     ]
     ξc2 = [
         SVector(ξx[1], ξy[1], ξz[1])
-        for ξx in lstd[1].ξ, ξy in lstd[2].ξc[1], ξz in lstd[3].ξ
+        for ξx in estd[1].ξ, ξy in estd[2].ξc[1], ξz in estd[3].ξ
     ]
     ξc3 = [
         SVector(ξx[1], ξy[1], ξz[1])
-        for ξx in lstd[1].ξ, ξy in lstd[2].ξ, ξz in lstd[3].ξc[1]
+        for ξx in estd[1].ξ, ξy in estd[2].ξ, ξz in estd[3].ξc[1]
     ]
     ξc = (ξc1, ξc2, ξc3)
 
@@ -557,51 +560,51 @@ function StdHex{RT}(
 
     # Derivative matrices
     I = (Diagonal(ones(np[1])), Diagonal(ones(np[2])), Diagonal(ones(np[3])))
-    Iω = (Diagonal(lstd[1].ω), Diagonal(lstd[2].ω), Diagonal(lstd[3].ω))
+    Iω = (Diagonal(estd[1].ω), Diagonal(estd[2].ω), Diagonal(estd[3].ω))
     D = (
-        kron(I[3], I[2], lstd[1].D[1]),
-        kron(I[3], lstd[2].D[1], I[1]),
-        kron(lstd[3].D[1], I[2], I[1]),
+        kron(I[3], I[2], estd[1].D[1]),
+        kron(I[3], estd[2].D[1], I[1]),
+        kron(estd[3].D[1], I[2], I[1]),
     )
     Q = (
-        kron(I[3], I[2], lstd[1].Q[1]),
-        kron(I[3], lstd[2].Q[1], I[1]),
-        kron(lstd[3].Q[1], I[2], I[1]),
+        kron(I[3], I[2], estd[1].Q[1]),
+        kron(I[3], estd[2].Q[1], I[1]),
+        kron(estd[3].Q[1], I[2], I[1]),
     )
     K = (
-        kron(Iω[3], Iω[2], lstd[1].K[1]),
-        kron(Iω[3], lstd[2].K[1], Iω[1]),
-        kron(lstd[3].K[1], Iω[2], Iω[1]),
+        kron(Iω[3], Iω[2], estd[1].K[1]),
+        kron(Iω[3], estd[2].K[1], Iω[1]),
+        kron(estd[3].K[1], Iω[2], Iω[1]),
     )
     Ks = (
-        kron(Iω[3], Iω[2], lstd[1].Ks[1]),
-        kron(Iω[3], lstd[2].Ks[1], Iω[1]),
-        kron(lstd[3].Ks[1], Iω[2], Iω[1]),
+        kron(Iω[3], Iω[2], estd[1].Ks[1]),
+        kron(Iω[3], estd[2].Ks[1], Iω[1]),
+        kron(estd[3].Ks[1], Iω[2], Iω[1]),
     )
     K♯ = (
-        kron(diag(Iω[3]), diag(Iω[2]), lstd[1].K♯[1]),
-        kron(diag(Iω[3]), lstd[2].K♯[1], diag(Iω[1])),
-        kron(lstd[3].K♯[1], diag(Iω[2]), diag(Iω[1])),
+        kron(diag(Iω[3]), diag(Iω[2]), estd[1].K♯[1]),
+        kron(diag(Iω[3]), estd[2].K♯[1], diag(Iω[1])),
+        kron(estd[3].K♯[1], diag(Iω[2]), diag(Iω[1])),
     )
 
     # Projection operator
     l = (
-        kron(I[3], I[2], lstd[1].l[1]),
-        kron(I[3], I[2], lstd[1].l[2]),
-        kron(I[3], lstd[2].l[1], I[1]),
-        kron(I[3], lstd[2].l[2], I[1]),
-        kron(lstd[3].l[1], I[1], I[2]),
-        kron(lstd[3].l[2], I[1], I[2]),
+        kron(I[3], I[2], estd[1].l[1]),
+        kron(I[3], I[2], estd[1].l[2]),
+        kron(I[3], estd[2].l[1], I[1]),
+        kron(I[3], estd[2].l[2], I[1]),
+        kron(estd[3].l[1], I[1], I[2]),
+        kron(estd[3].l[2], I[1], I[2]),
     )
 
     # Surface contribution
     lω = (
-        kron(Iω[3], Iω[2], lstd[1].lω[1]),
-        kron(Iω[3], Iω[2], lstd[1].lω[2]),
-        kron(Iω[3], lstd[2].lω[1], Iω[1]),
-        kron(Iω[3], lstd[2].lω[2], Iω[1]),
-        kron(lstd[3].lω[1], Iω[2], Iω[1]),
-        kron(lstd[3].lω[2], Iω[2], Iω[1]),
+        kron(Iω[3], Iω[2], estd[1].lω[1]),
+        kron(Iω[3], Iω[2], estd[1].lω[2]),
+        kron(Iω[3], estd[2].lω[1], Iω[1]),
+        kron(Iω[3], estd[2].lω[2], Iω[1]),
+        kron(estd[3].lω[1], Iω[2], Iω[1]),
+        kron(estd[3].lω[2], Iω[2], Iω[1]),
     )
 
     return StdHex{
@@ -614,8 +617,12 @@ function StdHex{RT}(
         typeof(fstd[1]),
         typeof(fstd[2]),
         typeof(fstd[3]),
+        typeof(estd[1]),
+        typeof(estd[2]),
+        typeof(estd[3]),
     }(
         fstd,
+        estd,
         cindices,
         lindices,
         ξe,

@@ -54,7 +54,8 @@ export eachelement, eachboundary, eachface, eachintface, eachbdface, eachvertex,
 
 export GaussQuadrature, GL, GaussLobattoQuadrature, GLL
 export StdSegment, StdQuad, StdHex
-export ndofs, is_tensor_product, ndirections, eachdirection, ndofs, get_quadrature
+export ndofs, is_tensor_product, ndirections, eachdirection, ndofs
+export get_quadrature, get_edges, get_edge
 
 export DirichletBC
 
