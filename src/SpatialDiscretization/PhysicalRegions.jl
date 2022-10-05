@@ -231,11 +231,6 @@ function PhysicalSubgrid(std, mesh::UnstructuredMesh{3,RT}, ie) where {RT}
         ξ = std.ξc[1][i, j, k]
         main = map_basis(ξ, mesh, ie)
         dual = map_dual_basis(main, mesh, ie)
-        frames = ReferenceFrame(
-            SVector(dual[1]),
-            SVector(normalize(main[2])),
-            SVector(normalize(cross)),
-        )
         n = dual[1]
         t = normalize(main[2])
         b = normalize(cross(n, t))

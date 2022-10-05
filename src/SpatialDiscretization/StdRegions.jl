@@ -74,8 +74,8 @@ end
 #==========================================================================================#
 #                                     Standard segment                                     #
 
-struct StdSegment{QT,Dims,RT,MM,CI,LI,FS1,FS2} <: AbstractStdRegion{1,QT,Dims}
-    faces::Tuple{FS1,FS2}
+struct StdSegment{QT,Dims,RT,MM,CI,LI,FS} <: AbstractStdRegion{1,QT,Dims}
+    faces::Tuple{FS,FS}
     cindices::CI
     lindices::LI
     ξe::Vector{SVector{1,RT}}
@@ -174,7 +174,6 @@ function StdSegment{RT}(np::Integer, qtype::AbstractQuadrature, npe=np) where {R
         typeof(cindices),
         typeof(lindices),
         typeof(fstd[1]),
-        typeof(fstd[2]),
     }(
         fstd,
         cindices,
@@ -479,7 +478,7 @@ end
 #                                       Standard hex                                       #
 
 struct StdHex{QT,Dims,RT,MM,CI,LI,FS1,FS2,FS3,ES1,ES2,ES3} <: AbstractStdRegion{3,QT,Dims}
-    faces::Tuple{FS1,FS2,FS3}
+    faces::Tuple{FS1,FS1,FS2,FS2,FS3,FS3}
     edges::Tuple{ES1,ES2,ES3}
     cindices::CI
     lindices::LI
