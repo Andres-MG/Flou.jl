@@ -6,8 +6,8 @@ function rhs!(_dQ, _Q, dg::DGSEM{<:HyperbolicEquation}, time)
     (; equation) = dg
 
     # Wrap solution and its derivative
-    Q = StateVector(_Q, dg.dofhandler, dg.stdvec, nvariables(equation))
-    dQ = StateVector(_dQ, dg.dofhandler, dg.stdvec, nvariables(equation))
+    Q = StateVector(_Q, dg.dofhandler)
+    dQ = StateVector(_dQ, dg.dofhandler)
 
     # Restart time derivative
     fill!(dQ, zero(eltype(dQ)))
@@ -37,28 +37,17 @@ function rhs!(_dQ, _Q, dg::DGSEM{<:HyperbolicEquation}, time)
 end
 
 function volume_contribution!(dQ, Q, dg, operator)
-    for ireg in eachregion(dg.dofhandler)
-        std = dg.stdvec[ireg]
-        @flouthreads for ieloc in eachelement(dg.dofhandler)
-            ie = reg2loc(dg.dofhandler, ireg, ieloc)
-            volume_contribution!(
-                view(dQ[ireg], :, :, ieloc), view(Q[ireg], :, :, ieloc),
-                ie, std, dg, operator,
-            )
-        end
+    @flouthreads for ie in eachelement(dg)
+        std = get_std(dg, ie)
+        volume_contribution!(dQ[ie], Q[ie], ie, std, dg, operator)
     end
+    return nothing
 end
 
 function surface_contribution!(dQ, Q, Fn, dg, operator)
-    for ireg in eachregion(dg.dofhandler)
-        std = dg.stdvec[ireg]
-        @flouthreads for ieloc in eachelement(dg.dofhandler, ireg)
-            ie = reg2loc(dg.dofhandler, ireg, ieloc)
-            surface_contribution!(
-                view(dQ[ireg], :, :, ieloc), view(Q[ireg], :, :, ieloc),
-                Fn, ie, std, dg, operator,
-            )
-        end
+    @flouthreads for ie in eachelement(dg)
+        std = get_std(dg, ie)
+        surface_contribution!(dQ[ie], Q[ie], Fn, ie, std, dg, operator)
     end
     return nothing
 end

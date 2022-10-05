@@ -1,25 +1,187 @@
-struct MeshElement
+#==========================================================================================#
+#                                 Element & face vectors                                   #
+
+struct MeshElement{V,M}
+    nodeinds::V
+    faceinds::V
+    facepos::V
+    mapind::M
+end
+
+struct MeshElementVector <: AbstractVector{MeshElement}
+    _nodeoffsets::Vector{Int}
+    _faceoffsets::Vector{Int}
     nodeinds::Vector{Int}
     faceinds::Vector{Int}
     facepos::Vector{Int}
-    mapind::Int
+    mapind::Vector{Int}
 end
 
-struct MeshFace
+function MeshElementVector(elements::AbstractVector{<:MeshElement})
+    nodeoffset = vcat(0, cumsum(length(e.nodeinds) for e in elements))
+    faceoffset = vcat(0, cumsum(length(e.faceinds) for e in elements))
+    return MeshElementVector(
+        nodeoffset,
+        faceoffset,
+        reduce(vcat, (e.nodeinds for e in elements)),
+        reduce(vcat, (e.faceinds for e in elements)),
+        reduce(vcat, (e.facepos for e in elements)),
+        [e.mapind for e in elements],
+    )
+end
+
+Base.length(s::MeshElementVector) = length(s._nodeoffsets) - 1
+Base.size(s::MeshElementVector) = (length(s),)
+
+@inline function Base.getindex(ev::MeshElementVector, i::Integer)
+    @boundscheck 1 <= i <= length(ev._nodeoffsets) - 1 || throw(BoundsError(ev, i))
+    @inbounds begin
+        in1 = ev._nodeoffsets[i] + 1
+        in2 = ev._nodeoffsets[i + 1]
+        if1 = ev._faceoffsets[i] + 1
+        if2 = ev._faceoffsets[i + 1]
+        return MeshElement(
+            view(ev.nodeinds, in1:in2),
+            view(ev.faceinds, if1:if2),
+            view(ev.facepos, if1:if2),
+            view(ev.mapind, i),
+        )
+    end
+end
+
+@inline function copy_element(ev::MeshElementVector, i::Integer)
+    @boundscheck 1 <= i <= length(ev._nodeoffsets) - 1 || throw(BoundsError(ev, i))
+    @inbounds begin
+        in1 = ev._nodeoffsets[i] + 1
+        in2 = ev._nodeoffsets[i + 1]
+        if1 = ev._faceoffsets[i] + 1
+        if2 = ev._faceoffsets[i + 1]
+        return MeshElement(
+            ev.nodeinds[in1:in2],
+            ev.faceinds[if1:if2],
+            ev.facepos[if1:if2],
+            ev.mapind[i],
+        )
+    end
+end
+
+struct MeshFace{V,O,M}
+    nodeinds::V
+    eleminds::V
+    elempos::V
+    orientation::O
+    mapind::M
+end
+
+struct MeshFaceVector <: AbstractVector{MeshFace}
+    _nodeoffsets::Vector{Int}
+    _elemoffsets::Vector{Int}
     nodeinds::Vector{Int}
     eleminds::Vector{Int}
     elempos::Vector{Int}
-    orientation::UInt8
-    mapind::Int
+    orientation::Vector{UInt8}
+    mapind::Vector{Int}
 end
+
+function MeshFaceVector(faces::AbstractVector{<:MeshFace})
+    nodeoffset = vcat(0, cumsum(length(f.nodeinds) for f in faces))
+    elemoffset = vcat(0, cumsum(length(f.eleminds) for f in faces))
+    return MeshFaceVector(
+        nodeoffset,
+        elemoffset,
+        reduce(vcat, (f.nodeinds for f in faces)),
+        reduce(vcat, (f.eleminds for f in faces)),
+        reduce(vcat, (f.elempos for f in faces)),
+        [f.orientation for f in faces],
+        [f.mapind for f in faces],
+    )
+end
+
+Base.length(s::MeshFaceVector) = length(s._nodeoffsets) - 1
+Base.size(s::MeshFaceVector) = (length(s),)
+
+@inline function Base.getindex(fv::MeshFaceVector, i::Integer)
+    @boundscheck 1 <= i <= length(fv._nodeoffsets) - 1 || throw(BoundsError(fv, i))
+    @inbounds begin
+        in1 = fv._nodeoffsets[i] + 1
+        in2 = fv._nodeoffsets[i + 1]
+        ie1 = fv._elemoffsets[i] + 1
+        ie2 = fv._elemoffsets[i + 1]
+        return MeshFace(
+            view(fv.nodeinds, in1:in2),
+            view(fv.eleminds, ie1:ie2),
+            view(fv.elempos, ie1:ie2),
+            view(fv.orientation, i),
+            view(fv.mapind, i),
+        )
+    end
+end
+
+@inline function copy_face(fv::MeshFaceVector, i::Integer)
+    @boundscheck 1 <= i <= length(fv._nodeoffsets) - 1 || throw(BoundsError(fv, i))
+    @inbounds begin
+        in1 = fv._nodeoffsets[i] + 1
+        in2 = fv._nodeoffsets[i + 1]
+        ie1 = fv._elemoffsets[i] + 1
+        ie2 = fv._elemoffsets[i + 1]
+        return MeshFace(
+            fv.nodeinds[in1:in2],
+            fv.eleminds[ie1:ie2],
+            fv.elempos[ie1:ie2],
+            fv.orientation[i],
+            fv.mapind[i],
+        )
+    end
+end
+
+function Base.deleteat!(fv::MeshFaceVector, i::Integer)
+    # Delete the face
+    i1 = fv._nodeoffsets[i] + 1
+    i2 = fv._nodeoffsets[i + 1]
+    deleteat!(fv.nodeinds, i1:i2)
+
+    i1 = fv._elemoffsets[i] + 1
+    i2 = fv._elemoffsets[i + 1]
+    deleteat!(fv.eleminds, i1:i2)
+    deleteat!(fv.elempos, i1:i2)
+
+    deleteat!(fv.orientation, i)
+    deleteat!(fv.mapind, i)
+
+    # Update the offsets
+    Δ = fv._nodeoffsets[i + 1] - fv._nodeoffsets[i]
+    deleteat!(fv._nodeoffsets, i + 1)
+    fv._nodeoffsets[(i + 1):end] .-= Δ
+
+    Δ = fv._elemoffsets[i + 1] - fv._elemoffsets[i]
+    deleteat!(fv._elemoffsets, i + 1)
+    fv._elemoffsets[(i + 1):end] .-= Δ
+
+    return nothing
+end
+
+# i must be sorted!!
+@inbounds function Base.deleteat!(fv::MeshFaceVector, i::AbstractVecOrTuple)
+    for ipos in eachindex(i)
+        iface = i[ipos] - (ipos - 1)
+        deleteat!(fv, iface)
+    end
+    return nothing
+end
+
+nelements(ev::MeshElementVector) = length(ev)
+nfaces(fv::MeshFaceVector) = length(fv)
+
+#==========================================================================================#
+#                                 Generic mesh interface                                   #
 
 abstract type AbstractMesh{ND,RT<:Real} end
 
 get_spatialdim(::AbstractMesh{ND}) where {ND} = ND
 
-nelements(m::AbstractMesh) = length(m.elements)
+nelements(m::AbstractMesh) = nelements(m.elements)
 nboundaries(m::AbstractMesh) = length(m.bdfaces)
-nfaces(m::AbstractMesh) = length(m.faces)
+nfaces(m::AbstractMesh) = nfaces(m.faces)
 nintfaces(m::AbstractMesh) = length(m.intfaces)
 nbdfaces(m::AbstractMesh) = sum(length.(m.bdfaces))
 nbdfaces(m::AbstractMesh, i) = length(m.bdfaces[i])
@@ -30,21 +192,18 @@ nvertices(f::MeshFace) = length(f.nodeinds)
 nmappings(m::AbstractMesh) = length(m.mappings)
 function nregions end
 
-get_elements(m::AbstractMesh) = LazyRows(m.elements)
-get_faces(m::AbstractMesh) = LazyRows(m.faces)
-get_intfaces(m::AbstractMesh) = LazyRows(m.faces[m.intfaces])
-get_bdfaces(m::AbstractMesh) = LazyRows(m.faces[vcat(m.bdfaces...)])
-get_bdfaces(m::AbstractMesh, i) = LazyRows(m.faces[m.bdfaces[i]])
+get_intfaces(m::AbstractMesh) = LazyVector(m.faces, m.intfaces)
+get_bdfaces(m::AbstractMesh) = LazyVector(m.faces, vcat(m.bdfaces...))
+get_bdfaces(m::AbstractMesh, i) = LazyVector(m.faces, m.bdfaces[i])
 get_periodic(m::AbstractMesh) = m.periodic
-get_vertices(m::AbstractMesh) = m.nodes
 get_mappings(m::AbstractMesh) = m.mappings
 
-get_element(m::AbstractMesh, i) = LazyRow(m.elements, i)
-get_face(m::AbstractMesh, i) = LazyRow(m.faces, i)
-get_intface(m::AbstractMesh, i) = LazyRow(m.faces, m.intfaces[i])
-get_bdface(m::AbstractMesh, ib, i) = LazyRow(m.faces, m.bdfaces[ib][i])
+copy_element(m::AbstractMesh, i::Integer) = copy_element(m.elements, i)
+copy_face(m::AbstractMesh, i::Integer) = copy_face(m.faces, i)
+
+get_intface(m::AbstractMesh, i) = m.faces[m.intfaces[i]]
+get_bdface(m::AbstractMesh, ib, i) = m.faces[m.bdfaces[ib][i]]
 get_periodic(m::AbstractMesh, i) = m.periodic[i]
-get_vertex(m::AbstractMesh, i) = m.nodes[i]
 get_mapping(m::AbstractMesh, i) = m.mappings[i]
 function get_region end
 
@@ -56,7 +215,7 @@ eachbdface(m::AbstractMesh, i) = m.bdfaces[i]
 eachbdface(m::AbstractMesh) = vcat(m.bdfaces...)
 eachvertex(m::AbstractMesh) = Base.OneTo(nvertices(m))
 eachmapping(m::AbstractMesh) = Base.OneTo(nmappings(m))
-function eachregion end
+eachregion(m::AbstractMesh) = Base.OneTo(nregions(m))
 
 function apply_periodicBCs! end
 
@@ -68,19 +227,19 @@ function _apply_periodicBCs!(mesh::AbstractMesh, BCs::Dict{Int,Int})
 
         # Checks
         bd1 in keys(mesh.bdmap) && bd2 in keys(mesh.bdmap) || throw(
-            ArgumentError("Boundaries $(bc.first) and $(bc.second) are already periodic.")
+            ArgumentError("Boundaries $(bc.first) and $(bc.second) cannot be periodic.")
         )
 
         # Update connectivities
         bdind = mesh.bdmap[bd1] => mesh.bdmap[bd2]
         for (if1, if2) in zip(eachbdface(mesh, bdind.first), eachbdface(mesh, bdind.second))
-            face1 = get_face(mesh, if1)
-            face2 = get_face(mesh, if2)
+            face1 = mesh.faces[if1]
+            face2 = mesh.faces[if2]
             elmind = face2.eleminds[1]
             elmpos = face2.elempos[1]
             face1.eleminds[2] = elmind
             face1.elempos[2] = elmpos
-            elem = get_element(mesh, elmind)
+            elem = mesh.elements[elmind]
             elem.faceinds[elmpos] = if1
             elem.facepos[elmpos] = 2
         end
@@ -95,7 +254,10 @@ function _apply_periodicBCs!(mesh::AbstractMesh, BCs::Dict{Int,Int})
         delete!(mesh.bdmap, bd2)
         for i in keys(mesh.bdmap)
             if mesh.bdmap[i] > bdind.second
-                mesh.bdmap[i] -= 2
+                mesh.bdmap[i] -= 1
+            end
+            if mesh.bdmap[i] > bdind.first
+                mesh.bdmap[i] -= 1
             end
         end
         push!(mesh.periodic, bd1 => bd2)
@@ -126,20 +288,20 @@ function _apply_periodicBCs!(mesh::AbstractMesh, BCs::Dict{Int,Int})
     end
 
     # Delete duplicated faces
-    StructArrays.foreachfield(x -> deleteat!(x, faces2del), mesh.faces)
+    deleteat!(mesh.faces, faces2del)
 
     # Update indices in element connectivities
     for iface in eachface(mesh)
-        f = get_face(mesh, iface)
+        f = mesh.faces[iface]
         # Master element
         elmind = f.eleminds[1]
         elmpos = f.elempos[1]
-        get_element(mesh, elmind).faceinds[elmpos] = iface
+        mesh.elements[elmind].faceinds[elmpos] = iface
         # Slave element
         elmind = f.eleminds[2]
         if elmind != 0
             elmpos = f.elempos[2]
-            get_element(mesh, elmind).faceinds[elmpos] = iface
+            mesh.elements[elmind].faceinds[elmpos] = iface
         end
     end
     return nothing
@@ -153,35 +315,35 @@ struct QuadLinearMapping <: AbstractMapping end
 struct HexLinearMapping <: AbstractMapping end
 
 function phys_coords(ξ, mesh::AbstractMesh, ie)
-    elem = get_element(mesh, ie)
-    mapping = get_mapping(mesh, elem.mapind)
-    nodes = get_vertices(mesh)[elem.nodeinds]
+    elem = mesh.elements[ie]
+    mapping = get_mapping(mesh, elem.mapind[])
+    nodes = mesh.nodes[elem.nodeinds]
     return phys_coords(ξ, nodes, mapping)
 end
 
 function face_phys_coords(ξ, mesh::AbstractMesh, iface)
-    face = get_face(mesh, iface)
-    mapping = get_mapping(mesh, face.mapind)
-    nodes = get_vertices(mesh)[face.nodeinds]
+    face = mesh.faces[iface]
+    mapping = get_mapping(mesh, face.mapind[])
+    nodes = mesh.nodes[face.nodeinds]
     return phys_coords(ξ, nodes, mapping)
 end
 
 function map_basis(ξ, mesh::AbstractMesh, ie)
-    elem = get_element(mesh, ie)
-    mapping = get_mapping(mesh, elem.mapind)
-    nodes = get_vertices(mesh)[elem.nodeinds]
+    elem = mesh.elements[ie]
+    mapping = get_mapping(mesh, elem.mapind[])
+    nodes = mesh.nodes[elem.nodeinds]
     return map_basis(ξ, nodes, mapping)
 end
 
 function map_dual_basis(main, mesh::AbstractMesh, ie)
-    elem = get_element(mesh, ie)
-    mapping = get_mapping(mesh, elem.mapind)
+    elem = mesh.elements[ie]
+    mapping = get_mapping(mesh, elem.mapind[])
     return map_dual_basis(main, mapping)
 end
 
 function map_jacobian(main, mesh::AbstractMesh, ie)
-    elem = get_element(mesh, ie)
-    mapping = get_mapping(mesh, elem.mapind)
+    elem = mesh.elements[ie]
+    mapping = get_mapping(mesh, elem.mapind[])
     return map_jacobian(main, mapping)
 end
 

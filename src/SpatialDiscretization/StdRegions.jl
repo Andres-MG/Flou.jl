@@ -27,7 +27,7 @@ function ndirections end
 
 function massmatrix end
 
-@inline function project2equispaced!(Qe, Q, s::AbstractStdRegion)
+Base.@propagate_inbounds function project2equispaced!(Qe, Q, s::AbstractStdRegion)
     Qe .= s._n2e * Q
     return nothing
 end
@@ -37,11 +37,12 @@ function slave2master end
 function master2slave end
 
 get_spatialdim(::AbstractStdRegion{ND}) where {ND} = ND
-ndofs(s::AbstractStdRegion, equispaced=false) = equispaced ? length(s.ξe) : length(s)
-get_faces(s::AbstractStdRegion{ND}) where {ND} = s.fstd
-get_face(s::AbstractStdRegion{ND}, i) where {ND} = s.fstd[i]
 get_quadrature(::AbstractStdRegion{ND,Q}) where {ND,Q} = Q
+
+ndofs(s::AbstractStdRegion, equispaced=false) = equispaced ? length(s.ξe) : length(s)
+
 eachdirection(s::AbstractStdRegion) = Base.OneTo(ndirections(s))
+eachdof(s::AbstractStdRegion) = Base.OneTo(ndofs(s))
 
 #==========================================================================================#
 #                                      Standard point                                      #
@@ -62,11 +63,11 @@ is_tensor_product(::StdPoint) = true
 ndirections(::StdPoint) = 1
 nvertices(::StdPoint) = 1
 
-function slave2master(i, _, ::StdPoint)
+function slave2master(i::Integer, _, ::StdPoint)
     return i
 end
 
-function master2slave(i, _, ::StdPoint)
+function master2slave(i::Integer, _, ::StdPoint)
     return i
 end
 
@@ -74,7 +75,7 @@ end
 #                                     Standard segment                                     #
 
 struct StdSegment{QT,Dims,RT,MM,CI,LI,FS1,FS2} <: AbstractStdRegion{1,QT,Dims}
-    fstd::Tuple{FS1,FS2}
+    faces::Tuple{FS1,FS2}
     cindices::CI
     lindices::LI
     ξe::Vector{SVector{1,RT}}
@@ -211,7 +212,7 @@ function massmatrix(std::StdSegment, J)
     return Diagonal(J) * std.M
 end
 
-function slave2master(i, orientation, std::StdSegment)
+function slave2master(i::Integer, orientation, std::StdSegment)
     return if orientation == 0
         i
     else # orientation == 1
@@ -219,7 +220,7 @@ function slave2master(i, orientation, std::StdSegment)
     end
 end
 
-function master2slave(i, orientation, std::StdSegment)
+function master2slave(i::Integer, orientation, std::StdSegment)
     return if orientation == 0
         i
     else # orientation == 1
@@ -239,7 +240,7 @@ end
 #                                       Standard quad                                      #
 
 struct StdQuad{QT,Dims,RT,MM,CI,LI,FS1,FS2} <: AbstractStdRegion{2,QT,Dims}
-    fstd::Tuple{FS1,FS2}
+    faces::Tuple{FS1,FS1,FS2,FS2}
     cindices::CI
     lindices::LI
     cindices_t::CI
@@ -265,8 +266,6 @@ Base.CartesianIndices(s::StdQuad, transpose=false) = transpose ? s.cindices_t : 
 is_tensor_product(::StdQuad) = true
 ndirections(::StdQuad) = 2
 nvertices(::StdQuad) = 4
-get_faces(s::StdQuad) = (s.fstd[1], s.fstd[1], s.fstd[2], s.fstd[2])
-get_face(s::StdQuad, i) = s.fstd[(i - 1) ÷ 2 + 1]
 
 function StdQuad{RT}(
     np::AbstractVecOrTuple,
@@ -353,7 +352,7 @@ function StdQuad{RT}(
         typeof(fstd[1]),
         typeof(fstd[2]),
     }(
-        fstd,
+        (fstd[1], fstd[1], fstd[2], fstd[2]),
         cindices,
         lindices,
         cindices_t,
@@ -393,7 +392,7 @@ function massmatrix(std::StdQuad, J)
     return Diagonal(J) * std.M
 end
 
-function slave2master(i, orientation, std::StdQuad)
+function slave2master(i::Integer, orientation, std::StdQuad)
     s = CartesianIndices(std)[i]
     st = CartesianIndices(std, true)[i]
     li = LinearIndices(std)
@@ -416,7 +415,7 @@ function slave2master(i, orientation, std::StdQuad)
     end
 end
 
-function master2slave(i, orientation, std::StdQuad)
+function master2slave(i::Integer, orientation, std::StdQuad)
     m = CartesianIndices(std)[i]
     li = LinearIndices(std)
     lit = LinearIndices(std, true)
@@ -480,8 +479,8 @@ end
 #                                       Standard hex                                       #
 
 struct StdHex{QT,Dims,RT,MM,CI,LI,FS1,FS2,FS3,ES1,ES2,ES3} <: AbstractStdRegion{3,QT,Dims}
-    fstd::Tuple{FS1,FS2,FS3}
-    estd::Tuple{ES1,ES2,ES3}
+    faces::Tuple{FS1,FS2,FS3}
+    edges::Tuple{ES1,ES2,ES3}
     cindices::CI
     lindices::LI
     ξe::Vector{SVector{3,RT}}
@@ -502,10 +501,6 @@ end
 is_tensor_product(::StdHex) = true
 ndirections(::StdHex) = 3
 nvertices(::StdHex) = 8
-get_faces(s::StdHex) = (s.fstd[1], s.fstd[1], s.fstd[2], s.fstd[2], s.fstd[3], s.fstd[3])
-get_face(s::StdHex, i) = s.fstd[(i - 1) ÷ 2 + 1]
-get_edges(s::StdHex) = s.estd
-get_edge(s::StdHex, i) = s.estd[i]
 
 function StdHex{RT}(
     np::AbstractVecOrTuple,
@@ -523,7 +518,7 @@ function StdHex{RT}(
         StdQuad{RT}((np[1], np[3]), qtype, npe),
         StdQuad{RT}((np[1], np[2]), qtype, npe),
     )
-    estd = (get_face(fstd[3], 3), get_face(fstd[3], 1), get_face(fstd[1], 1))
+    estd = (fstd[3].faces[3], fstd[3].faces[1], fstd[1].faces[1])
     ξ = vec([
         SVector(ξx[1], ξy[1], ξz[1])
         for ξx in estd[1].ξ, ξy in estd[2].ξ, ξz in estd[3].ξ
@@ -621,7 +616,7 @@ function StdHex{RT}(
         typeof(estd[2]),
         typeof(estd[3]),
     }(
-        fstd,
+        (fstd[1], fstd[1], fstd[2], fstd[2], fstd[3], fstd[3]),
         estd,
         cindices,
         lindices,

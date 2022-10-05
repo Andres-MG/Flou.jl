@@ -33,11 +33,11 @@ function volumeflux(Q, eq::LinearAdvection{ND}) where {ND}
     return SMatrix{ND,1}(a * Q[1] for a in eq.a)
 end
 
-function rotate2face(Qf, _, _, _, ::LinearAdvection)
+function rotate2face(Qf, _, ::LinearAdvection)
     return SVector(Qf[1])
 end
 
-function rotate2phys(Qrot, _, _, _, ::LinearAdvection)
+function rotate2phys(Qrot, _, ::LinearAdvection)
     return SVector(Qrot[1])
 end
 

@@ -14,9 +14,9 @@ end
 
 nregions(::UnstructuredMesh) = 1
 get_region(m::UnstructuredMesh, i) = m.regionmap[i]
-eachregion(m::UnstructuredMesh) = Base.OneTo(nregions(m))
 
-nelements(m::UnstructuredMesh, i) = count(prod(m.nelements[i]))
+nelements(m::UnstructuredMesh, _) = m.nelements
+eachelement(m::UnstructuredMesh, _) = Base.OneTo(nelements(m))
 
 function UnstructuredMesh{ND,RT}(filename) where {ND,RT}
     gmsh.initialize()
@@ -112,7 +112,7 @@ function UnstructuredMesh{ND,RT}() where {ND,RT}
         for (j, iface) in enumerate(faceinds[i])
             pos[j] = findfirst(==(i), eleminds[iface])
         end
-        elements[i] = MeshElement(elemnodes[i], faceinds[i], pos, 1)
+        elements[i] = MeshElement(elemnodes[i], faceinds[i], copy(pos), 1)
     end
 
     pos = Vector{UInt}(undef, 2)
@@ -125,7 +125,7 @@ function UnstructuredMesh{ND,RT}() where {ND,RT}
                 pos[j] = findfirst(==(i), faceinds[ielem])
             end
         end
-        faces[i] = MeshFace(facenodes[i], eleminds[i], pos, orientation[i], 2)
+        faces[i] = MeshFace(facenodes[i], eleminds[i], copy(pos), orientation[i], 2)
     end
 
     mappings = if ND == 1
@@ -139,8 +139,8 @@ function UnstructuredMesh{ND,RT}() where {ND,RT}
     return UnstructuredMesh(
         numelements,
         nodes,
-        StructVector(faces),
-        StructVector(elements),
+        MeshFaceVector(faces),
+        MeshElementVector(elements),
         intfaces,
         bdfaces,
         bdnames,
@@ -159,14 +159,14 @@ function Base.show(io::IO, ::MIME"text/plain", m::UnstructuredMesh{ND,RT}) where
     # Box limits
     dirs = ("x", "y", "z")
     lims = (
-        mapreduce(x -> x[1], min, get_vertices(m)),
-        mapreduce(x -> x[1], max, get_vertices(m))
+        mapreduce(x -> x[1], min, m.nodes),
+        mapreduce(x -> x[1], max, m.nodes)
     )
     print(io, " Bounding box: x ∈ [", lims[1], ", ", lims[2], "]")
     for idim in 2:ND
         lims = (
-            mapreduce(x -> x[idim], min, get_vertices(m)),
-            mapreduce(x -> x[idim], max, get_vertices(m))
+            mapreduce(x -> x[idim], min, m.nodes),
+            mapreduce(x -> x[idim], max, m.nodes)
         )
         print(io, ", ", dirs[idim], " ∈ [", lims[1], ", ", lims[2], "]")
     end

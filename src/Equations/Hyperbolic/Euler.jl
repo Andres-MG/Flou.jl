@@ -73,15 +73,16 @@ function volumeflux(Q, eq::EulerEquation{3})
     )
 end
 
-function rotate2face(Qf, n, _, _, ::EulerEquation{1})
-    return SVector(Qf[1], Qf[2] * n[1], Qf[3])
+function rotate2face(Qf, frame, ::EulerEquation{1})
+    return SVector(Qf[1], Qf[2] * frame.n[1], Qf[3])
 end
 
-function rotate2phys(Qrot, n, _, _, ::EulerEquation{1})
-    return SVector(Qrot[1], Qrot[2] * n[1], Qrot[3])
+function rotate2phys(Qrot, frame, ::EulerEquation{1})
+    return SVector(Qrot[1], Qrot[2] * frame.n[1], Qrot[3])
 end
 
-function rotate2face(Qf, n, t, _, ::EulerEquation{2})
+function rotate2face(Qf, frame, ::EulerEquation{2})
+    (; n, t) = frame
     return SVector(
         Qf[1],
         Qf[2] * n[1] + Qf[3] * n[2],
@@ -90,7 +91,8 @@ function rotate2face(Qf, n, t, _, ::EulerEquation{2})
     )
 end
 
-function rotate2phys(Qrot, n, t, _, ::EulerEquation{2})
+function rotate2phys(Qrot, frame, ::EulerEquation{2})
+    (; n, t) = frame
     return SVector(
         Qrot[1],
         Qrot[2] * n[1] + Qrot[3] * t[1],
@@ -99,7 +101,8 @@ function rotate2phys(Qrot, n, t, _, ::EulerEquation{2})
     )
 end
 
-function rotate2face(Qf, n, t, b, ::EulerEquation{3})
+function rotate2face(Qf, frame, ::EulerEquation{3})
+    (; n, t, b) = frame
     return SVector(
         Qf[1],
         Qf[2] * n[1] + Qf[3] * n[2] + Qf[4] * n[3],
@@ -109,7 +112,8 @@ function rotate2face(Qf, n, t, b, ::EulerEquation{3})
     )
 end
 
-function rotate2phys(Qrot, n, t, b, ::EulerEquation{3})
+function rotate2phys(Qrot, frame, ::EulerEquation{3})
+    (; n, t, b) = frame
     return SVector(
         Qrot[1],
         Qrot[2] * n[1] + Qrot[3] * t[1] + Qrot[4] * b[1],
@@ -163,6 +167,12 @@ function energy(Q, eq::EulerEquation{3})
     return p / (eq.γ - 1) + ρ * (u^2 + v^2 + w^2) / 2
 end
 
+function entropy(Q, eq::EulerEquation)
+    ρ = Q[1]
+    p = pressure(Q, eq)
+    return log(p) - eq.γ * log(ρ)
+end
+
 """
     math_entropy(Q, eq::EulerEquation)
 
@@ -170,8 +180,8 @@ Compute the mathematical entropy, `σ`, from the *conservative* variables `Q`.
 """
 function math_entropy(Q, eq::EulerEquation)
     ρ = Q[1]
-    p = pressure(Q, eq)
-    return log(p) - eq.γ * log(ρ)
+    s = entropy(Q, eq)
+    return - ρ * s / (eq.γ - 1)
 end
 
 function soundvelocity_sqr(Q, eq::EulerEquation)
@@ -231,7 +241,7 @@ end
 function vars_cons2entropy(Q, eq::EulerEquation{1})
     ρ, ρu, _ = Q
     p = pressure(Q, eq)
-    s = math_entropy(Q, eq)
+    s = entropy(Q, eq)
     return SVector(
         (eq.γ - s) / (eq.γ - 1) - ρu^2 / ρ / 2p,
         ρu / p,
@@ -242,7 +252,7 @@ end
 function vars_cons2entropy(Q, eq::EulerEquation{2})
     ρ, ρu, ρv, _ = Q
     p = pressure(Q, eq)
-    s = math_entropy(Q, eq)
+    s = entropy(Q, eq)
     return SVector(
         (eq.γ - s) / (eq.γ - 1) - (ρu^2 + ρv^2) / ρ / 2p,
         ρu / p,
@@ -254,7 +264,7 @@ end
 function vars_cons2entropy(Q, eq::EulerEquation{3})
     ρ, ρu, ρv, ρw, _ = Q
     p = pressure(Q, eq)
-    s = math_entropy(Q, eq)
+    s = entropy(Q, eq)
     return SVector(
         (eq.γ - s) / (eq.γ - 1) - (ρu^2 + ρv^2 + ρw^2) / ρ / 2p,
         ρu / p,
@@ -328,22 +338,22 @@ struct EulerInflowBC{RT,NV} <: AbstractBC
     end
 end
 
-function stateBC(Qin, x, n, t, b, time, ::EulerEquation, bc::EulerInflowBC)
+function stateBC(_, _, _, _, ::EulerEquation, bc::EulerInflowBC)
     return bc.Qext
 end
 
 struct EulerOutflowBC <: AbstractBC end
 
-function stateBC(Qin, x, n, t, b, time, eq::EulerEquation, ::EulerOutflowBC)
+function stateBC(Qin, _, _, _, eq::EulerEquation, ::EulerOutflowBC)
     return SVector{nvariables(eq)}(Qin)
 end
 
 struct EulerSlipBC <: AbstractBC end
 
-function stateBC(Qin, x, n, t, b, time, eq::EulerEquation, ::EulerSlipBC)
-    Qn = rotate2face(Qin, n, t, b, eq) |> MVector
+function stateBC(Qin, _, frame, _, eq::EulerEquation, ::EulerSlipBC)
+    Qn = rotate2face(Qin, frame, eq) |> MVector
     Qn[2] = -Qn[2]
-    return rotate2phys(Qn, n, t, b, eq)
+    return rotate2phys(Qn, frame, eq)
 end
 
 #==========================================================================================#
@@ -352,7 +362,7 @@ end
 function numericalflux(
     Ql,
     Qr,
-    n,
+    _,
     eq::EulerEquation{ND},
     ::StdAverageNumericalFlux,
 ) where {
@@ -430,7 +440,7 @@ struct ChandrasekharAverage <: AbstractNumericalFlux end
 function numericalflux(
     Ql,
     Qr,
-    n,
+    _,
     eq::EulerEquation{ND},
     ::ChandrasekharAverage,
 ) where {

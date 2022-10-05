@@ -1,16 +1,11 @@
-include("Mesh.jl")
 include("StdRegions.jl")
+include("DofHandler.jl")
 include("PhysicalRegions.jl")
+include("Containers.jl")
 
 abstract type AbstractSpatialDiscretization{EQ<:AbstractEquation,RT<:Real} end
 
-abstract type AbstractDofHandler end
-
-function ndofs end
-
 abstract type AbstractBC end
-
-function stateBC! end
 
 """
     DirichletBC(Qext::Function)
@@ -18,11 +13,11 @@ function stateBC! end
 Dirichlet boundary condition where `Qext = Qext(Q, x, n, t, b, time, equation)`.
 """
 struct DirichletBC{QF} <: AbstractBC
-    Qext::QF     # Qext(Qin, x, n, t, b, time, eq)
+    Qext::QF     # Qext(Qin, x, frame, time, eq)
 end
 
-function stateBC(Qin, x, n, t, b, time, eq, bc::DirichletBC)
-    return bc.Qext(Qin, x, n, t, b, time, eq)
+function stateBC(Qin, x, frame, time, eq, bc::DirichletBC)
+    return bc.Qext(Qin, x, frame, time, eq)
 end
 
 include("DG/DG.jl")

@@ -24,11 +24,11 @@ function volumeflux(Q, ::BurgersEquation)
     return SMatrix{1,1}(Q[1]^2 / 2)
 end
 
-function rotate2face(Qf, _, _, _, ::BurgersEquation)
+function rotate2face(Qf, _, ::BurgersEquation)
     return SVector(Qf[1])
 end
 
-function rotate2phys(Qrot, _, _, _, ::BurgersEquation)
+function rotate2phys(Qrot, _, ::BurgersEquation)
     return SVector(Qrot[1])
 end
 

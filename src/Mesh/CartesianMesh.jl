@@ -14,7 +14,6 @@ end
 
 nregions(::CartesianMesh) = 1
 get_region(::CartesianMesh, i) = 1
-eachregion(m::CartesianMesh) = Base.OneTo(nregions(m))
 
 nelements(m::CartesianMesh, _) = nelements(m)
 nelements_dir(m::CartesianMesh, dir) = m.nelements[dir]
@@ -56,7 +55,10 @@ function CartesianMesh{ND,RT}(start, finish, nxyz) where {ND,RT<:Real}
 
     # Connectivities
     elements = _cartesian_element_connectivities(Val(ND), nxyz)
+    elements = MeshElementVector(elements)
+
     intfaces, bdfaces, faces = _cartesian_face_connectivities(Val(ND), nxyz)
+    faces = MeshFaceVector(faces)
 
     # Boundary indices map
     bdnames = [string(i) for i in 1:2ND]
@@ -64,10 +66,10 @@ function CartesianMesh{ND,RT}(start, finish, nxyz) where {ND,RT<:Real}
 
     return CartesianMesh(
             Tuple(nxyz),
-            Tuple((finish .- start) ./ nxyz),
+            Tuple(RT.(finish .- start) ./ nxyz),
             nodes,
-            StructVector(faces),
-            StructVector(elements),
+            faces,
+            elements,
             intfaces,
             bdfaces,
             bdnames,
@@ -84,7 +86,7 @@ function Base.show(io::IO, ::MIME"text/plain", m::CartesianMesh{ND,RT}) where {N
     dirs = ("x", "y", "z")
 
     # Box limits
-    lims = (first(get_vertices(m)), last(get_vertices(m)))
+    lims = (first(m.nodes), last(m.nodes))
     print(io, " Domain: x ∈ [", lims[1][1], ", ", lims[2][1], "]")
     for idim in 2:ND
         print(io, ", ", dirs[idim], " ∈ [", lims[1][idim], ", ", lims[2][idim], "]")

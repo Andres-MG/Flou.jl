@@ -18,9 +18,9 @@ end
 # Discretization
 Δt = 1e-4
 tf = 0.25
-save_steps = (0, Int(round(tf/Δt)))
-# save_steps = range(0, Int(round(tf/Δt)), 11) .|> Int
 # save_steps = 0:Int(round(tf/Δt))
+# save_steps = range(0, Int(round(tf/Δt)), 11) .|> Int
+save_steps = (0, Int(round(tf/Δt)))
 solver = ORK256(williamson_condition=false)
 # solver = DGLDDRK84_F()
 
@@ -64,7 +64,7 @@ mesh = CartesianMesh{1,Float64}(0, 1, 21)
 # mesh = UnstructuredMesh{2,Float64}("../test/meshes/mesh2d_refined.msh")
 apply_periodicBCs!(mesh, "1" => "2")
 
-equation = EulerEquation{2}(div, 1.4)
+equation = EulerEquation{1}(div, 1.4)
 
 # Q0 = Flou.vars_prim2cons((5.997, -98.5914, 0.0, 11_666.5), equation)
 # Q1 = Flou.vars_prim2cons((1.0, 0.0, 0.0, 1.0), equation)
@@ -87,50 +87,45 @@ equation = EulerEquation{2}(div, 1.4)
 # )
 DG = DGSEM(mesh, std, equation, ∂Ω, numflux)
 
-# x0 = 0.5
-# sx = 0.1
-# h = 1.0
-# Q = StateVector{Float64}(undef, DG.dofhandler, DG.stdvec, nvariables(equation))
-# for ie in eachelement(mesh)
-#     for i in eachindex(DG.stdvec[1])
-#         x = coords(DG.physelem, ie)[i][1]
-#         ρ = 1.0 + Flou.gaussian_bump(x, 0.0, 0.0, x0, 0.0, 0.0, sx, 1.0, 1.0, h)
-#         u = 1.0
-#         p = 1.0
-#         Q[1][i, :, ie] = Flou.vars_prim2cons((ρ, u, p), equation)
-#     end
+x0 = 0.5
+sx = 0.1
+h = 1.0
+Q = StateVector{Float64}(undef, nvariables(equation), DG.dofhandler)
+# for i in eachdof(DG)
+#     x = DG.geometry.elements.coords[i][1]
+#     ρ = 1.0 + Flou.gaussian_bump(x, 0.0, 0.0, x0, 0.0, 0.0, sx, 1.0, 1.0, h)
+#     u = 1.0
+#     p = 1.0
+#     Q.data[i, :] = Flou.vars_prim2cons((ρ, u, p), equation)
 # end
-# Q = StateVector{Float64}(undef, DG.dofhandler, DG.stdvec, nvariables(equation))
-# for ie in eachelement(mesh)
-#     for i in eachindex(DG.stdvec[1])
-#         x = coords(DG.physelem, ie)[i][1]
-#         Q[1][i, :, ie] .= x > 1.5 ? Q0 : Q1
-#     end
+# Q = StateVector{Float64}(undef, nvariables(equation), DG.dofhandler)
+# for i in eachdof(DG)
+#     x = DG.geometry.elements.coords[i][1]
+#     Q.data[i, :] .= x > 1.5 ? Q0 : Q1
 # end
-Q = StateVector{Float64}(undef, DG.dofhandler, DG.stdvec, nvariables(equation))
-for ie in eachelement(mesh)
-    for i in eachindex(DG.stdvec[1])
-        P = 1.0 .+ rand(Float64, nvariables(equation)) .* 0.9
-        Q[1][i, :, ie] .= Flou.vars_prim2cons(P, equation)
-    end
+Q = StateVector{Float64}(undef, nvariables(equation), DG.dofhandler)
+for i in eachdof(DG)
+    P = 1.0 .+ rand(Float64, nvariables(equation)) .* 0.8
+    Q.data[i, :] .= Flou.vars_prim2cons(P, equation)
 end
 # Q = StateVector{Float64}(undef, DG.dofhandler, DG.stdvec, nvariables(equation))
 # for ie in eachelement(mesh)
-#     for i in eachindex(DG.stdvec[1])
-#         Q[1][i, :, ie] .= Q0
+#     local std = get_std(DG, ie)
+#     for i in eachindex(std)
+#         Q[ie][i, :] .= Q0
 #     end
 # end
 
 display(DG)
 println()
 
-mb, mvals = get_monitors_callback(Float64, :entropy)
+mb, mvals = get_monitor_callback(Float64, DG, :entropy)
 sb = get_save_callback("../results/solution", save_steps)
 cb = make_callback_list(mb, sb)
 
 @info "Starting simulation..."
 
-_, exetime = integrate(Q, DG, solver, tf; save_everystep=false, alias_u0=true,
+_, exetime = timeintegrate(Q.data, DG, solver, tf; save_everystep=false, alias_u0=true,
     adaptive=false, dt=Δt, callback=cb, progress=false, progress_steps=50)
 
 @info "Elapsed time: $(exetime) s"

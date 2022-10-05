@@ -58,3 +58,34 @@ end
 macro threadbuff(expr)
     return :(Tuple($(esc(expr)) for _ in 1:Threads.nthreads()))
 end
+
+struct LazyVector{T} <: AbstractVector{T}
+    data::Vector{T}
+    indices::Vector{Int}
+    function LazyVector(data::AbstractVector{T}, indices::Vector{<:Integer}) where {T}
+        minimum(indices) >= 1 || throw(
+            ArgumentError("Indices must be positive")
+        )
+        maximum(indices) <= length(data) || throw(
+            ArgumentError("Indices must be less than length(data)")
+        )
+        return new{T}(data, indices)
+    end
+end
+
+function LazyVector(data::AbstractVector{T}) where {T}
+    return LazyVector(data, collect(1:length(data)))
+end
+
+Base.size(v::LazyVector) = size(v.indices)
+
+@inline function Base.getindex(v::LazyVector, i)
+    @boundscheck checkbounds(v, i)
+    return @inbounds v.data[v.indices[i]]
+end
+
+@inline function Base.setindex!(v::LazyVector, x, i)
+    @boundscheck checkbounds(v, i)
+    return @inbounds v.data[v.indices[i]] = x
+end
+

@@ -1,13 +1,12 @@
-struct DGSEM{EQ,RT,NF,MT,ST,PE,PF,BCT,FT} <: DiscontinuousGalerkin{EQ,RT}
+struct DGSEM{EQ,RT,NF,MT,ST,G,R,BCT,FT} <: DiscontinuousGalerkin{EQ,RT}
     equation::EQ
     riemannsolver::NF
     mesh::MT
     stdvec::ST
-    dofhandler::DofHandlerDG
-    physelem::PE
-    physface::PF
-    Qf::MortarStateVector{RT}
-    Fn::MortarStateVector{RT}
+    dofhandler::DofHandler
+    geometry::G
+    Qf::FaceStateVector{RT,R}
+    Fn::FaceStateVector{RT,R}
     bcs::BCT
     source!::FT
 end
@@ -27,18 +26,16 @@ function DGSEM(
     (isa(stdvec, AbstractStdRegion) || length(stdvec) == nregions(mesh)) || throw(
         ArgumentError(
             "The mesh has $(nregions(mesh)) region(s) but " *
-            "$(length(stdvec)) quadratures were given."
+            "$(length(stdvec)) different standard regions were given."
         )
     )
-    _stdvec = tuple(stdvec)
-
-    # Dof handler
-    if length(_stdvec) == 1
-        dofhandler = DofHandlerDG([nelements(mesh)])
+    if isa(stdvec, AbstractStdRegion)
+        _stdvec = ntuple(_ -> stdvec, nregions(mesh))
     else
-        nelems = (nelements(mesh, i) for i in eachregion(mesh))
-        dofhandler = DofHandlerDG(nelems)
+        _stdvec = tuple(stdvec)
     end
+
+    elem2std = [get_region(mesh, ie) for ie in 1:nelements(mesh)]
 
     # Boundary conditions
     nbounds = nboundaries(mesh)
@@ -53,17 +50,20 @@ function DGSEM(
     end
     _bcs = Tuple(_bcs)
 
+    # DOF handler
+    dofhandler = DofHandler(mesh, _stdvec, elem2std)
+
     # Physical elements
     subgrid = requires_subgrid.(equation.operators) |> any
-    physelements, physfaces = compute_metric_terms(_stdvec, dofhandler, mesh, subgrid)
+    geometry = Geometry(_stdvec, dofhandler, mesh, subgrid)
 
     # Faces storage
-    Qf = MortarStateVector{RT}(undef, mesh, _stdvec, dofhandler, nvariables(equation))
-    Fn = MortarStateVector{RT}(undef, mesh, _stdvec, dofhandler, nvariables(equation))
+    Qf = FaceStateVector{RT}(undef, nvariables(equation), dofhandler)
+    Fn = FaceStateVector{RT}(undef, nvariables(equation), dofhandler)
 
     # Source term
     sourceterm = if isnothing(source)
-        (dQ, Q, x, t, region) -> nothing
+        (dQ, Q, x, t) -> nothing
     else
         source
     end
@@ -74,8 +74,7 @@ function DGSEM(
         mesh,
         _stdvec,
         dofhandler,
-        physelements,
-        physfaces,
+        geometry,
         Qf,
         Fn,
         _bcs,
@@ -83,12 +82,18 @@ function DGSEM(
     )
 end
 
-function ndofs(dg::DGSEM)
-    n = 0
-    for i in eachregion(dg.dofhandler)
-        n += nelements(dg.dofhandler, i) * ndofs(dg.stdvec[i])
-    end
-    return n
+nvariables(dg::DGSEM) = nvariables(dg.equation)
+nelements(dg::DGSEM) = nelements(dg.dofhandler)
+nfaces(dg::DGSEM) = nfaces(dg.dofhandler)
+ndofs(dg::DGSEM) = ndofs(dg.dofhandler)
+
+eachvariable(dg::DGSEM) = eachvariable(dg.equation)
+eachelement(dg::DGSEM) = eachelement(dg.dofhandler)
+eachface(dg::DGSEM) = eachface(dg.dofhandler)
+eachdof(dg::DGSEM) = eachdof(dg.dofhandler)
+
+@inline function get_std(dg::DGSEM, ie)
+    return @inbounds dg.stdvec[get_stdid(dg.dofhandler, ie)]
 end
 
 function Base.show(io::IO, m::MIME"text/plain", dg::DGSEM{EQ,RT}) where {EQ,RT}
@@ -96,26 +101,28 @@ function Base.show(io::IO, m::MIME"text/plain", dg::DGSEM{EQ,RT}) where {EQ,RT}
 
     # Header
     println(io, "=========================================================================")
-    println(io, "DGSEM{", RT, "} spatial discretization with ",
-        nregions(dg.dofhandler), " region(s):")
+    println(io, "DGSEM{", RT, "} spatial discretization")
 
     # Equation
     println(io, "\nEquation:")
     println(io, "---------")
     show(io, m, dg.equation)
 
-    # TODO: numerical flux
+    # Riemann solver
+    println(io, "\n\nRiemann solver:")
+    println(io, "---------------")
+    show(io, m, dg.riemannsolver)
 
     # Standard regions
     println(io, "\n\nStandard regions:")
     println(io, "-----------------")
-    for i in eachregion(dg.dofhandler)
-        show(io, m, dg.stdvec[i])
-        println(io, "")
+    for std in dg.stdvec
+        show(io, m, std)
+        println(io, "\n")
     end
 
     # Mesh
-    println(io, "\nMesh:")
+    println(io, "Mesh:")
     println(io, "-----")
     show(io, m, dg.mesh)
     print(io, "\n=========================================================================")
