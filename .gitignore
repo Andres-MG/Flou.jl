@@ -1,4 +1,4 @@
 .vscode
 docs/build
 results
-app/debug.jl
+examples/src/scratch.jl
