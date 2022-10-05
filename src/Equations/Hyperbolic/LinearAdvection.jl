@@ -50,10 +50,7 @@ function numericalflux(
 ) where {
     ND,
 }
-    an = zero(eltype(eq.a))
-    @inbounds for i in 1:ND
-        an += eq.a[i] * n[i]
-    end
+    an = dot(eq.a, n)
     return SVector(an * (Ql[1] + Qr[1]) / 2)
 end
 
@@ -70,9 +67,6 @@ function numericalflux(
     Fn = numericalflux(Ql, Qr, n, eq, nf.avg)
 
     # Dissipation
-    an = zero(eltype(eq.a))
-    @inbounds @simd for i in 1:ND
-        an += eq.a[i] * n[i]
-    end
+    an = dot(eq.a, n)
     return SVector(Fn[1] + abs(an) * (Ql[1] - Qr[1]) / 2 * nf.intensity)
 end
