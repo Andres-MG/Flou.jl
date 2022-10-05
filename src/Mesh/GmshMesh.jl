@@ -21,8 +21,11 @@ eachelement(m::UnstructuredMesh, _) = Base.OneTo(nelements(m))
 function UnstructuredMesh{ND,RT}(filename) where {ND,RT}
     gmsh.initialize()
     gmsh.open(filename)
-    mesh = UnstructuredMesh{ND,RT}()
-    gmsh.finalize()
+    mesh = try
+        UnstructuredMesh{ND,RT}()
+    finally
+        gmsh.finalize()
+    end
     return mesh
 end
 
