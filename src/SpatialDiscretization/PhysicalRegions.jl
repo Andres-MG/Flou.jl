@@ -591,7 +591,7 @@ end
 
 function PhysicalFace(std, mesh::CartesianMesh{3,RT}, iface) where {RT}
     (; Δx) = mesh
-    pos = mesh.nodes[iface].elempos[1]
+    pos = mesh.faces[iface].elempos[1]
     fstd = std.faces[pos]
     if pos == 1 || pos == 2  # X faces
         J = fill(Δx[2] * Δx[3] / 4, ndofs(fstd))
