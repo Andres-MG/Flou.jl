@@ -2,7 +2,7 @@ function list_monitors(::DGSEM{EulerEquation})
     return (:entropy,)
 end
 
-function get_monitor(dg::DGSEM{<:EulerEquation}, name::Symbol)
+function get_monitor(dg::DGSEM{<:EulerEquation}, name::Symbol, _)
     if name == :entropy
         return entropy_monitor(dg)
     else

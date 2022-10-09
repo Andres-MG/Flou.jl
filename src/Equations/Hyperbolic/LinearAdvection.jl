@@ -41,6 +41,10 @@ function rotate2phys(Qrot, _, ::LinearAdvection)
     return SVector(Qrot[1])
 end
 
+function get_max_dt(_, Δx::Real, cfl::Real, eq::LinearAdvection)
+    return cfl * Δx / norm(eq.a)
+end
+
 function numericalflux(
     Ql,
     Qr,

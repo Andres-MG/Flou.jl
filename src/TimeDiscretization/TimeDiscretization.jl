@@ -30,8 +30,12 @@ end
 #==========================================================================================#
 #                                        Callbacks                                         #
 
-function _is_iter_selected(iterations)
-    return (_, _, integrator) -> integrator.iter in iterations
+function _is_iter_selected(iterations=true)
+    return if iterations == true
+        (_, _, _) -> true
+    else
+        (_, _, integrator) -> integrator.iter in iterations
+    end
 end
 
 function _save_function(basename)
@@ -43,19 +47,35 @@ function _save_function(basename)
         add_fielddata!(file, [integrator.t], "Time")
         add_solution!(file, integrator.u, disc)
         close_file!(file)
+        OrdinaryDiffEq.u_modified!(integrator, false)
 
         @info @sprintf("Saved solution at t=%.7g in `%s`", integrator.t, filename)
-        return nothing
     end
 end
 
-function get_save_callback(basename, iterations=1:typemax(Int))
-    condition = _is_iter_selected(iterations)
+function get_save_callback(basename; iter=true)
+    condition = _is_iter_selected(iter)
     affect = _save_function(basename)
     initialize = (_, _, _, integrator) -> begin
         affect(integrator)
     end
-    return DiscreteCallback(condition, affect, initialize=initialize)
+    return DiscreteCallback(condition, affect, initialize=initialize,
+                            save_positions=(false, false))
+end
+
+function get_cfl_callback(cfl, Δtmax=Inf; iter=true)
+    condition = _is_iter_selected(iter)
+    affect = (integrator) -> begin
+        disc = integrator.p
+        Δt = min(get_max_dt(integrator.u, disc, cfl), Δtmax)
+        OrdinaryDiffEq.set_proposed_dt!(integrator, Δt)
+        OrdinaryDiffEq.u_modified!(integrator, false)
+    end
+    initialize = (_, _, _, integrator) -> begin
+        affect(integrator)
+    end
+    return DiscreteCallback(condition, affect, initialize=initialize,
+                            save_positions=(false, false))
 end
 
 struct MonitorOutput{RT<:Real,RV}
@@ -70,19 +90,20 @@ function get_monitor_callback(
     timetype::Type{<:Real},
     disc::AbstractSpatialDiscretization,
     name::Symbol,
-    iterations=1:typemax(Int),
+    p=nothing;
+    iter=true
 )
-    valuetype, monitorfunc_ = get_monitor(disc, name)
+    valuetype, monitorfunc_ = get_monitor(disc, name, p)
     monitor = MonitorOutput(timetype[], Int[], valuetype[])
-    condition = _is_iter_selected(iterations)
+    condition = _is_iter_selected(iter)
     affect = (integrator) -> begin
         value = monitorfunc_(integrator.u, disc)
         push!(monitor.time, integrator.t)
         push!(monitor.iter, integrator.iter)
         push!(monitor.value, value)
-        return nothing
+        OrdinaryDiffEq.u_modified!(integrator, false)
     end
-    return (DiscreteCallback(condition, affect), monitor)
+    return (DiscreteCallback(condition, affect, save_positions=(false, false)), monitor)
 end
 
 function make_callback_list(callbacks...)

@@ -82,6 +82,8 @@ function DGSEM(
     )
 end
 
+get_spatialdim(dg::DGSEM) = get_spatialdim(dg.mesh)
+
 nvariables(dg::DGSEM) = nvariables(dg.equation)
 nelements(dg::DGSEM) = nelements(dg.dofhandler)
 nfaces(dg::DGSEM) = nfaces(dg.dofhandler)
@@ -127,3 +129,22 @@ function Base.show(io::IO, m::MIME"text/plain", dg::DGSEM{EQ,RT}) where {EQ,RT}
     show(io, m, dg.mesh)
     print(io, "\n=========================================================================")
 end
+
+function get_max_dt(q::AbstractMatrix, dg::DGSEM, cfl::Real)
+    Q = StateVector(q, dg.dofhandler)
+    Δt = typemax(eltype(q))
+
+    for ie in eachelement(dg)
+        std = get_std(dg, ie)
+        d = get_spatialdim(dg)
+        Δx = dg.geometry.elements[ie].volume[] / ndofs(std)
+        Δx = d == 1 ? Δx : (d == 2 ? sqrt(Δx) : cbrt(Δx))
+
+        @inbounds for i in eachdof(std)
+            Δt = min(Δt, get_max_dt(view(Q[ie], i, :), Δx, cfl, dg.equation))
+        end
+    end
+
+    return Δt
+end
+

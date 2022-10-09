@@ -83,7 +83,8 @@ export KPPEquation
 export list_monitors
 
 # TimeDiscretization.jl
-export timeintegrate, make_callback_list, get_save_callback, get_monitor_callback
+export timeintegrate, make_callback_list
+export get_save_callback, get_cfl_callback, get_monitor_callback
 
 # FlouBiz.jl
 export open_for_write, close_file!

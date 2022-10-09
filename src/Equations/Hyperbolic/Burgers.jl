@@ -32,6 +32,10 @@ function rotate2phys(Qrot, _, ::BurgersEquation)
     return SVector(Qrot[1])
 end
 
+function get_max_dt(Q, Δx::Real, cfl::Real, ::BurgersEquation)
+    return cfl * Δx / Q[1]
+end
+
 function numericalflux(Ql, Qr, n, ::BurgersEquation, ::StdAverageNumericalFlux)
     return SVector((Ql[1]^2 + Qr[1]^2) / 4 * n[1])
 end

@@ -123,6 +123,27 @@ function rotate2phys(Qrot, frame, ::EulerEquation{3})
     )
 end
 
+function get_max_dt(Q, Δx::Real, cfl::Real, eq::EulerEquation{1})
+    c = soundvelocity(Q, eq)
+    ρ, ρu, _ = Q
+    u = ρu / ρ
+    return cfl * Δx / (abs(u) + c)
+end
+
+function get_max_dt(Q, Δx::Real, cfl::Real, eq::EulerEquation{2})
+    c = soundvelocity(Q, eq)
+    ρ, ρu, ρv, _ = Q
+    u, v = ρu / ρ, ρv / ρ
+    return cfl * Δx / (sqrt(u^2 + v^2) + c)
+end
+
+function get_max_dt(Q, Δx::Real, cfl::Real, eq::EulerEquation{3})
+    c = soundvelocity(Q, eq)
+    ρ, ρu, ρv, ρw, _ = Q
+    u, v, w = ρu / ρ, ρv / ρ, ρw / ρ
+    return cfl * Δx / (sqrt(u^2 + v^2 + w^2) + c)
+end
+
 """
     pressure(Q, eq::EulerEquation)
 
@@ -167,6 +188,11 @@ function energy(Q, eq::EulerEquation{3})
     return p / (eq.γ - 1) + ρ * (u^2 + v^2 + w^2) / 2
 end
 
+"""
+    entropy(Q, eq::EulerEquation)
+
+Compute the physical entropy, `σ`, from the *conservative* variables `Q`.
+"""
 function entropy(Q, eq::EulerEquation)
     ρ = Q[1]
     p = pressure(Q, eq)
@@ -176,7 +202,7 @@ end
 """
     math_entropy(Q, eq::EulerEquation)
 
-Compute the mathematical entropy, `σ`, from the *conservative* variables `Q`.
+Compute the mathematical entropy, `-ρσ/(γ-1)`, from the *conservative* variables `Q`.
 """
 function math_entropy(Q, eq::EulerEquation)
     ρ = Q[1]
