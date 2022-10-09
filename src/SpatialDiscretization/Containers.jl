@@ -58,9 +58,11 @@ end
 
 nelements(s::StateVector) = nelements(s.dh)
 nvariables(s::StateVector) = size(s.data, 2)
+ndofs(s::StateVector) = ndofs(s.dh)
 
 eachelement(s::StateVector) = Base.OneTo(nelements(s))
 eachvariable(s::StateVector) = Base.OneTo(nvariables(s))
+eachdof(s::StateVector) = Base.OneTo(ndofs(s))
 
 #==========================================================================================#
 #                                     Face state vector                                    #
