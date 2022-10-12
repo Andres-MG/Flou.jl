@@ -527,6 +527,7 @@ function _ssfv_gauss_flux_1d!(
         δ = _ssfv_compute_delta(b, op.blend)
         F̄c[i, :] .= F̄v .+ δ .* (view(F̄c, i, :) .- F̄v)
     end
+    return nothing
 end
 
 function surface_contribution!(
@@ -766,6 +767,7 @@ function _ssfv_flux_1d!(F̄c, Q, Qmat, Ja, frames, Js, std, equation, op, idir)
         δ = _ssfv_compute_delta(b, op.blend)
         F̄c[i, :] = F̄v + δ .* (view(F̄c, i, :) - F̄v)
     end
+    return nothing
 end
 
 function volume_contribution!(
