@@ -13,8 +13,8 @@ Base.size(::AbstractStdRegion{ND,Q,Dims}, i) where {ND,Q,Dims} = Dims[i]
 Base.length(::AbstractStdRegion{ND,Q,Dims}) where {ND,Q,Dims} = prod(Dims)
 Base.eachindex(s::AbstractStdRegion, i) = Base.OneTo(size(s, i))
 Base.eachindex(s::AbstractStdRegion) = Base.OneTo(length(s))
-Base.LinearIndices(s::AbstractStdRegion, _=false) = s.lindices
-Base.CartesianIndices(s::AbstractStdRegion, _=false) = s.cindices
+Base.LinearIndices(s::AbstractStdRegion, _=false) = LinearIndices(size(s))
+Base.CartesianIndices(s::AbstractStdRegion, _=false) = CartesianIndices(size(s))
 
 """
     is_tensor_product(std)
@@ -45,19 +45,46 @@ eachdirection(s::AbstractStdRegion) = Base.OneTo(ndirections(s))
 eachdof(s::AbstractStdRegion) = Base.OneTo(ndofs(s))
 
 #==========================================================================================#
+#                                     Temporary cache                                      #
+
+struct StdRegionCache{ND,RT,V}
+    scalar::Vector{NTuple{3,Matrix{RT}}}
+    vector::Vector{NTuple{3,Array{RT,3}}}
+    sharp::Vector{NTuple{ND,Array{RT,3}}}
+    sharptensor::Vector{NTuple{ND,V}}
+    subcell::Vector{NTuple{ND,Matrix{RT}}}
+end
+
+function StdRegionCache{RT}(np, nvars) where {RT}
+    ndims = length(np)
+    nthr = Threads.nthreads()
+    tmps = [
+        ntuple(_ -> Matrix{RT}(undef, prod(np), nvars), 3)
+        for _ in 1:nthr
+    ]
+    tmpv = [
+        ntuple(_ -> Array{RT,3}(undef, prod(np), nvars, ndims), 3)
+        for _ in 1:nthr
+    ]
+    tmp♯ = [
+        ntuple(i -> Array{RT,3}(undef, np[i], prod(np), nvars), ndims)
+        for _ in 1:nthr
+    ]
+    tmp♯tensor = [
+        ntuple(i -> reshape(tmp♯[ithr][i], np[i], np..., nvars), ndims)
+        for ithr in 1:nthr
+    ]
+    tmpsubcell = [
+        ntuple(i -> Matrix{RT}(undef, np[i] + 1, nvars), ndims)
+        for _ in 1:nthr
+    ]
+    return StdRegionCache(tmps, tmpv, tmp♯, tmp♯tensor, tmpsubcell)
+end
+
+#==========================================================================================#
 #                                      Standard point                                      #
 
-struct StdPoint{Dims,CI,LI} <: AbstractStdRegion{0,GaussQuadrature,Dims}
-    cindices::CI
-    lindices::LI
-end
-
-function StdPoint()
-    dim = (1,)
-    ci = CartesianIndices(dim) |> collect
-    li = LinearIndices(dim) |> collect
-    return StdPoint{dim,typeof(ci),typeof(li)}(ci, li)
-end
+struct StdPoint <: AbstractStdRegion{0,GaussQuadrature,(1,)} end
 
 is_tensor_product(::StdPoint) = true
 ndirections(::StdPoint) = 1
@@ -74,10 +101,8 @@ end
 #==========================================================================================#
 #                                     Standard segment                                     #
 
-struct StdSegment{QT,Dims,RT,MM,CI,LI,FS} <: AbstractStdRegion{1,QT,Dims}
-    faces::Tuple{FS,FS}
-    cindices::CI
-    lindices::LI
+struct StdSegment{QT,Dims,RT,MM,F,C} <: AbstractStdRegion{1,QT,Dims}
+    faces::F
     ξe::Vector{SVector{1,RT}}
     ξc::Tuple{Vector{SVector{1,RT}}}
     ξ::Vector{SVector{1,RT}}
@@ -91,13 +116,21 @@ struct StdSegment{QT,Dims,RT,MM,CI,LI,FS} <: AbstractStdRegion{1,QT,Dims}
     l::NTuple{2,Transpose{RT,Vector{RT}}}   # Row vectors
     lω::NTuple{2,Vector{RT}}
     _n2e::Transpose{RT,Matrix{RT}}
+    cache::C
 end
 
 is_tensor_product(::StdSegment) = true
 ndirections(::StdSegment) = 1
 nvertices(::StdSegment) = 2
 
-function StdSegment{RT}(np::Integer, qtype::AbstractQuadrature, npe=np) where {RT<:Real}
+function StdSegment{RT}(
+    np::Integer,
+    qtype::AbstractQuadrature,
+    nvars::Integer=1;
+    npe=np,
+) where {
+    RT<:Real,
+}
     fstd = (StdPoint(), StdPoint())
     _ξ, ω = if qtype isa(GaussQuadrature)
         gausslegendre(np)
@@ -128,9 +161,6 @@ function StdSegment{RT}(np::Integer, qtype::AbstractQuadrature, npe=np) where {R
     ξc[1] = SVector(-one(RT))
     ξc[np + 1] = SVector(one(RT))
     ξc = tuple(ξc)
-
-    cindices = CartesianIndices((np,)) |> collect
-    lindices = LinearIndices((np,)) |> collect
 
     # Mass matrix
     M = Diagonal(ω)
@@ -166,18 +196,18 @@ function StdSegment{RT}(np::Integer, qtype::AbstractQuadrature, npe=np) where {R
     Ks = -Ks + B
     K♯ = -K♯ + B
 
+    # Temporary storage
+    cache = StdRegionCache{RT}(np, nvars)
+
     return StdSegment{
         typeof(qtype),
         Tuple(np),
         eltype(ω),
         typeof(M),
-        typeof(cindices),
-        typeof(lindices),
-        typeof(fstd[1]),
+        typeof(fstd),
+        typeof(cache),
     }(
         fstd,
-        cindices,
-        lindices,
         ξe,
         ξc,
         ξ,
@@ -191,6 +221,7 @@ function StdSegment{RT}(np::Integer, qtype::AbstractQuadrature, npe=np) where {R
         l,
         lω,
         _n2e |> transpose |> collect |> transpose,
+        cache,
     )
 end
 
@@ -238,12 +269,8 @@ end
 #==========================================================================================#
 #                                       Standard quad                                      #
 
-struct StdQuad{QT,Dims,RT,MM,CI,LI,FS1,FS2} <: AbstractStdRegion{2,QT,Dims}
-    faces::Tuple{FS1,FS1,FS2,FS2}
-    cindices::CI
-    lindices::LI
-    cindices_t::CI
-    lindices_t::LI
+struct StdQuad{QT,Dims,RT,MM,F,C} <: AbstractStdRegion{2,QT,Dims}
+    faces::F
     ξe::Vector{SVector{2,RT}}
     ξc::NTuple{2,Matrix{SVector{2,RT}}}
     ξ::Vector{SVector{2,RT}}
@@ -257,10 +284,23 @@ struct StdQuad{QT,Dims,RT,MM,CI,LI,FS1,FS2} <: AbstractStdRegion{2,QT,Dims}
     l::NTuple{4,Transpose{RT,SparseMatrixCSC{RT,Int}}}
     lω::NTuple{4,Transpose{RT,SparseMatrixCSC{RT,Int}}}
     _n2e::Transpose{RT,Matrix{RT}}
+    cache::C
 end
 
-Base.LinearIndices(s::StdQuad, transpose=false) = transpose ? s.lindices_t : s.lindices
-Base.CartesianIndices(s::StdQuad, transpose=false) = transpose ? s.cindices_t : s.cindices
+function Base.LinearIndices(s::StdQuad, transpose=false)
+    return if transpose
+        LinearIndices(size(s, 2), size(s, 1))
+    else
+        LinearIndices(size(s))
+    end
+end
+function Base.CartesianIndices(s::StdQuad, transpose=false)
+    return if transpose
+        CartesianIndices(size(s, 2), size(s, 1))
+    else
+        CartesianIndices(size(s))
+    end
+end
 
 is_tensor_product(::StdQuad) = true
 ndirections(::StdQuad) = 2
@@ -269,6 +309,7 @@ nvertices(::StdQuad) = 4
 function StdQuad{RT}(
     np::AbstractVecOrTuple,
     qtype::AbstractQuadrature,
+    nvars::Integer=1;
     npe=nothing,
 ) where {
     RT<:Real,
@@ -278,8 +319,8 @@ function StdQuad{RT}(
         npe = maximum(np)
     end
     fstd = (
-        StdSegment{RT}(np[2], qtype, npe),
-        StdSegment{RT}(np[1], qtype, npe),
+        StdSegment{RT}(np[2], qtype, nvars; npe=npe),
+        StdSegment{RT}(np[1], qtype, nvars; npe=npe),
     )
     ξ = vec([SVector(ξx[1], ξy[1]) for ξx in fstd[2].ξ, ξy in fstd[1].ξ])
     ω = vec([ωx * ωy for ωx in fstd[2].ω, ωy in fstd[1].ω])
@@ -292,11 +333,6 @@ function StdQuad{RT}(
     ξc1 = [SVector(ξx[1], ξy[1]) for ξx in fstd[2].ξc[1], ξy in fstd[1].ξ]
     ξc2 = [SVector(ξx[1], ξy[1]) for ξx in fstd[2].ξ, ξy in fstd[1].ξc[1]]
     ξc = (ξc1, ξc2)
-
-    cindices = CartesianIndices((np[1], np[2])) |> collect
-    lindices = LinearIndices((np[1], np[2])) |> collect
-    cindices_t = CartesianIndices((np[2], np[1])) |> collect
-    lindices_t = LinearIndices((np[2], np[1])) |> collect
 
     # Mass matrix
     M = Diagonal(ω)
@@ -341,21 +377,19 @@ function StdQuad{RT}(
         kron(fstd[1].lω[2], Iω[1]),
     )
 
+    # Temporary storage
+    cache = StdRegionCache{RT}(np, nvars)
+
+    fstd = (fstd[1], fstd[1], fstd[2], fstd[2])
     return StdQuad{
         typeof(qtype),
         Tuple(np),
         eltype(ω),
         typeof(M),
-        typeof(cindices),
-        typeof(lindices),
-        typeof(fstd[1]),
-        typeof(fstd[2]),
+        typeof(fstd),
+        typeof(cache),
     }(
-        (fstd[1], fstd[1], fstd[2], fstd[2]),
-        cindices,
-        lindices,
-        cindices_t,
-        lindices_t,
+        fstd,
         ξe,
         ξc,
         ξ,
@@ -369,6 +403,7 @@ function StdQuad{RT}(
         l .|> transpose .|> sparse .|> transpose |> Tuple,
         lω .|> transpose .|> sparse .|> transpose |> Tuple,
         _n2e |> transpose |> collect |> transpose,
+        cache,
     )
 end
 
@@ -477,11 +512,9 @@ end
 #==========================================================================================#
 #                                       Standard hex                                       #
 
-struct StdHex{QT,Dims,RT,MM,CI,LI,FS1,FS2,FS3,ES1,ES2,ES3} <: AbstractStdRegion{3,QT,Dims}
-    faces::Tuple{FS1,FS1,FS2,FS2,FS3,FS3}
-    edges::Tuple{ES1,ES2,ES3}
-    cindices::CI
-    lindices::LI
+struct StdHex{QT,Dims,RT,MM,F,E,C} <: AbstractStdRegion{3,QT,Dims}
+    faces::F
+    edges::E
     ξe::Vector{SVector{3,RT}}
     ξc::NTuple{3,Array{SVector{3,RT},3}}
     ξ::Vector{SVector{3,RT}}
@@ -495,6 +528,7 @@ struct StdHex{QT,Dims,RT,MM,CI,LI,FS1,FS2,FS3,ES1,ES2,ES3} <: AbstractStdRegion{
     l::NTuple{6,Transpose{RT,SparseMatrixCSC{RT,Int}}}
     lω::NTuple{6,Transpose{RT,SparseMatrixCSC{RT,Int}}}
     _n2e::Transpose{RT,Matrix{RT}}
+    cache::C
 end
 
 is_tensor_product(::StdHex) = true
@@ -504,6 +538,7 @@ nvertices(::StdHex) = 8
 function StdHex{RT}(
     np::AbstractVecOrTuple,
     qtype::AbstractQuadrature,
+    nvars::Integer=1;
     npe=nothing,
 ) where {
     RT<:Real,
@@ -513,9 +548,9 @@ function StdHex{RT}(
         npe = maximum(np)
     end
     fstd = (
-        StdQuad{RT}((np[2], np[3]), qtype, npe),
-        StdQuad{RT}((np[1], np[3]), qtype, npe),
-        StdQuad{RT}((np[1], np[2]), qtype, npe),
+        StdQuad{RT}((np[2], np[3]), qtype, nvars; npe=npe),
+        StdQuad{RT}((np[1], np[3]), qtype, nvars; npe=npe),
+        StdQuad{RT}((np[1], np[2]), qtype, nvars; npe=npe),
     )
     estd = (fstd[3].faces[3], fstd[3].faces[1], fstd[1].faces[1])
     ξ = vec([
@@ -545,9 +580,6 @@ function StdHex{RT}(
         for ξx in estd[1].ξ, ξy in estd[2].ξ, ξz in estd[3].ξc[1]
     ]
     ξc = (ξc1, ξc2, ξc3)
-
-    cindices = CartesianIndices((np...,)) |> collect
-    lindices = LinearIndices((np...,)) |> collect
 
     # Mass matrix
     M = Diagonal(ω)
@@ -601,24 +633,21 @@ function StdHex{RT}(
         kron(estd[3].lω[2], Iω[2], Iω[1]),
     )
 
+    # Temporary storage
+    cache = StdRegionCache{RT}(np, nvars)
+
+    fstd = (fstd[1], fstd[1], fstd[2], fstd[2], fstd[3], fstd[3])
     return StdHex{
         typeof(qtype),
         Tuple(np),
         eltype(ω),
         typeof(M),
-        typeof(cindices),
-        typeof(lindices),
-        typeof(fstd[1]),
-        typeof(fstd[2]),
-        typeof(fstd[3]),
-        typeof(estd[1]),
-        typeof(estd[2]),
-        typeof(estd[3]),
+        typeof(fstd),
+        typeof(estd),
+        typeof(cache),
     }(
-        (fstd[1], fstd[1], fstd[2], fstd[2], fstd[3], fstd[3]),
+        fstd,
         estd,
-        cindices,
-        lindices,
         ξe,
         ξc,
         ξ,
@@ -632,6 +661,7 @@ function StdHex{RT}(
         l .|> transpose .|> sparse .|> transpose |> Tuple,
         lω .|> transpose .|> sparse .|> transpose |> Tuple,
         _n2e |> transpose |> collect |> transpose,
+        cache,
     )
 end
 

@@ -3,16 +3,14 @@ function Advection1D()
     tf = 0.5
     solver = ORK256(;williamson_condition=false)
 
-    std = StdSegment{Float64}(5, GL())
     div = WeakDivOperator()
-    numflux = LxFNumericalFlux(
-        StdAverageNumericalFlux(),
-        1.0,
-    )
+    equation = LinearAdvection(div, 2.0)
 
+    std = StdSegment{Float64}(5, GL(), nvariables(equation))
     mesh = CartesianMesh{1,Float64}(0, 1, 20)
     apply_periodicBCs!(mesh, "1" => "2")
-    equation = LinearAdvection(div, 2.0)
+
+    numflux = LxFNumericalFlux(StdAverageNumericalFlux(), 1.0)
     DG = DGSEM(mesh, std, equation, (), numflux)
 
     x0 = 0.5
@@ -36,16 +34,14 @@ function Advection2D()
     tf = 0.5
     solver = ORK256(;williamson_condition=false)
 
-    std = StdQuad{Float64}((5, 5), GL())
     div = WeakDivOperator()
-    numflux = LxFNumericalFlux(
-        StdAverageNumericalFlux(),
-        1.0,
-    )
+    equation = LinearAdvection(div, 3.0, 4.0)
 
+    std = StdQuad{Float64}((5, 5), GL(), nvariables(equation))
     mesh = CartesianMesh{2,Float64}((0, 0), (1.5, 2), (20, 10))
     apply_periodicBCs!(mesh, "1" => "2", "3" => "4")
-    equation = LinearAdvection(div, 3.0, 4.0)
+
+    numflux = LxFNumericalFlux(StdAverageNumericalFlux(), 1.0)
     DG = DGSEM(mesh, std, equation, (), numflux)
 
     x0, y0 = 0.75, 1.0
@@ -69,16 +65,12 @@ function SodTube1D()
     tf = 0.018
     solver = ORK256(;williamson_condition=false)
 
-    std = StdSegment{Float64}(4, GLL())
-    div = SplitDivOperator(
-        ChandrasekharAverage(),
-    )
-    numflux = MatrixDissipation(
-        ChandrasekharAverage(),
-        1.0,
-    )
+    div = SplitDivOperator(ChandrasekharAverage())
+    equation = EulerEquation{1}(div, 1.4)
 
+    std = StdSegment{Float64}(4, GLL(), nvariables(equation))
     mesh = CartesianMesh{1,Float64}(0, 1, 20)
+
     function Qext(_, x, _, _, eq)
         P = if x[1] < 0.5
             SVector(1.0, 0.0, 100.0)
@@ -91,7 +83,8 @@ function SodTube1D()
         "1" => DirichletBC(Qext),
         "2" => DirichletBC(Qext),
     )
-    equation = EulerEquation{1}(div, 1.4)
+
+    numflux = MatrixDissipation(ChandrasekharAverage(), 1.0)
     DG = DGSEM(mesh, std, equation, ∂Ω, numflux)
 
     Q = StateVector{Float64}(undef, nvariables(equation), DG.dofhandler)
@@ -112,7 +105,6 @@ function Shockwave2D()
     tf = 1.0
     solver = ORK256(;williamson_condition=false)
 
-    std = StdQuad{Float64}((6, 6), GLL())
     div = SSFVDivOperator(
         ChandrasekharAverage(),
         LxFNumericalFlux(
@@ -121,15 +113,11 @@ function Shockwave2D()
         ),
         1e+0,
     )
-    numflux = MatrixDissipation(
-        ChandrasekharAverage(),
-        1.0,
-    )
+    equation = EulerEquation{2}(div, 1.4)
 
+    std = StdQuad{Float64}((6, 6), GLL(), nvariables(equation))
     mesh = CartesianMesh{2,Float64}((-1, 0), (1, 1), (11, 3))
     apply_periodicBCs!(mesh, "3" => "4")
-
-    equation = EulerEquation{2}(div, 1.4)
 
     ρ0, M0, p0 = 1.0, 2.0, 1.0
     a0 = Flou.soundvelocity(ρ0, p0, equation)
@@ -146,6 +134,8 @@ function Shockwave2D()
         "1" => DirichletBC(Qext),
         "2" => DirichletBC(Qext),
     )
+
+    numflux = MatrixDissipation(ChandrasekharAverage(), 1.0)
     DG = DGSEM(mesh, std, equation, ∂Ω, numflux)
 
     Q = StateVector{Float64}(undef, nvariables(equation), DG.dofhandler)
@@ -167,15 +157,10 @@ function Implosion2D()
     tf = 50Δt # 0.045
     solver = ORK256(;williamson_condition=false)
 
-    std = StdQuad{Float64}((4, 4), GLL())
-    div = SplitDivOperator(
-        ChandrasekharAverage(),
-    )
-    numflux = MatrixDissipation(
-        ChandrasekharAverage(),
-        1.0,
-    )
+    div = SplitDivOperator(ChandrasekharAverage())
+    equation = EulerEquation{2}(div, 1.4)
 
+    std = StdQuad{Float64}((4, 4), GLL(), nvariables(equation))
     mesh = CartesianMesh{2,Float64}((0, 0), (0.3, 0.3), (100, 100))
     ∂Ω = Dict(
         "1" => EulerSlipBC(),
@@ -183,7 +168,8 @@ function Implosion2D()
         "3" => EulerSlipBC(),
         "4" => EulerSlipBC(),
     )
-    equation = EulerEquation{2}(div, 1.4)
+
+    numflux = MatrixDissipation(ChandrasekharAverage(), 1.0)
     DG = DGSEM(mesh, std, equation, ∂Ω, numflux)
 
     Q = StateVector{Float64}(undef, nvariables(equation), DG.dofhandler)
@@ -214,7 +200,6 @@ function ForwardFacingStep2D()
     tf = 0.1 # 2.0
     solver = ORK256(;williamson_condition=false)
 
-    std = StdQuad{Float64}((8, 8), GLL())
     div = SSFVDivOperator(
         ChandrasekharAverage(),
         LxFNumericalFlux(
@@ -223,14 +208,10 @@ function ForwardFacingStep2D()
         ),
         0.1^2,
     )
-    numflux = MatrixDissipation(
-        ChandrasekharAverage(),
-        1.0,
-    )
-
-    mesh = StepMesh{Float64}((0,0), (3, 1), 0.6, 0.2, ((10, 5), (10, 20), (40, 20)))
-
     equation = EulerEquation{2}(div, 1.4)
+
+    std = StdQuad{Float64}((8, 8), GLL(), nvariables(equation))
+    mesh = StepMesh{Float64}((0,0), (3, 1), 0.6, 0.2, ((10, 5), (10, 20), (40, 20)))
 
     M0 = 3.0
     a0 = soundvelocity(1.0, 1.0, equation)
@@ -243,6 +224,8 @@ function ForwardFacingStep2D()
         "5" => EulerSlipBC(),
         "6" => EulerSlipBC(),
     )
+
+    numflux = MatrixDissipation(ChandrasekharAverage(), 1.0)
     DG = DGSEM(mesh, std, equation, ∂Ω, numflux)
 
     Q = StateVector{Float64}(undef, nvariables(equation), DG.dofhandler)

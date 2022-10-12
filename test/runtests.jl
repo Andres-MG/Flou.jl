@@ -24,7 +24,7 @@ end
     end
     @testset "Shockwave" begin
         sol = Shockwave2D()
-        @test minimum(sol.u[end]) ≈ -1.0756657907409603e-12 rtol=1e-7
+        @test minimum(sol.u[end]) ≈ -8.346436099716031e-13 rtol=1e-7
         @test maximum(sol.u[end]) ≈ 12.436721547888586 rtol=1e-7
     end
 end

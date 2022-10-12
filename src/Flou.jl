@@ -3,7 +3,7 @@ module Flou
 using LinearAlgebra: LinearAlgebra, norm, normalize, dot, cross, mul!, factorize, ldiv!
 using LinearAlgebra: transpose, Transpose, diag, Diagonal
 using SparseArrays: SparseArrays, SparseMatrixCSC, sparse, mul!
-using StaticArrays: StaticArrays, SVector, MVector, SMatrix, MMatrix, MArray, SDiagonal
+using StaticArrays: StaticArrays, SVector, MVector, SMatrix, MMatrix, SDiagonal
 using FastGaussQuadrature: FastGaussQuadrature, gausslegendre, gausslobatto
 using Polynomials: Polynomials, Polynomial, derivative
 using SpecialPolynomials: SpecialPolynomials, Lagrange

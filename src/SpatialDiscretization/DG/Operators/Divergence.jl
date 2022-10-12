@@ -39,22 +39,20 @@ function volume_contribution!(
     # Unpack
     (; geometry, equation) = dg
 
-    ndim = get_spatialdim(std)
-
     # Volume fluxes
-    F̃ = MArray{Tuple{ndim,ndofs(std),nvariables(equation)},eltype(Q)}(undef)
+    F̃ = std.cache.vector[Threads.threadid()][1]
     Ja = geometry.elements[ielem].Ja
     @inbounds for i in eachindex(std)
         F = volumeflux(view(Q, i, :), equation)
         for ivar in eachvariable(equation)
-            F̃[:, i, ivar] = contravariant(view(F, :, ivar), Ja[i])
+            F̃[i, ivar, :] = contravariant(view(F, :, ivar), Ja[i])
         end
     end
 
     # Weak derivative
     @inbounds for s in eachindex(std.K)
         mul!(
-            dQ, std.K[s], view(F̃, s, :, :),
+            dQ, std.K[s], view(F̃, :, :, s),
             one(eltype(dQ)), one(eltype(dQ)),
         )
     end
@@ -77,22 +75,20 @@ function volume_contribution!(
     # Unpack
     (; geometry, equation) = dg
 
-    ndim = get_spatialdim(std)
-
     # Volume fluxes
-    F̃ = MArray{Tuple{ndim,ndofs(std),nvariables(equation)},eltype(Q)}(undef)
+    F̃ = std.cache.vector[Threads.threadid()][1]
     Ja = geometry.elements[ielem].Ja
     @inbounds for i in eachindex(std)
         F = volumeflux(view(Q, i, :), equation)
         for ivar in eachvariable(equation)
-            F̃[:, i, ivar] = contravariant(view(F, :, ivar), Ja[i])
+            F̃[i, ivar, :] = contravariant(view(F, :, ivar), Ja[i])
         end
     end
 
     # Strong derivative
     @inbounds for s in eachindex(std.K)
         mul!(
-            dQ, std.Ks[s], view(F̃, s, :, :),
+            dQ, std.Ks[s], view(F̃, :, :, s),
             one(eltype(dQ)), one(eltype(dQ)),
         )
     end
@@ -185,10 +181,12 @@ function surface_contribution!(
     frames = geometry.subgrids[ielem].frames[]
     Js = geometry.subgrids[ielem].J[]
 
+    tid = Threads.threadid()
+
     if ND == 1
-        W = MMatrix{ndofs(std),nvariables(equation),rt}(undef)
-        Fli = MMatrix{ndofs(std),nvariables(equation),rt}(undef)
-        Fri = MMatrix{ndofs(std),nvariables(equation),rt}(undef)
+        W = std.cache.scalar[tid][1]
+        Fli = std.cache.scalar[tid][2]
+        Fri = std.cache.scalar[tid][3]
         l = std.l[1]
         r = std.l[2]
         _split_gauss_deriv_1d!(
@@ -198,11 +196,11 @@ function surface_contribution!(
 
     elseif ND == 2
         # X direction
-        W = MMatrix{size(std, 1),nvariables(equation),rt}(undef)
-        Fli = MMatrix{size(std, 1),nvariables(equation),rt}(undef)
-        Fri = MMatrix{size(std, 1),nvariables(equation),rt}(undef)
         face = std.faces[3]
         ω = std.faces[1].ω
+        W = face.cache.scalar[tid][1]
+        Fli = face.cache.scalar[tid][2]
+        Fri = face.cache.scalar[tid][3]
         @inbounds for j in eachindex(std, 2)
             @views _split_gauss_deriv_1d!(
                 dQr[:, j, :],
@@ -213,11 +211,11 @@ function surface_contribution!(
         end
 
         # Y direction
-        W = MMatrix{size(std, 2),nvariables(equation),rt}(undef)
-        Fli = MMatrix{size(std, 2),nvariables(equation),rt}(undef)
-        Fri = MMatrix{size(std, 2),nvariables(equation),rt}(undef)
         face = std.faces[1]
         ω = std.faces[3].ω
+        W = face.cache.scalar[tid][1]
+        Fli = face.cache.scalar[tid][2]
+        Fri = face.cache.scalar[tid][3]
         @inbounds for i in eachindex(std, 1)
             @views _split_gauss_deriv_1d!(
                 dQr[i, :, :],
@@ -229,12 +227,12 @@ function surface_contribution!(
 
     else # ND == 3
         # X direction
-        W = MMatrix{size(std, 1),nvariables(equation),rt}(undef)
-        Fli = MMatrix{size(std, 1),nvariables(equation),rt}(undef)
-        Fri = MMatrix{size(std, 1),nvariables(equation),rt}(undef)
         li = LinearIndices(std.faces[1])
         edge = std.edges[1]
         ω = std.faces[1].ω
+        W = edge.cache.scalar[tid][1]
+        Fli = edge.cache.scalar[tid][2]
+        Fri = edge.cache.scalar[tid][3]
         @inbounds for k in eachindex(std, 3), j in eachindex(std, 2)
             ind = li[j, k]
             @views _split_gauss_deriv_1d!(
@@ -246,12 +244,12 @@ function surface_contribution!(
         end
 
         # Y direction
-        W = MMatrix{size(std, 2),nvariables(equation),rt}(undef)
-        Fli = MMatrix{size(std, 2),nvariables(equation),rt}(undef)
-        Fri = MMatrix{size(std, 2),nvariables(equation),rt}(undef)
         li = LinearIndices(std.faces[3])
         edge = std.edges[2]
         ω = std.faces[3].ω
+        W = edge.cache.scalar[1]
+        Fli = edge.cache.scalar[2]
+        Fri = edge.cache.scalar[3]
         @inbounds for k in eachindex(std, 3), i in eachindex(std, 1)
             ind = li[i, k]
             @views _split_gauss_deriv_1d!(
@@ -263,12 +261,12 @@ function surface_contribution!(
         end
 
         # Z direction
-        W = MMatrix{size(std, 3),nvariables(equation),rt}(undef)
-        Fli = MMatrix{size(std, 3),nvariables(equation),rt}(undef)
-        Fri = MMatrix{size(std, 3),nvariables(equation),rt}(undef)
         li = LinearIndices(std.faces[5])
         edge = std.edges[3]
         ω = std.faces[5].ω
+        W = edge.cache.scalar[1]
+        Fli = edge.cache.scalar[2]
+        Fri = edge.cache.scalar[3]
         @inbounds for j in eachindex(std, 2), i in eachindex(std, 1)
             ind = li[i, j]
             @views _split_gauss_deriv_1d!(
@@ -313,22 +311,9 @@ function volume_contribution!(
     ))
 
     # Buffers
-    if ND == 1
-        F♯ = (
-            Array{eltype(Q),3}(undef, size(std, 1), ndofs(std), nvariables(equation)),
-        )
-    elseif ND == 2
-        F♯ = (
-            Array{eltype(Q),3}(undef, size(std, 1), ndofs(std), nvariables(equation)),
-            Array{eltype(Q),3}(undef, size(std, 2), ndofs(std), nvariables(equation)),
-        )
-    else # ND == 3
-        F♯ = (
-            Array{eltype(Q),3}(undef, size(std, 1), ndofs(std), nvariables(equation)),
-            Array{eltype(Q),3}(undef, size(std, 2), ndofs(std), nvariables(equation)),
-            Array{eltype(Q),3}(undef, size(std, 3), ndofs(std), nvariables(equation)),
-        )
-    end
+    tid = Threads.threadid()
+    F♯ = std.cache.sharp[tid]
+    F♯r = std.cache.sharptensor[tid]
 
     # Indexing
     ci = CartesianIndices(std)
@@ -353,10 +338,6 @@ function volume_contribution!(
         _split_flux_1d!(F♯[1], Q, Jar, std, equation, op, 1)
 
     elseif ND == 2
-        F♯r = (
-            reshape(F♯[1], (size(std, 1), size(std)..., nvariables(equation))),
-            reshape(F♯[2], (size(std, 2), size(std)..., nvariables(equation))),
-        )
         @inbounds for j in eachindex(std, 2)
             @views _split_flux_1d!(
                 F♯r[1][:, :, j, :], Qr[:, j, :], Jar[:, j], std, equation, op, 1,
@@ -369,11 +350,6 @@ function volume_contribution!(
         end
 
     else # ND == 3
-        F♯r = (
-            reshape(F♯[1], (size(std, 1), size(std)..., nvariables(equation))),
-            reshape(F♯[2], (size(std, 2), size(std)..., nvariables(equation))),
-            reshape(F♯[3], (size(std, 3), size(std)..., nvariables(equation))),
-        )
         @inbounds for k in eachindex(std, 3), j in eachindex(std, 2)
             @views _split_flux_1d!(
                 F♯r[1][:, :, j, k, :], Qr[:, j, k, :], Jar[:, j, k], std, equation, op, 1,
@@ -542,22 +518,10 @@ function surface_contribution!(
     # Unpack
     (; geometry, equation) = dg
 
-    if ND == 1
-        F♯ = (
-            Array{eltype(Q),3}(undef, size(std, 1), ndofs(std), nvariables(equation)),
-        )
-    elseif ND == 2
-        F♯ = (
-            Array{eltype(Q),3}(undef, size(std, 1), ndofs(std), nvariables(equation)),
-            Array{eltype(Q),3}(undef, size(std, 2), ndofs(std), nvariables(equation)),
-        )
-    else # ND == 3
-        F♯ = (
-            Array{eltype(Q),3}(undef, size(std, 1), ndofs(std), nvariables(equation)),
-            Array{eltype(Q),3}(undef, size(std, 2), ndofs(std), nvariables(equation)),
-            Array{eltype(Q),3}(undef, size(std, 3), ndofs(std), nvariables(equation)),
-        )
-    end
+    # Buffers
+    tid = Threads.threadid()
+    F♯ = std.cache.sharp[tid]
+    F♯r = std.cache.sharptensor[tid]
 
     # Indexing
     ci = CartesianIndices(std)
@@ -569,7 +533,7 @@ function surface_contribution!(
         for ivar in eachvariable(equation)
             F̃ = contravariant(view(F, :, ivar), Ja[i])
             for idir in eachdirection(std)
-                F♯[idir][ci[i][idir], i, ivar] = F̃[idir]
+                F♯[idir][ci[i][idir], ci[i], ivar] = F̃[idir]
             end
         end
     end
@@ -584,10 +548,10 @@ function surface_contribution!(
     Js = geometry.subgrids[ielem].J[]
 
     if ND == 1
-        F̄c = MMatrix{ndofs(std) + 1,nvariables(equation),eltype(Q)}(undef)
-        W = MMatrix{ndofs(std),nvariables(equation),eltype(Q)}(undef)
-        Fli = MMatrix{ndofs(std),nvariables(equation),eltype(Q)}(undef)
-        Fri = MMatrix{ndofs(std),nvariables(equation),eltype(Q)}(undef)
+        F̄c = std.cache.subcell[tid][1]
+        W = std.cache.scalar[tid][1]
+        Fli = std.cache.scalar[tid][2]
+        Fri = std.cache.scalar[tid][3]
         _ssfv_gauss_flux_1d!(
             F̄c, F♯[1],
             view(Fn[iface[1]][facepos[1]], 1, :), view(Fn[iface[2]][facepos[2]], 1, :),
@@ -602,13 +566,12 @@ function surface_contribution!(
 
     elseif ND == 2
         # X direction
-        F̄c = MMatrix{size(std, 1) + 1,nvariables(equation),eltype(Q)}(undef)
-        F♯r = reshape(F♯[1], (size(std, 1), size(std)..., nvariables(equation)))
-        W = MMatrix{size(std, 1),nvariables(equation),eltype(Q)}(undef)
-        Fli = MMatrix{size(std, 1),nvariables(equation),eltype(Q)}(undef)
-        Fri = MMatrix{size(std, 1),nvariables(equation),eltype(Q)}(undef)
+        F̄c = std.cache.subcell[tid][1]
         face = std.faces[3]
         ω = std.faces[1].ω
+        W = face.cache.scalar[tid][1]
+        Fli = face.cache.scalar[tid][2]
+        Fri = face.cache.scalar[tid][3]
         @inbounds for j in eachindex(std, 2)
             @views _ssfv_gauss_flux_1d!(
                 F̄c, F♯r[:, :, j, :],
@@ -625,13 +588,12 @@ function surface_contribution!(
         end
 
         # Y direction
-        F̄c = MMatrix{size(std, 2) + 1,nvariables(equation),eltype(Q)}(undef)
-        F♯r = reshape(F♯[2], (size(std, 2), size(std)..., nvariables(equation)))
-        W = MMatrix{size(std, 2),nvariables(equation),eltype(Q)}(undef)
-        Fli = MMatrix{size(std, 2),nvariables(equation),eltype(Q)}(undef)
-        Fri = MMatrix{size(std, 2),nvariables(equation),eltype(Q)}(undef)
+        F̄c = std.cache.subcell[tid][2]
         face = std.faces[1]
         ω = std.faces[3].ω
+        W = face.cache.scalar[tid][1]
+        Fli = face.cache.scalar[tid][2]
+        Fri = face.cache.scalar[tid][3]
         @inbounds for i in eachindex(std, 1)
             @views _ssfv_gauss_flux_1d!(
                 F̄c, F♯r[:, i, :, :],
@@ -649,15 +611,14 @@ function surface_contribution!(
 
     else # ND == 3
         # X direction
-        F̄c = MMatrix{size(std, 1) + 1,nvariables(equation),eltype(Q)}(undef)
-        F♯r = reshape(F♯[1], (size(std, 1), size(std)..., nvariables(equation)))
-        W = MMatrix{size(std, 1),nvariables(equation),eltype(Q)}(undef)
-        Fli = MMatrix{size(std, 1),nvariables(equation),eltype(Q)}(undef)
-        Fri = MMatrix{size(std, 1),nvariables(equation),eltype(Q)}(undef)
+        F̄c = std.cache.subcell[tid][1]
         edge = std.edges[1]
         face = std.faces[1]
         li = LinearIndices(face)
         ω = face.ω
+        W = edge.cache.scalar[tid][1]
+        Fli = edge.cache.scalar[tid][2]
+        Fri = edge.cache.scalar[tid][3]
         @inbounds for k in eachindex(std, 3), j in eachindex(std, 2)
             ind = li[j, k]
             @views _ssfv_gauss_flux_1d!(
@@ -675,15 +636,14 @@ function surface_contribution!(
         end
 
         # Y direction
-        F̄c = MMatrix{size(std, 2) + 1,nvariables(equation),eltype(Q)}(undef)
-        F♯r = reshape(F♯[2], (size(std, 2), size(std)..., nvariables(equation)))
-        W = MMatrix{size(std, 2),nvariables(equation),eltype(Q)}(undef)
-        Fli = MMatrix{size(std, 2),nvariables(equation),eltype(Q)}(undef)
-        Fri = MMatrix{size(std, 2),nvariables(equation),eltype(Q)}(undef)
+        F̄c = std.cache.subcell[tid][2]
         edge = std.edges[2]
         face = std.faces[3]
         li = LinearIndices(face)
         ω = face.ω
+        W = edge.cache.scalar[tid][1]
+        Fli = edge.cache.scalar[tid][2]
+        Fri = edge.cache.scalar[tid][3]
         @inbounds for k in eachindex(std, 3), i in eachindex(std, 1)
             ind = li[i, k]
             @views _ssfv_gauss_flux_1d!(
@@ -701,15 +661,14 @@ function surface_contribution!(
         end
 
         # Z direction
-        F̄c = MMatrix{size(std, 3) + 1,nvariables(equation),eltype(Q)}(undef)
-        F♯r = reshape(F♯[3], (size(std, 3), size(std)..., nvariables(equation)))
-        W = MMatrix{size(std, 3),nvariables(equation),eltype(Q)}(undef)
-        Fli = MMatrix{size(std, 3),nvariables(equation),eltype(Q)}(undef)
-        Fri = MMatrix{size(std, 3),nvariables(equation),eltype(Q)}(undef)
+        F̄c = std.cache.subcell[tid][3]
         edge = std.edges[3]
         face = std.faces[5]
         li = LinearIndices(face)
         ω = face.ω
+        W = edge.cache.scalar[tid][1]
+        Fli = edge.cache.scalar[tid][2]
+        Fri = edge.cache.scalar[tid][3]
         @inbounds for j in eachindex(std, 2), i in eachindex(std, 1)
             ind = li[i, j]
             @views _ssfv_gauss_flux_1d!(
@@ -791,8 +750,10 @@ function volume_contribution!(
     frames = geometry.subgrids[ielem].frames[]
     Js = geometry.subgrids[ielem].J[]
 
+    tid = Threads.threadid()
+
     if ND == 1
-        F̄ = MMatrix{(ndofs(std) + 1),nvariables(equation),eltype(Q)}(undef)
+        F̄ = std.cache.subcell[tid][1]
         _ssfv_flux_1d!(F̄, Q, std.Q[1], Ja, frames[1], Js[1], std, equation, op, 1)
 
         # Strong derivative
@@ -803,7 +764,7 @@ function volume_contribution!(
     elseif ND == 2
         # X direction
         Qmat = std.faces[3].Q[1]
-        F̄ = MMatrix{size(std, 1) + 1,nvariables(equation),eltype(Q)}(undef)
+        F̄ = std.cache.subcell[tid][1]
         ω = std.faces[1].ω
         @inbounds for j in eachindex(std, 2)
             @views _ssfv_flux_1d!(
@@ -820,7 +781,7 @@ function volume_contribution!(
 
         # Y derivative
         Qmat = std.faces[1].Q[1]
-        F̄ = MMatrix{size(std, 2) + 1,nvariables(equation),eltype(Q)}(undef)
+        F̄ = std.cache.subcell[tid][2]
         ω = std.faces[3].ω
         @inbounds for i in eachindex(std, 1)
             @views _ssfv_flux_1d!(
@@ -838,7 +799,7 @@ function volume_contribution!(
     else # ND == 3
         # X direction
         Qmat = std.edges[1].Q[1]
-        F̄ = MMatrix{size(std, 1) + 1,nvariables(equation),eltype(Q)}(undef)
+        F̄ = std.cache.subcell[tid][1]
         face = std.faces[1]
         li = LinearIndices(face)
         @inbounds for k in eachindex(std, 3), j in eachindex(std, 2)
@@ -857,7 +818,7 @@ function volume_contribution!(
 
         # Y direction
         Qmat = std.edges[2].Q[1]
-        F̄ = MMatrix{size(std, 2) + 1,nvariables(equation),eltype(Q)}(undef)
+        F̄ = std.cache.subcell[tid][2]
         face = std.faces[3]
         li = LinearIndices(face)
         @inbounds for k in eachindex(std, 3), i in eachindex(std, 1)
@@ -876,7 +837,7 @@ function volume_contribution!(
 
         # Z direction
         Qmat = std.edges[3].Q[1]
-        F̄ = MMatrix{size(std, 3) + 1,nvariables(equation),eltype(Q)}(undef)
+        F̄ = std.cache.subcell[tid][3]
         face = std.faces[5]
         li = LinearIndices(face)
         @inbounds for j in eachindex(std, 2), i in eachindex(std, 1)
