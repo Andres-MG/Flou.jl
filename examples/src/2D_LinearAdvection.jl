@@ -21,18 +21,14 @@ tf = 1.0
 save_steps = range(0, 1000, 21)
 solver = ORK256(williamson_condition=false)
 
-std = StdQuad{Float64}((4, 4), GLL())
 div = StrongDivOperator()
-numflux = LxFNumericalFlux(
-    StdAverageNumericalFlux(),
-    1.0,
-)
+equation = LinearAdvection(div, 2.0, -1.0)
 
+std = StdQuad{Float64}((4, 4), GLL(), nvariables(equation))
 mesh = CartesianMesh{2,Float64}((0, 0), (1, 1), (10, 10))
 apply_periodicBCs!(mesh, "1" => "2", "3" => "4")
 
-equation = LinearAdvection(div, 2.0, -1.0)
-
+numflux = LxFNumericalFlux(StdAverageNumericalFlux(), 1.0)
 DG = DGSEM(mesh, std, equation, (), numflux)
 
 x0 = y0 = 0.5

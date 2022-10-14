@@ -20,18 +20,14 @@ end
 tf = 0.15
 solver = ORK256(williamson_condition=false)
 
-std = StdSegment{Float64}(4, GL())
 div = WeakDivOperator()
-numflux = LxFNumericalFlux(
-    StdAverageNumericalFlux(),
-    1.0,
-)
+equation = BurgersEquation(div)
 
+std = StdSegment{Float64}(4, GL(), nvariables(equation))
 mesh = CartesianMesh{1,Float64}(0, 1, 20)
 apply_periodicBCs!(mesh, "1" => "2")
 
-equation = BurgersEquation(div)
-
+numflux = LxFNumericalFlux(StdAverageNumericalFlux(), 1.0)
 DG = DGSEM(mesh, std, equation, (), numflux)
 
 x0 = 0.4

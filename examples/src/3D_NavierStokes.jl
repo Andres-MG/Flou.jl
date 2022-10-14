@@ -21,18 +21,11 @@ tf = 0.01
 save_steps = range(0, 100, 11)
 solver = ORK256(williamson_condition=false)
 
-std = StdHex{Float64}((4, 4, 4), GLL())
-div = SplitDivOperator(
-    ChandrasekharAverage(),
-)
-numflux = MatrixDissipation(
-    ChandrasekharAverage(),
-    1.0,
-)
-
-mesh = UnstructuredMesh{3,Float64}("../test/meshes/mesh3d_refined.msh")
-
+div = SplitDivOperator(ChandrasekharAverage())
 equation = EulerEquation{3}(div, 1.4)
+
+std = StdHex{Float64}((4, 4, 4), GLL(), nvariables(equation))
+mesh = UnstructuredMesh{3,Float64}("../test/meshes/mesh3d_refined.msh")
 
 Q0 = Flou.vars_prim2cons((1.0, 2.0, 0.0, 0.0, 1.0), equation)
 ∂Ω = Dict(
@@ -44,6 +37,8 @@ Q0 = Flou.vars_prim2cons((1.0, 2.0, 0.0, 0.0, 1.0), equation)
     "Left" => EulerSlipBC(),
     "Right" => EulerSlipBC(),
 )
+
+numflux = MatrixDissipation(ChandrasekharAverage(), 1.0)
 DG = DGSEM(mesh, std, equation, ∂Ω, numflux)
 
 Q = StateVector{Float64}(undef, nvariables(equation), DG.dofhandler)

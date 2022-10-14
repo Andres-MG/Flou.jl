@@ -42,7 +42,7 @@ end
 
 @everywhere function run(nelem, order, quad, tf, solver, numflux, equation, cfl)
     # Solve the problem
-    std = StdSegment{Float64}(order + 1, quad)
+    std = StdSegment{Float64}(order + 1, quad, nvariables(equation))
     mesh = CartesianMesh{1,Float64}(-1, 1, nelem)
     apply_periodicBCs!(mesh, "1" => "2")
     DG = DGSEM(mesh, std, equation, (), numflux)
