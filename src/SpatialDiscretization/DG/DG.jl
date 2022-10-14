@@ -169,9 +169,9 @@ end
 
 function apply_sourceterm!(dQ, Q, dg::DiscontinuousGalerkin, time)
     (; geometry, source!) = dg
-    @flouthreads for ie in eachelement(dg)
-        x = geometry.elements[ie].coords
-        source!(dQ[ie], Q[ie], x, time)
+    @flouthreads for i in eachdof(dg)
+        x = geometry.elements.coords[i]
+        source!(dQ.data[i], Q.data[i], x, time)
     end
     return nothing
 end
