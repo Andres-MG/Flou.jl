@@ -436,7 +436,7 @@ function _ssfv_gauss_flux_1d!(
 
     nl = frames[1].n .* Js[1]
     nr = frames[end].n .* Js[end]
-    Fl = nl' * volumeflux(Ql, equation)
+    Fl = volumeflux(Ql, equation)' * nl
 
     @inbounds for i in eachindex(std, idir)
         Fli[i, :] = twopointflux(
@@ -469,23 +469,19 @@ function _ssfv_gauss_flux_1d!(
     end
 
     # Complementary grid fluxes
-    F̄c[1, :] .= -view(Fl, 1, :)
+    # The "mathematically correct" way to do this is to compute `F̄c[end]` also in the loop,
+    # but this is a bit more accurate and efficient.
+    F̄c[1, :] .= -Fnl
+    F̄c[end, :] .= Fnr
     @inbounds for v in eachvariable(equation)
         l_Fli = l * @view(Fli[:, v])
         r_Fri = r * @view(Fri[:, v])
-        @views for i in 1:(size(std, idir)-1)
+        @views for i in 1:(size(std, idir) - 1)
             F̄c[i + 1, v] = F̄c[i, v] - dot(K♯mat[i, :], F♯[:, i, v]) -
                            l[i] * (Fli[i, v] - l_Fli - Fnl[v]) +
                            r[i] * (Fri[i, v] - r_Fri + Fnr[v])
-            if i == 1
-                F̄c[2, v] -= Fnl[v] - Fl[v]
-            end
         end
     end
-
-    # Boundaries
-    F̄c[1, :] .= -Fnl
-    F̄c[end, :] .= Fnr
 
     # Interior points
     @inbounds for i in 2:size(std, idir)
