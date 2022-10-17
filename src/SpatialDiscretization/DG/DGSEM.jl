@@ -1,11 +1,10 @@
-struct DGSEM{RT,MT,ST,G,O,R,BCT,FT} <: DiscontinuousGalerkin{RT}
+struct DGSEM{RT,MT,ST,G,O,C<:DGcache{RT},BCT,FT} <: DiscontinuousGalerkin{RT}
     mesh::MT
     stdvec::ST
     dofhandler::DofHandler
     geometry::G
     operators::O
-    Qf::FaceStateVector{RT,R}
-    Fn::FaceStateVector{RT,R}
+    cache::C
     bcs::BCT
     source!::FT
 end
@@ -65,9 +64,8 @@ function DGSEM(
     end
     geometry = Geometry(_stdvec, dofhandler, mesh, subgrid)
 
-    # Faces storage
-    Qf = FaceStateVector{RT}(undef, nvariables(equation), dofhandler)
-    Fn = FaceStateVector{RT}(undef, nvariables(equation), dofhandler)
+    # Equation cache
+    cache = construct_cache(:dgsem, RT, dofhandler, equation)
 
     # Source term
     sourceterm = if isnothing(source)
@@ -82,8 +80,7 @@ function DGSEM(
         dofhandler,
         geometry,
         _operators,
-        Qf,
-        Fn,
+        cache,
         _bcs,
         sourceterm,
     )

@@ -1,6 +1,21 @@
 #==========================================================================================#
 #                                           DGSEM                                          #
 
+struct HyperbolicDGcache{RT,R} <: DGcache{RT}
+    Qf::FaceStateVector{RT,R}
+    Fn::FaceStateVector{RT,R}
+end
+
+function construct_cache(disctype, realtype, dofhandler, equation::HyperbolicEquation)
+    if disctype == :dgsem
+        Qf = FaceStateVector{realtype}(undef, nvariables(equation), dofhandler)
+        Fn = FaceStateVector{realtype}(undef, nvariables(equation), dofhandler)
+        return HyperbolicDGcache(Qf, Fn)
+    else
+        @error "Unknown discretization type $(disctype)."
+    end
+end
+
 function rhs!(_dQ, _Q, p::Tuple{<:DGSEM,<:HyperbolicEquation}, time)
     # Unpack
     dg, equation = p
@@ -16,16 +31,16 @@ function rhs!(_dQ, _Q, p::Tuple{<:DGSEM,<:HyperbolicEquation}, time)
     volume_contribution!(dQ, Q, dg, equation, dg.operators[1])
 
     # Project Q to faces
-    project2faces!(dg.Qf, Q, dg)
+    project2faces!(dg.cache.Qf, Q, dg)
 
     # Boundary conditions
-    applyBCs!(dg.Qf, dg, equation, time)
+    applyBCs!(dg.cache.Qf, dg, equation, time)
 
     # Interface fluxes
-    interface_fluxes!(dg.Fn, dg.Qf, dg, equation, dg.operators[1].numflux)
+    interface_fluxes!(dg.cache.Fn, dg.cache.Qf, dg, equation, dg.operators[1].numflux)
 
     # Surface contribution
-    surface_contribution!(dQ, Q, dg.Fn, dg, equation, dg.operators[1])
+    surface_contribution!(dQ, Q, dg.cache.Fn, dg, equation, dg.operators[1])
 
     # Apply mass matrix
     apply_massmatrix!(dQ, dg)
@@ -51,3 +66,4 @@ function surface_contribution!(dQ, Q, Fn, dg, equation, operator)
     end
     return nothing
 end
+

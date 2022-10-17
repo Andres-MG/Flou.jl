@@ -7,6 +7,15 @@ abstract type AbstractSpatialDiscretization{RT<:Real} end
 
 Base.eltype(::AbstractSpatialDiscretization{RT}) where {RT} = RT
 
+abstract type AbstractSpatialDiscretizationCache{RT<:Real} end
+
+"""
+    construct_cache(disctype::Symbol, realtype, dofhandler, equation)
+
+Allocates the required global storage for the specified spatial discretization and equation.
+"""
+function construct_cache end
+
 abstract type AbstractBC end
 
 """

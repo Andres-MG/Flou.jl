@@ -1,5 +1,7 @@
 abstract type DiscontinuousGalerkin{RT} <: AbstractSpatialDiscretization{RT} end
 
+abstract type DGcache{RT} <: AbstractSpatialDiscretizationCache{RT} end
+
 function get_std end
 
 function _VTK_type end
