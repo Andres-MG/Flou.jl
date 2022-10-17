@@ -1,15 +1,10 @@
-struct BurgersEquation{NV,DV} <: HyperbolicEquation{NV}
-    operators::Tuple{DV}
-end
+struct BurgersEquation{NV} <: HyperbolicEquation{NV} end
 
-function BurgersEquation(div_operator)
-    BurgersEquation{1,typeof(div_operator)}((div_operator,))
-end
+BurgersEquation() = BurgersEquation{1}()
 
-function Base.show(io::IO, m::MIME"text/plain", eq::BurgersEquation)
+function Base.show(io::IO, ::MIME"text/plain", eq::BurgersEquation)
     @nospecialize
-    print(io, eq |> typeof, ":")
-    print(io, " Advection operator: "); show(io, m, eq.operators[1])
+    print(io, "1D Burgers equation")
 end
 
 function variablenames(::BurgersEquation; unicode=false)

@@ -1,10 +1,9 @@
-struct DGSEM{EQ,RT,NF,MT,ST,G,R,BCT,FT} <: DiscontinuousGalerkin{EQ,RT}
-    equation::EQ
-    riemannsolver::NF
+struct DGSEM{RT,MT,ST,G,O,R,BCT,FT} <: DiscontinuousGalerkin{RT}
     mesh::MT
     stdvec::ST
     dofhandler::DofHandler
     geometry::G
+    operators::O
     Qf::FaceStateVector{RT,R}
     Fn::FaceStateVector{RT,R}
     bcs::BCT
@@ -15,8 +14,8 @@ function DGSEM(
     mesh::AbstractMesh{ND,RT},
     stdvec,
     equation,
+    operators,
     bcs,
-    riemannsolver,
     source=nothing,
 ) where {
     ND,
@@ -32,7 +31,7 @@ function DGSEM(
     if isa(stdvec, AbstractStdRegion)
         _stdvec = ntuple(_ -> stdvec, nregions(mesh))
     else
-        _stdvec = tuple(stdvec)
+        _stdvec = Tuple(stdvec)
     end
 
     elem2std = [get_region(mesh, ie) for ie in 1:nelements(mesh)]
@@ -53,8 +52,17 @@ function DGSEM(
     # DOF handler
     dofhandler = DofHandler(mesh, _stdvec, elem2std)
 
+    if operators isa AbstractOperator
+        _operators = (operators,)
+    else
+        _operators = Tuple(operators)
+    end
+
     # Physical elements
-    subgrid = requires_subgrid.(equation.operators) |> any
+    subgrid = false
+    for std in _stdvec
+        subgrid |= any(requires_subgrid.(_operators, Ref(std)))
+    end
     geometry = Geometry(_stdvec, dofhandler, mesh, subgrid)
 
     # Faces storage
@@ -63,18 +71,17 @@ function DGSEM(
 
     # Source term
     sourceterm = if isnothing(source)
-        (dQ, Q, x, t) -> nothing
+        (_, _, _, _) -> nothing
     else
         source
     end
 
     return DGSEM(
-        equation,
-        riemannsolver,
         mesh,
         _stdvec,
         dofhandler,
         geometry,
+        _operators,
         Qf,
         Fn,
         _bcs,
@@ -84,12 +91,10 @@ end
 
 get_spatialdim(dg::DGSEM) = get_spatialdim(dg.mesh)
 
-nvariables(dg::DGSEM) = nvariables(dg.equation)
 nelements(dg::DGSEM) = nelements(dg.dofhandler)
 nfaces(dg::DGSEM) = nfaces(dg.dofhandler)
 ndofs(dg::DGSEM) = ndofs(dg.dofhandler)
 
-eachvariable(dg::DGSEM) = eachvariable(dg.equation)
 eachelement(dg::DGSEM) = eachelement(dg.dofhandler)
 eachface(dg::DGSEM) = eachface(dg.dofhandler)
 eachdof(dg::DGSEM) = eachdof(dg.dofhandler)
@@ -98,22 +103,17 @@ eachdof(dg::DGSEM) = eachdof(dg.dofhandler)
     return @inbounds dg.stdvec[get_stdid(dg.dofhandler, ie)]
 end
 
-function Base.show(io::IO, m::MIME"text/plain", dg::DGSEM{EQ,RT}) where {EQ,RT}
+function Base.show(io::IO, m::MIME"text/plain", dg::DGSEM{RT}) where {RT}
     @nospecialize
 
     # Header
     println(io, "=========================================================================")
     println(io, "DGSEM{", RT, "} spatial discretization")
 
-    # Equation
-    println(io, "\nEquation:")
-    println(io, "---------")
-    show(io, m, dg.equation)
-
-    # Riemann solver
-    println(io, "\n\nRiemann solver:")
-    println(io, "---------------")
-    show(io, m, dg.riemannsolver)
+    # Mesh
+    println(io, "\nMesh:")
+    println(io, "-----")
+    show(io, m, dg.mesh)
 
     # Standard regions
     println(io, "\n\nStandard regions:")
@@ -123,14 +123,20 @@ function Base.show(io::IO, m::MIME"text/plain", dg::DGSEM{EQ,RT}) where {EQ,RT}
         println(io, "\n")
     end
 
-    # Mesh
-    println(io, "Mesh:")
-    println(io, "-----")
-    show(io, m, dg.mesh)
-    print(io, "\n=========================================================================")
+    # Operators
+    println(io, "Operators:")
+    println(io, "----------")
+    for op in dg.operators
+        show(io, m, op)
+        print(io, "\n")
+    end
+
+    print(io, "=========================================================================")
+
+    return nothing
 end
 
-function get_max_dt(q::AbstractMatrix, dg::DGSEM, cfl::Real)
+function get_max_dt(q::AbstractMatrix, dg::DGSEM, eq::AbstractEquation, cfl::Real)
     Q = StateVector(q, dg.dofhandler)
     Δt = typemax(eltype(q))
 
@@ -141,7 +147,7 @@ function get_max_dt(q::AbstractMatrix, dg::DGSEM, cfl::Real)
         Δx = d == 1 ? Δx : (d == 2 ? sqrt(Δx) : cbrt(Δx))
 
         @inbounds for i in eachdof(std)
-            Δt = min(Δt, get_max_dt(view(Q[ie], i, :), Δx, cfl, dg.equation))
+            Δt = min(Δt, get_max_dt(view(Q[ie], i, :), Δx, cfl, eq))
         end
     end
 

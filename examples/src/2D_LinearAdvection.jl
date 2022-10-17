@@ -21,15 +21,14 @@ tf = 1.0
 save_steps = range(0, 1000, 21)
 solver = ORK256(williamson_condition=false)
 
-div = StrongDivOperator()
-equation = LinearAdvection(div, 2.0, -1.0)
+equation = LinearAdvection(2.0, -1.0)
 
 std = StdQuad{Float64}((4, 4), GLL(), nvariables(equation))
 mesh = CartesianMesh{2,Float64}((0, 0), (1, 1), (10, 10))
 apply_periodicBCs!(mesh, "1" => "2", "3" => "4")
 
-numflux = LxFNumericalFlux(StdAverageNumericalFlux(), 1.0)
-DG = DGSEM(mesh, std, equation, (), numflux)
+div = StrongDivOperator(LxFNumericalFlux(StdAverageNumericalFlux(), 1.0))
+DG = DGSEM(mesh, std, equation, div, ())
 
 x0 = y0 = 0.5
 sx = sy = 0.1
@@ -43,12 +42,14 @@ end
 display(DG)
 println()
 
-sb = get_save_callback("../results/solution", save_steps)
+sb = get_save_callback("../results/solution"; iter=save_steps)
 
 @info "Starting simulation..."
 
-_, exetime = timeintegrate(Q.data, DG, solver, tf;
-    save_everystep=false, alias_u0=true, adaptive=false, dt=Δt, callback=sb)
+_, exetime = timeintegrate(
+    Q.data, DG, equation, solver, tf;
+    save_everystep=false, alias_u0=true, adaptive=false, dt=Δt, callback=sb,
+)
 
 @info "Elapsed time: $(exetime) s"
 @info "Time per iteration and DOF: $(exetime / (tf/Δt) / ndofs(DG)) s"

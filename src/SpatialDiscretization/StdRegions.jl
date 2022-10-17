@@ -289,14 +289,14 @@ end
 
 function Base.LinearIndices(s::StdQuad, transpose=false)
     return if transpose
-        LinearIndices(size(s, 2), size(s, 1))
+        LinearIndices((size(s, 2), size(s, 1)))
     else
         LinearIndices(size(s))
     end
 end
 function Base.CartesianIndices(s::StdQuad, transpose=false)
     return if transpose
-        CartesianIndices(size(s, 2), size(s, 1))
+        CartesianIndices((size(s, 2), size(s, 1)))
     else
         CartesianIndices(size(s))
     end

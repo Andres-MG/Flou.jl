@@ -1,6 +1,4 @@
-abstract type DiscontinuousGalerkin{EQ,RT} <: AbstractSpatialDiscretization{EQ,RT} end
-
-Base.eltype(::DiscontinuousGalerkin{EQ,RT}) where {EQ,RT} = RT
+abstract type DiscontinuousGalerkin{RT} <: AbstractSpatialDiscretization{RT} end
 
 function get_std end
 
@@ -8,7 +6,7 @@ function _VTK_type end
 
 function _VTK_connectivities end
 
-function open_for_write!(file::HDF5.File, dg::DiscontinuousGalerkin{EQ,RT}) where {EQ,RT}
+function open_for_write!(file::HDF5.File, dg::DiscontinuousGalerkin)
     # Unpack
     (; mesh) = dg
 
@@ -16,7 +14,7 @@ function open_for_write!(file::HDF5.File, dg::DiscontinuousGalerkin{EQ,RT}) wher
     root = HDF5.create_group(file, "/VTKHDF")
     HDF5.attributes(root)["Version"] = [1, 0]
 
-    points = RT[]
+    points = eltype(dg)[]
     connectivities = Int[]
     offsets = Int[0]
     types = UInt8[]
@@ -76,17 +74,17 @@ function pointdata2VTKHDF(data, dg::DiscontinuousGalerkin)
     return datavec
 end
 
-function solution2VTKHDF(Q, dg::DiscontinuousGalerkin)
+function solution2VTKHDF(Q, dg::DiscontinuousGalerkin, equation::AbstractEquation)
     npoints = ndofs(dg)
     rt = eltype(Q)
     Q_ = StateVector(Q, dg.dofhandler)
 
-    Qe = [rt[] for _ in eachvariable(dg)]
-    for i in eachvariable(dg)
+    Qe = [rt[] for _ in eachvariable(equation)]
+    for i in eachvariable(equation)
         sizehint!(Qe[i], npoints)
     end
     tmp = Vector{rt}(undef, ndofs(get_std(dg, 1), true))
-    for iv in eachvariable(dg), ie in eachelement(dg)
+    for iv in eachvariable(equation), ie in eachelement(dg)
         std = get_std(dg, ie)
         resize!(tmp, ndofs(std, true))
         project2equispaced!(tmp, view(Q_[ie], :, iv), std)
@@ -125,8 +123,8 @@ function project2faces!(Qf, Q, dg::DiscontinuousGalerkin)
     return nothing
 end
 
-function applyBCs!(Qf, dg::DiscontinuousGalerkin, time)
-    (; mesh, geometry, equation, bcs) = dg
+function applyBCs!(Qf, dg::DiscontinuousGalerkin, equation::AbstractEquation, time)
+    (; mesh, geometry, bcs) = dg
     @flouthreads for ibc in eachboundary(mesh)
         for iface in eachbdface(mesh, ibc)
             _dg_applyBC!(
@@ -143,8 +141,14 @@ function applyBCs!(Qf, dg::DiscontinuousGalerkin, time)
     return nothing
 end
 
-function interface_fluxes!(Fn, Qf, dg::DiscontinuousGalerkin, riemannsolver)
-    (; mesh, geometry, equation) = dg
+function interface_fluxes!(
+    Fn,
+    Qf,
+    dg::DiscontinuousGalerkin,
+    equation::AbstractEquation,
+    riemannsolver,
+)
+    (; mesh, geometry) = dg
     @flouthreads for iface in eachface(dg)
         (; eleminds, elempos, orientation) = mesh.faces[iface]
         frame = geometry.faces[iface].frames

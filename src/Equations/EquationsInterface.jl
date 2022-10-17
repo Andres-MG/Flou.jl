@@ -1,8 +1,3 @@
-"""
-    AbstractEquation{NV}
-
-Must contain a field `operators` containing the operators that it uses (iterable).
-"""
 abstract type AbstractEquation{NV} end
 
 nvariables(::AbstractEquation{NV}) where {NV} = NV
@@ -14,7 +9,7 @@ function variablenames end
 function volumeflux end
 
 """
-    rhs!(dQ, Q, disc::AbstractSpatialDiscretization, time)
+    rhs!(dQ, Q, p::Tuple{AbstractSpatialDiscretization,AbstractEquation}, time)
 
 Evaluate the right-hand side (spatial term) of the ODE.
 """

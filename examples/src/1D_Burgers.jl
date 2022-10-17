@@ -20,15 +20,14 @@ end
 tf = 0.15
 solver = ORK256(williamson_condition=false)
 
-div = WeakDivOperator()
-equation = BurgersEquation(div)
+equation = BurgersEquation()
 
 std = StdSegment{Float64}(4, GL(), nvariables(equation))
 mesh = CartesianMesh{1,Float64}(0, 1, 20)
 apply_periodicBCs!(mesh, "1" => "2")
 
-numflux = LxFNumericalFlux(StdAverageNumericalFlux(), 1.0)
-DG = DGSEM(mesh, std, equation, (), numflux)
+div = WeakDivOperator(LxFNumericalFlux(StdAverageNumericalFlux(), 1.0))
+DG = DGSEM(mesh, std, equation, div, ())
 
 x0 = 0.4
 sx = 0.1
@@ -44,7 +43,10 @@ println()
 
 @info "Starting simulation..."
 
-sol, exetime = timeintegrate(Q.data, DG, solver, tf, alias_u0=true, adaptive=false, dt=Δt)
+sol, exetime = timeintegrate(
+    Q.data, DG, equation, solver, tf;
+    alias_u0=true, adaptive=false, dt=Δt,
+)
 
 @info "Elapsed time: $(exetime) s"
 @info "Time per iteration and DOF: $(exetime / (tf/Δt) / ndofs(DG)) s"

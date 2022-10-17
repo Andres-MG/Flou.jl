@@ -3,15 +3,14 @@ function Advection1D()
     tf = 0.5
     solver = ORK256(;williamson_condition=false)
 
-    div = WeakDivOperator()
-    equation = LinearAdvection(div, 2.0)
+    equation = LinearAdvection(2.0)
 
     std = StdSegment{Float64}(5, GL(), nvariables(equation))
     mesh = CartesianMesh{1,Float64}(0, 1, 20)
     apply_periodicBCs!(mesh, "1" => "2")
 
-    numflux = LxFNumericalFlux(StdAverageNumericalFlux(), 1.0)
-    DG = DGSEM(mesh, std, equation, (), numflux)
+    div = WeakDivOperator(LxFNumericalFlux(StdAverageNumericalFlux(), 1.0))
+    DG = DGSEM(mesh, std, equation, div, ())
 
     x0 = 0.5
     sx = 0.1
@@ -23,7 +22,7 @@ function Advection1D()
     end
 
     sol, _ = timeintegrate(
-        Q.data, DG, solver, tf;
+        Q.data, DG, equation, solver, tf;
         saveat=(0, tf), adaptive=false, dt=Δt, alias_u0=true,
     )
     return sol
@@ -34,15 +33,14 @@ function Advection2D()
     tf = 0.5
     solver = ORK256(;williamson_condition=false)
 
-    div = WeakDivOperator()
-    equation = LinearAdvection(div, 3.0, 4.0)
+    equation = LinearAdvection(3.0, 4.0)
 
     std = StdQuad{Float64}((5, 5), GL(), nvariables(equation))
     mesh = CartesianMesh{2,Float64}((0, 0), (1.5, 2), (20, 10))
     apply_periodicBCs!(mesh, "1" => "2", "3" => "4")
 
-    numflux = LxFNumericalFlux(StdAverageNumericalFlux(), 1.0)
-    DG = DGSEM(mesh, std, equation, (), numflux)
+    div = WeakDivOperator(LxFNumericalFlux(StdAverageNumericalFlux(), 1.0))
+    DG = DGSEM(mesh, std, equation, div, ())
 
     x0, y0 = 0.75, 1.0
     sx, sy = 0.2, 0.2
@@ -54,7 +52,7 @@ function Advection2D()
     end
 
     sol, _ = timeintegrate(
-        Q.data, DG, solver, tf;
+        Q.data, DG, equation, solver, tf;
         saveat=(0, tf), adaptive=false, dt=Δt, alias_u0=true,
     )
     return sol
@@ -65,8 +63,7 @@ function SodTube1D()
     tf = 0.018
     solver = ORK256(;williamson_condition=false)
 
-    div = SplitDivOperator(ChandrasekharAverage())
-    equation = EulerEquation{1}(div, 1.4)
+    equation = EulerEquation{1}(1.4)
 
     std = StdSegment{Float64}(4, GLL(), nvariables(equation))
     mesh = CartesianMesh{1,Float64}(0, 1, 20)
@@ -84,8 +81,11 @@ function SodTube1D()
         "2" => DirichletBC(Qext),
     )
 
-    numflux = MatrixDissipation(ChandrasekharAverage(), 1.0)
-    DG = DGSEM(mesh, std, equation, ∂Ω, numflux)
+    div = SplitDivOperator(
+        ChandrasekharAverage(),
+        MatrixDissipation(ChandrasekharAverage(), 1.0),
+    )
+    DG = DGSEM(mesh, std, equation, div, ∂Ω)
 
     Q = StateVector{Float64}(undef, nvariables(equation), DG.dofhandler)
     for i in eachdof(DG)
@@ -94,7 +94,7 @@ function SodTube1D()
     end
 
     sol, _ = timeintegrate(
-        Q.data, DG, solver, tf;
+        Q.data, DG, equation, solver, tf;
         saveat=(0, tf), adaptive=false, dt=Δt, alias_u0=true,
     )
     return sol
@@ -105,15 +105,7 @@ function Shockwave2D()
     tf = 1.0
     solver = ORK256(;williamson_condition=false)
 
-    div = SSFVDivOperator(
-        ChandrasekharAverage(),
-        LxFNumericalFlux(
-            StdAverageNumericalFlux(),
-            1.0,
-        ),
-        1e+0,
-    )
-    equation = EulerEquation{2}(div, 1.4)
+    equation = EulerEquation{2}(1.4)
 
     std = StdQuad{Float64}((6, 6), GLL(), nvariables(equation))
     mesh = CartesianMesh{2,Float64}((-1, 0), (1, 1), (11, 3))
@@ -135,8 +127,16 @@ function Shockwave2D()
         "2" => DirichletBC(Qext),
     )
 
-    numflux = MatrixDissipation(ChandrasekharAverage(), 1.0)
-    DG = DGSEM(mesh, std, equation, ∂Ω, numflux)
+    div = SSFVDivOperator(
+        ChandrasekharAverage(),
+        LxFNumericalFlux(
+            StdAverageNumericalFlux(),
+            1.0,
+        ),
+        1e+0,
+        MatrixDissipation(ChandrasekharAverage(), 1.0),
+    )
+    DG = DGSEM(mesh, std, equation, div, ∂Ω)
 
     Q = StateVector{Float64}(undef, nvariables(equation), DG.dofhandler)
     for i in eachdof(DG)
@@ -145,7 +145,7 @@ function Shockwave2D()
     end
 
     sol, _ = timeintegrate(
-        Q.data, DG, solver, tf;
+        Q.data, DG, equation, solver, tf;
         saveat=(0, tf), adaptive=false, dt=Δt, alias_u0=true,
     )
     return sol
@@ -157,8 +157,7 @@ function Implosion2D()
     tf = 50Δt # 0.045
     solver = ORK256(;williamson_condition=false)
 
-    div = SplitDivOperator(ChandrasekharAverage())
-    equation = EulerEquation{2}(div, 1.4)
+    equation = EulerEquation{2}(1.4)
 
     std = StdQuad{Float64}((4, 4), GLL(), nvariables(equation))
     mesh = CartesianMesh{2,Float64}((0, 0), (0.3, 0.3), (100, 100))
@@ -169,8 +168,11 @@ function Implosion2D()
         "4" => EulerSlipBC(),
     )
 
-    numflux = MatrixDissipation(ChandrasekharAverage(), 1.0)
-    DG = DGSEM(mesh, std, equation, ∂Ω, numflux)
+    div = SplitDivOperator(
+        ChandrasekharAverage(),
+        MatrixDissipation(ChandrasekharAverage(), 1.0),
+    )
+    DG = DGSEM(mesh, std, equation, div, ∂Ω)
 
     Q = StateVector{Float64}(undef, nvariables(equation), DG.dofhandler)
     for i in eachdof(DG)
@@ -189,7 +191,7 @@ function Implosion2D()
     end
 
     sol, _ = timeintegrate(
-        Q.data, DG, solver, tf;
+        Q.data, DG, equation, solver, tf;
         saveat=(0, tf), adaptive=false, dt=Δt, alias_u0=true,
     )
     return sol
@@ -200,15 +202,7 @@ function ForwardFacingStep2D()
     tf = 0.1 # 2.0
     solver = ORK256(;williamson_condition=false)
 
-    div = SSFVDivOperator(
-        ChandrasekharAverage(),
-        LxFNumericalFlux(
-            StdAverageNumericalFlux(),
-            0.2,
-        ),
-        0.1^2,
-    )
-    equation = EulerEquation{2}(div, 1.4)
+    equation = EulerEquation{2}(1.4)
 
     std = StdQuad{Float64}((8, 8), GLL(), nvariables(equation))
     mesh = StepMesh{Float64}((0,0), (3, 1), 0.6, 0.2, ((10, 5), (10, 20), (40, 20)))
@@ -225,8 +219,16 @@ function ForwardFacingStep2D()
         "6" => EulerSlipBC(),
     )
 
-    numflux = MatrixDissipation(ChandrasekharAverage(), 1.0)
-    DG = DGSEM(mesh, std, equation, ∂Ω, numflux)
+    div = SSFVDivOperator(
+        ChandrasekharAverage(),
+        LxFNumericalFlux(
+            StdAverageNumericalFlux(),
+            0.2,
+        ),
+        0.1^2,
+        MatrixDissipation(ChandrasekharAverage(), 1.0),
+    )
+    DG = DGSEM(mesh, std, equation, div, ∂Ω)
 
     Q = StateVector{Float64}(undef, nvariables(equation), DG.dofhandler)
     for ie in eachelement(mesh)
@@ -236,7 +238,7 @@ function ForwardFacingStep2D()
     end
 
     sol, _ = timeintegrate(
-        Q.data, DG, solver, tf;
+        Q.data, DG, equation, solver, tf;
         saveat=(0, tf), adaptive=false, dt=Δt, alias_u0=true,
     )
     return sol

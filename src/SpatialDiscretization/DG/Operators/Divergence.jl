@@ -7,6 +7,7 @@ function surface_contribution!(
     ielem,
     std::AbstractStdRegion,
     dg::DiscontinuousGalerkin,
+    ::AbstractEquation,
     ::AbstractDivOperator,
 )
     # Unpack
@@ -26,7 +27,9 @@ end
 #==========================================================================================#
 #                                 Weak divergence operator                                 #
 
-struct WeakDivOperator <: AbstractDivOperator end
+struct WeakDivOperator{F<:AbstractNumericalFlux} <: AbstractDivOperator
+    numflux::F
+end
 
 function volume_contribution!(
     dQ,
@@ -34,10 +37,11 @@ function volume_contribution!(
     ielem,
     std::AbstractStdRegion,
     dg::DiscontinuousGalerkin,
+    equation::AbstractEquation,
     ::WeakDivOperator,
 )
     # Unpack
-    (; geometry, equation) = dg
+    (; geometry) = dg
 
     # Volume fluxes
     F̃ = std.cache.vector[Threads.threadid()][1]
@@ -62,7 +66,9 @@ end
 #==========================================================================================#
 #                                Strong divergence operator                                #
 
-struct StrongDivOperator <: AbstractDivOperator end
+struct StrongDivOperator{F<:AbstractNumericalFlux} <: AbstractDivOperator
+    numflux::F
+end
 
 function volume_contribution!(
     dQ,
@@ -70,10 +76,11 @@ function volume_contribution!(
     ielem,
     std::AbstractStdRegion,
     dg::DiscontinuousGalerkin,
+    equation::AbstractEquation,
     ::StrongDivOperator,
 )
     # Unpack
-    (; geometry, equation) = dg
+    (; geometry) = dg
 
     # Volume fluxes
     F̃ = std.cache.vector[Threads.threadid()][1]
@@ -104,11 +111,17 @@ end
 Split-divergence operator, only implemented for tensor-product elements. The two-point flux
 represents the splitting strategy.
 """
-struct SplitDivOperator{T} <: AbstractDivOperator
+struct SplitDivOperator{
+    T<:AbstractNumericalFlux,
+    F<:AbstractNumericalFlux,
+} <: AbstractDivOperator
     tpflux::T
+    numflux::F
 end
 
-requires_subgrid(::SplitDivOperator) = true
+function requires_subgrid(::SplitDivOperator, ::AbstractStdRegion{ND,Q}) where {ND,Q}
+    return Q == GaussQuadrature
+end
 
 function twopointflux end
 
@@ -166,10 +179,11 @@ function surface_contribution!(
     ielem,
     std::AbstractStdRegion{ND,<:GaussQuadrature},
     dg::DiscontinuousGalerkin,
+    equation::AbstractEquation,
     op::SplitDivOperator,
 ) where {ND}
     # Unpack
-    (; mesh, geometry, equation) = dg
+    (; mesh, geometry) = dg
 
     rt = eltype(Q)
     iface = mesh.elements[ielem].faceinds
@@ -301,10 +315,11 @@ function volume_contribution!(
     ielem,
     std::AbstractStdRegion{ND},
     dg::DiscontinuousGalerkin,
+    equation::AbstractEquation,
     op::SplitDivOperator,
 ) where {ND}
     # Unpack
-    (; geometry, equation) = dg
+    (; geometry) = dg
 
     is_tensor_product(std) || throw(ArgumentError(
         "All the standard regions must be tensor-products."
@@ -391,13 +406,19 @@ sub-element finite volume scheme. The `twopointflux` and `fvflux` are both combi
 an entropy-stable interface flux that controls the volume dissipation through the
 subcell interface Riemann solver.
 """
-struct SSFVDivOperator{T,F,RT} <: AbstractDivOperator
+struct SSFVDivOperator{
+    T<:AbstractNumericalFlux,
+    F<:AbstractNumericalFlux,
+    N<:AbstractNumericalFlux,
+    RT,
+} <: AbstractDivOperator
     tpflux::T
     fvflux::F
     blend::RT
+    numflux::N
 end
 
-requires_subgrid(::SSFVDivOperator) = true
+requires_subgrid(::SSFVDivOperator, _) = true
 
 function _ssfv_compute_delta(b, c)
     # Fisher
@@ -436,7 +457,6 @@ function _ssfv_gauss_flux_1d!(
 
     nl = frames[1].n .* Js[1]
     nr = frames[end].n .* Js[end]
-    Fl = volumeflux(Ql, equation)' * nl
 
     @inbounds for i in eachindex(std, idir)
         Fli[i, :] = twopointflux(
@@ -497,7 +517,7 @@ function _ssfv_gauss_flux_1d!(
         Wr = view(W, i, :)
         b = dot(Wr - Wl, view(F̄c, i, :) - F̄v)
         δ = _ssfv_compute_delta(b, op.blend)
-        F̄c[i, :] .= F̄v .+ δ .* (view(F̄c, i, :) .- F̄v)
+        F̄c[i, :] .= (1 - δ) .* F̄v .+ δ .* view(F̄c, i, :)
     end
     return nothing
 end
@@ -509,10 +529,11 @@ function surface_contribution!(
     ielem,
     std::AbstractStdRegion{ND,<:GaussQuadrature},
     dg::DiscontinuousGalerkin,
+    equation::AbstractEquation,
     op::SSFVDivOperator,
 ) where {ND}
     # Unpack
-    (; geometry, equation) = dg
+    (; geometry) = dg
 
     # Buffers
     tid = Threads.threadid()
@@ -720,7 +741,7 @@ function _ssfv_flux_1d!(F̄c, Q, Qmat, Ja, frames, Js, std, equation, op, idir)
         Wr = vars_cons2entropy(view(Q, i, :), equation)
         b = dot(Wr - Wl, view(F̄c, i, :) - F̄v)
         δ = _ssfv_compute_delta(b, op.blend)
-        F̄c[i, :] = F̄v + δ .* (view(F̄c, i, :) - F̄v)
+        F̄c[i, :] = (1 - δ) .* F̄v .+ δ .* view(F̄c, i, :)
     end
     return nothing
 end
@@ -731,10 +752,11 @@ function volume_contribution!(
     ielem,
     std::AbstractStdRegion{ND},
     dg::DiscontinuousGalerkin,
+    equation::AbstractEquation,
     op::SSFVDivOperator,
 ) where {ND}
     # Unpack
-    (; geometry, equation) = dg
+    (; geometry) = dg
 
     is_tensor_product(std) || throw(ArgumentError(
         "All the standard regions must be tensor-products."
@@ -857,9 +879,10 @@ function volume_contribution!(
     _,
     _,
     _,
-    _::AbstractStdRegion{ND,<:GaussQuadrature},
-    _::DiscontinuousGalerkin,
-    _::SSFVDivOperator,
+    ::AbstractStdRegion{ND,<:GaussQuadrature},
+    ::DiscontinuousGalerkin,
+    ::AbstractEquation,
+    ::SSFVDivOperator,
 ) where {ND}
     # Do everything in the surface operator since we need the values of the Riemann problem
     return nothing

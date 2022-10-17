@@ -3,7 +3,9 @@ include("DofHandler.jl")
 include("PhysicalRegions.jl")
 include("Containers.jl")
 
-abstract type AbstractSpatialDiscretization{EQ<:AbstractEquation,RT<:Real} end
+abstract type AbstractSpatialDiscretization{RT<:Real} end
+
+Base.eltype(::AbstractSpatialDiscretization{RT}) where {RT} = RT
 
 abstract type AbstractBC end
 

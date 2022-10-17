@@ -1,15 +1,10 @@
-struct KPPEquation{NV,DV} <: HyperbolicEquation{NV}
-    operators::Tuple{DV}
-end
+struct KPPEquation{NV} <: HyperbolicEquation{NV} end
 
-function KPPEquation(div_operator)
-    KPPEquation{1,typeof(div_operator)}((div_operator,))
-end
+KPPEquation() = KPPEquation{1}()
 
-function Base.show(io::IO, m::MIME"text/plain", eq::KPPEquation)
+function Base.show(io::IO, ::MIME"text/plain", eq::KPPEquation)
     @nospecialize
-    println(io, eq |> typeof, ":")
-    print(io, " Divergence operator: "); show(io, m, eq.operators[1]); println(io, "")
+    print(io, "2D KPP equation")
 end
 
 function variablenames(::KPPEquation; unicode=false)

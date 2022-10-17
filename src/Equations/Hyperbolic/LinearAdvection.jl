@@ -1,23 +1,18 @@
-struct LinearAdvection{ND,NV,RT,DV} <: HyperbolicEquation{NV}
-    operators::Tuple{DV}
+struct LinearAdvection{ND,NV,RT} <: HyperbolicEquation{NV}
     a::SVector{ND,RT}
 end
 
-function LinearAdvection(div_operator, velocity::RT...) where {RT}
+function LinearAdvection(velocity::RT...) where {RT}
     ndim = length(velocity)
     1 <= ndim <= 3 || throw(ArgumentError(
         "Linear advection is implemented in 1D, 2D and 3D."
     ))
-    LinearAdvection{ndim,1,RT,typeof(div_operator)}(
-        (div_operator,),
-        SVector{ndim,RT}(velocity...),
-    )
+    LinearAdvection{ndim,1,RT}(SVector{ndim,RT}(velocity...))
 end
 
-function Base.show(io::IO, m::MIME"text/plain", eq::LinearAdvection)
+function Base.show(io::IO, ::MIME"text/plain", eq::LinearAdvection{ND}) where {ND}
     @nospecialize
-    println(io, eq |> typeof, ":")
-    print(io, " Advection operator: "); show(io, m, eq.operators[1]); println(io, "")
+    println(io, ND, "D linear advection equation:")
     print(io, " Advection velocity: ", eq.a)
 end
 

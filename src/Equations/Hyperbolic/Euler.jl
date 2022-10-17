@@ -1,19 +1,17 @@
-struct EulerEquation{ND,NV,RT,DV} <: HyperbolicEquation{NV}
-    operators::Tuple{DV}
+struct EulerEquation{ND,NV,RT} <: HyperbolicEquation{NV}
     γ::RT
 end
 
-function EulerEquation{ND}(div_operator, γ) where {ND}
+function EulerEquation{ND}(γ) where {ND}
     1 <= ND <= 3 || throw(ArgumentError(
         "The Euler equations are only implemented in 1D, 2D and 3D."
     ))
-    EulerEquation{ND,ND + 2,typeof(γ),typeof(div_operator)}((div_operator,), γ)
+    EulerEquation{ND,ND + 2,typeof(γ)}(γ)
 end
 
-function Base.show(io::IO, m::MIME"text/plain", eq::EulerEquation)
+function Base.show(io::IO, ::MIME"text/plain", eq::EulerEquation{ND}) where {ND}
     @nospecialize
-    println(io, eq |> typeof, ":")
-    print(io, " Advection operator: "); show(io, m, eq.operators[1]); println(io, "")
+    println(io, ND, "D Euler equation:")
     print(io, " γ: ", eq.γ)
 end
 
