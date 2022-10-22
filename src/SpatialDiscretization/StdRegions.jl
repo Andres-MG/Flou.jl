@@ -28,7 +28,7 @@ function ndirections end
 function massmatrix end
 
 Base.@propagate_inbounds function project2equispaced!(Qe, Q, s::AbstractStdRegion)
-    Qe .= s._n2e * Q
+    mul!(Qe, s._n2e, Q)
     return nothing
 end
 
