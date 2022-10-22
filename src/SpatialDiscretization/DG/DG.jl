@@ -76,7 +76,11 @@ function pointdata2VTKHDF(data, dg::DiscontinuousGalerkin)
     return datavec
 end
 
-function solution2VTKHDF(Q, dg::DiscontinuousGalerkin, equation::AbstractEquation)
+function solution2VTKHDF(
+    Q::AbstractMatrix,
+    dg::DiscontinuousGalerkin,
+    equation::AbstractEquation,
+)
     npoints = ndofs(dg)
     rt = eltype(Q)
     Q_ = StateVector(Q, dg.dofhandler)
@@ -93,6 +97,29 @@ function solution2VTKHDF(Q, dg::DiscontinuousGalerkin, equation::AbstractEquatio
         append!(Qe[iv], tmp)
     end
     return Qe
+end
+
+function solution2VTKHDF(
+    Q::AbstractArray,
+    dg::DiscontinuousGalerkin,
+    equation::AbstractEquation,
+)
+    npoints = ndofs(dg)
+    rt = eltype(Q)
+    Q_ = BlockVector(Q, dg.dofhandler)
+
+    Qe = [rt[] for _ in eachvariable(equation), _ in eachdim(equation)]
+    for i in eachindex(Qe)
+        sizehint!(Qe[i], npoints)
+    end
+    tmp = Vector{rt}(undef, ndofs(get_std(dg, 1), true))
+    for id in eachdim(equation), iv in eachvariable(equation), ie in eachelement(dg)
+        std = get_std(dg, ie)
+        resize!(tmp, ndofs(std, true))
+        project2equispaced!(tmp, view(Q_[ie], :, iv, id), std)
+        append!(Qe[iv, id], tmp)
+    end
+    return Qe |> vec
 end
 
 abstract type AbstractNumericalFlux end
@@ -144,8 +171,8 @@ function applyBCs!(Qf, dg::DiscontinuousGalerkin, equation::AbstractEquation, ti
 end
 
 function interface_fluxes!(
-    Fn,
-    Qf,
+    Fn::FaceStateVector,
+    Qf::FaceStateVector,
     dg::DiscontinuousGalerkin,
     equation::AbstractEquation,
     riemannsolver,
@@ -173,6 +200,36 @@ function interface_fluxes!(
     return nothing
 end
 
+function interface_fluxes!(
+    Fn::FaceBlockVector,
+    Qf::FaceStateVector,
+    dg::DiscontinuousGalerkin,
+    equation::AbstractEquation,
+    riemannsolver,
+)
+    (; mesh, geometry) = dg
+    @flouthreads for iface in eachface(dg)
+        (; eleminds, elempos, orientation) = mesh.faces[iface]
+        frame = geometry.faces[iface].frames
+
+        Ql = Qf[iface][1]
+        Qr = Qf[iface][2]
+        std = get_std(dg, eleminds[1]).faces[elempos[1]]
+        @inbounds for i in eachindex(std)
+            j = master2slave(i, orientation[], std)
+            Qln = rotate2face(view(Ql, i, :), frame[i], equation)
+            Qrn = rotate2face(view(Qr, j, :), frame[i], equation)
+            Fni = numericalflux(Qln, Qrn, frame[i].n, equation, riemannsolver)
+            Fn[iface][1][i, :, :] = rotate2phys(Fni, frame[i], equation)
+            for ivar in eachvariable(equation), idim in eachdim(equation)
+                Fn[iface][1][i, ivar, idim] *= geometry.faces[iface].J[i]
+                Fn[iface][2][j, ivar, idim] = -Fn[iface][1][i, ivar, idim]
+            end
+        end
+    end
+    return nothing
+end
+
 function apply_sourceterm!(dQ, Q, dg::DiscontinuousGalerkin, time)
     (; geometry, source!) = dg
     @flouthreads for i in eachdof(dg)
@@ -182,10 +239,21 @@ function apply_sourceterm!(dQ, Q, dg::DiscontinuousGalerkin, time)
     return nothing
 end
 
-function apply_massmatrix!(dQ, dg::DiscontinuousGalerkin)
+function apply_massmatrix!(dQ::StateVector, dg::DiscontinuousGalerkin)
     (; geometry) = dg
     @flouthreads for ie in eachelement(dg)
         ldiv!(geometry.elements[ie].M[], dQ[ie])
+    end
+    return nothing
+end
+
+function apply_massmatrix!(G::BlockVector, dg::DiscontinuousGalerkin)
+    (; geometry) = dg
+    @flouthreads for ie in eachelement(dg)
+        M = geometry.elements[ie].M[]
+        for dir in eachdirection(get_std(dg, ie))
+            ldiv!(M, view(G[ie], :, :, dir))
+        end
     end
     return nothing
 end

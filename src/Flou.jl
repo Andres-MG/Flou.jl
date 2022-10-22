@@ -56,7 +56,7 @@ export is_tensor_product, ndirections, ndofs, eachdirection, eachdof
 export get_quadrature
 
 ## ./Containers.jl
-export StateVector, FaceStateVector
+export StateVector, BlockVector, FaceStateVector, FaceBlockVector
 
 ## ./DG.jl
 export get_std
@@ -67,6 +67,7 @@ export integrate
 export DGSEM
 
 export WeakDivOperator, StrongDivOperator, SplitDivOperator, SSFVDivOperator
+export WeakGradOperator, StrongGradOperator
 
 # Equations.jl
 export LinearAdvection
@@ -78,6 +79,8 @@ export EulerInflowBC, EulerOutflowBC, EulerSlipBC
 export ChandrasekharAverage, ScalarDissipation, MatrixDissipation
 
 export KPPEquation
+
+export GradientEquation
 
 # Monitors.jl
 export list_monitors

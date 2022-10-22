@@ -33,12 +33,12 @@ function solution2VTKHDF end
 
 function add_solution!(
     file::SolutionFile,
-    sol,
+    sol::AbstractArray,
     disc::AbstractSpatialDiscretization,
     equation::AbstractEquation,
 )
     datavec = solution2VTKHDF(sol, disc, equation)
-    for iv in eachvariable(equation)
+    for iv in eachindex(datavec)
         HDF5.write(
             file.handler,
             "VTKHDF/PointData/" * variablenames(equation)[iv],

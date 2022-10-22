@@ -12,7 +12,7 @@ function construct_cache(disctype, realtype, dofhandler, equation::HyperbolicEqu
         Fn = FaceStateVector{realtype}(undef, nvariables(equation), dofhandler)
         return HyperbolicDGcache(Qf, Fn)
     else
-        @error "Unknown discretization type $(disctype)."
+        @error "Unknown discretization type $(disctype)"
     end
 end
 
@@ -51,7 +51,7 @@ function rhs!(_dQ, _Q, p::Tuple{<:DGSEM,<:HyperbolicEquation}, time)
     return nothing
 end
 
-function volume_contribution!(dQ, Q, dg, equation, operator)
+function volume_contribution!(dQ, Q, dg, equation::HyperbolicEquation, operator)
     @flouthreads for ie in eachelement(dg)
         std = get_std(dg, ie)
         volume_contribution!(dQ[ie], Q[ie], ie, std, dg, equation, operator)
@@ -59,7 +59,7 @@ function volume_contribution!(dQ, Q, dg, equation, operator)
     return nothing
 end
 
-function surface_contribution!(dQ, Q, Fn, dg, equation, operator)
+function surface_contribution!(dQ, Q, Fn, dg, equation::HyperbolicEquation, operator)
     @flouthreads for ie in eachelement(dg)
         std = get_std(dg, ie)
         surface_contribution!(dQ[ie], Q[ie], Fn, ie, std, dg, equation, operator)

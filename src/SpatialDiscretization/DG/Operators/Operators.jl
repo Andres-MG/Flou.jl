@@ -12,3 +12,4 @@ function surface_contribution!  end
 requires_subgrid(::AbstractOperator, _) = false
 
 include("Divergence.jl")
+include("Gradient.jl")
