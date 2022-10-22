@@ -9,9 +9,9 @@ end
 
 function variablenames(::KPPEquation; unicode=false)
     return if unicode
-        (:u,)
+        ("u",)
     else
-        (:u,)
+        ("u",)
     end
 end
 

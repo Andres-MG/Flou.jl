@@ -18,19 +18,19 @@ end
 function variablenames(::EulerEquation{ND}; unicode=false) where {ND}
     return if unicode
         if ND == 1
-            (:ρ, :ρu, :ρe)
+            ("ρ", "ρu", "ρe")
         elseif ND == 2
-            (:ρ, :ρu, :ρv, :ρe)
+            ("ρ", "ρu", "ρv", "ρe")
         else # ND == 3
-            (:ρ, :ρu, :ρv, :ρw, :ρe)
+            ("ρ", "ρu", "ρv", "ρw", "ρe")
         end
     else
         if ND == 1
-            (:rho, :rhou, :rhoe)
+            ("rho", "rhou", "rhoe")
         elseif ND == 2
-            (:rho, :rhou, :rhov, :rhoe)
+            ("rho", "rhou", "rhov", "rhoe")
         else # ND == 3
-            (:rho, :rhou, :rhov, :rhow, :rhoe)
+            ("rho", "rhou", "rhov", "rhow", "rhoe")
         end
     end
 end

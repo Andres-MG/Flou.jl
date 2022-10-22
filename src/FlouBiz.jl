@@ -41,7 +41,7 @@ function add_solution!(
     for iv in eachvariable(equation)
         HDF5.write(
             file.handler,
-            "VTKHDF/PointData/" * String(variablenames(equation)[iv]),
+            "VTKHDF/PointData/" * variablenames(equation)[iv],
             datavec[iv],
         )
     end

@@ -18,9 +18,9 @@ end
 
 function variablenames(::LinearAdvection; unicode=false)
     return if unicode
-        (:u,)
+        ("u",)
     else
-        (:u,)
+        ("u",)
     end
 end
 
