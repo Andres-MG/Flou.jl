@@ -1,7 +1,7 @@
 #==========================================================================================#
 #                                   Hyperbolic equations                                   #
 
-abstract type HyperbolicEquation{NV} <: AbstractEquation{NV} end
+abstract type HyperbolicEquation{ND,NV} <: AbstractEquation{ND,NV} end
 
 include("Hyperbolic/Hyperbolic.jl")
 include("Hyperbolic/LinearAdvection.jl")

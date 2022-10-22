@@ -1,6 +1,4 @@
-struct KPPEquation{NV} <: HyperbolicEquation{NV} end
-
-KPPEquation() = KPPEquation{1}()
+struct KPPEquation <: HyperbolicEquation{2,1} end
 
 function Base.show(io::IO, ::MIME"text/plain", eq::KPPEquation)
     @nospecialize

@@ -17,9 +17,7 @@ function surface_contribution!(
     facepos = mesh.elements[ielem].facepos
 
     @inbounds for (s, (face, pos)) in enumerate(zip(iface, facepos))
-        mul!(
-            dQ, std.lω[s], Fn[face][pos], -one(eltype(dQ)), one(eltype(dQ)),
-        )
+        mul!(dQ, std.lω[s], Fn[face][pos], -one(eltype(dQ)), one(eltype(dQ)))
     end
     return nothing
 end
@@ -55,10 +53,7 @@ function volume_contribution!(
 
     # Weak derivative
     @inbounds for s in eachindex(std.K)
-        mul!(
-            dQ, std.K[s], view(F̃, :, :, s),
-            one(eltype(dQ)), one(eltype(dQ)),
-        )
+        mul!(dQ, std.K[s], view(F̃, :, :, s), one(eltype(dQ)), one(eltype(dQ)))
     end
     return nothing
 end
@@ -94,10 +89,7 @@ function volume_contribution!(
 
     # Strong derivative
     @inbounds for s in eachindex(std.K)
-        mul!(
-            dQ, std.Ks[s], view(F̃, :, :, s),
-            one(eltype(dQ)), one(eltype(dQ)),
-        )
+        mul!(dQ, std.Ks[s], view(F̃, :, :, s), one(eltype(dQ)), one(eltype(dQ)))
     end
     return nothing
 end

@@ -1,4 +1,4 @@
-struct EulerEquation{ND,NV,RT} <: HyperbolicEquation{NV}
+struct EulerEquation{ND,NV,RT} <: HyperbolicEquation{ND,NV}
     γ::RT
 end
 
@@ -6,13 +6,14 @@ function EulerEquation{ND}(γ) where {ND}
     1 <= ND <= 3 || throw(ArgumentError(
         "The Euler equations are only implemented in 1D, 2D and 3D."
     ))
-    EulerEquation{ND,ND + 2,typeof(γ)}(γ)
+    return EulerEquation{ND,ND + 2,typeof(γ)}(γ)
 end
 
 function Base.show(io::IO, ::MIME"text/plain", eq::EulerEquation{ND}) where {ND}
     @nospecialize
     println(io, ND, "D Euler equation:")
     print(io, " γ: ", eq.γ)
+    return nothing
 end
 
 function variablenames(::EulerEquation{ND}; unicode=false) where {ND}
@@ -33,6 +34,7 @@ function variablenames(::EulerEquation{ND}; unicode=false) where {ND}
             ("rho", "rhou", "rhov", "rhow", "rhoe")
         end
     end
+    return nothing
 end
 
 function volumeflux(Q, eq::EulerEquation{1})

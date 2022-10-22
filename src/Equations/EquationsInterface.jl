@@ -1,7 +1,9 @@
-abstract type AbstractEquation{NV} end
+abstract type AbstractEquation{ND,NV} end
 
-nvariables(::AbstractEquation{NV}) where {NV} = NV
+ndims(::AbstractEquation{ND}) where {ND} = ND
+nvariables(::AbstractEquation{ND,NV}) where {ND,NV} = NV
 
+eachdim(e::AbstractEquation) = Base.OneTo(ndims(e))
 eachvariable(e::AbstractEquation) = Base.Base.OneTo(nvariables(e))
 
 function variablenames end

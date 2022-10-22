@@ -1,6 +1,4 @@
-struct BurgersEquation{NV} <: HyperbolicEquation{NV} end
-
-BurgersEquation() = BurgersEquation{1}()
+struct BurgersEquation <: HyperbolicEquation{1,1} end
 
 function Base.show(io::IO, ::MIME"text/plain", eq::BurgersEquation)
     @nospecialize

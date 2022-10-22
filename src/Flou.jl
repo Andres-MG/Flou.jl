@@ -35,7 +35,7 @@ end
 const AbstractVecOrTuple = Union{AbstractVector,Tuple}
 
 # EquationsInterface.jl
-export nvariables, eachvariable, variablenames
+export ndims, nvariables, eachdim, eachvariable, variablenames
 
 # Mesh.jl
 export CartesianMesh, StepMesh, UnstructuredMesh

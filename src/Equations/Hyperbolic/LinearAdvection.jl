@@ -1,4 +1,4 @@
-struct LinearAdvection{ND,NV,RT} <: HyperbolicEquation{NV}
+struct LinearAdvection{ND,NV,RT} <: HyperbolicEquation{ND,NV}
     a::SVector{ND,RT}
 end
 
