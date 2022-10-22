@@ -1,7 +1,7 @@
 #==========================================================================================#
 #                                       State vector                                       #
 
-struct StateVector{RT<:Real,R<:AbstractMatrix{RT}} <: AbstractMatrix{RT}
+struct StateVector{RT<:Real,R<:AbstractMatrix{RT}} <: AbstractVector{RT}
     data::R
     dh::DofHandler
     function StateVector(data::AbstractMatrix, dh::DofHandler)
@@ -67,7 +67,7 @@ eachdof(s::StateVector) = Base.OneTo(ndofs(s))
 #==========================================================================================#
 #                                     Face state vector                                    #
 
-struct FaceStateVector{RT<:Real,R<:AbstractMatrix{RT}} <: AbstractMatrix{RT}
+struct FaceStateVector{RT<:Real,R<:AbstractMatrix{RT}} <: AbstractVector{RT}
     data::R
     dh::DofHandler
     function FaceStateVector(data::AbstractMatrix, dh::DofHandler)
@@ -85,11 +85,11 @@ function Base.similar(s::FaceStateVector)
     return similar(data, s)
 end
 
-function Base.similar(data, f::FaceStateVector)
+function Base.similar(data, s::FaceStateVector)
     return if ndims(data) == 1
-        FaceStateVector(reshape(data, (:, 1)), f.dh)
+        FaceStateVector(reshape(data, (:, 1)), s.dh)
     else
-        FaceStateVector(data, f.dh)
+        FaceStateVector(data, s.dh)
     end
 end
 
