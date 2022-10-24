@@ -267,7 +267,7 @@ end
         length(frame) == n || throw(ArgumentError("frame must have length $(n)."))
     end
     for (i, Qi) in enumerate(eachrow(Qint))
-        Qext[i, :] = stateBC(Qi, coords[i], frame[i], time, eq, bc)
+        Qext[i, :] = bc(Qi, coords[i], frame[i], time, eq)
     end
     return nothing
 end

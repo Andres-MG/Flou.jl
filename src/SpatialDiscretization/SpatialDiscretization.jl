@@ -19,15 +19,15 @@ function construct_cache end
 abstract type AbstractBC end
 
 """
-    DirichletBC(Qext::Function)
+    GenericBC(Qext::Function)
 
-Dirichlet boundary condition where `Qext = Qext(Q, x, n, t, b, time, equation)`.
+Generic boundary condition where `Qext = Qext(Q, x, frame, time, equation)`.
 """
-struct DirichletBC{QF} <: AbstractBC
-    Qext::QF     # Qext(Qin, x, frame, time, eq)
+struct GenericBC{QF} <: AbstractBC
+    Qext::QF
 end
 
-function stateBC(Qin, x, frame, time, eq, bc::DirichletBC)
+function (bc::GenericBC)(Qin, x, frame, time, eq)
     return bc.Qext(Qin, x, frame, time, eq)
 end
 

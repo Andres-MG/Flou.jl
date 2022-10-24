@@ -364,19 +364,19 @@ struct EulerInflowBC{RT,NV} <: AbstractBC
     end
 end
 
-function stateBC(_, _, _, _, ::EulerEquation, bc::EulerInflowBC)
+function (bc::EulerInflowBC)(_, _, _, _, ::EulerEquation)
     return bc.Qext
 end
 
 struct EulerOutflowBC <: AbstractBC end
 
-function stateBC(Qin, _, _, _, eq::EulerEquation, ::EulerOutflowBC)
+function (::EulerOutflowBC)(Qin, _, _, _, eq::EulerEquation)
     return SVector{nvariables(eq)}(Qin)
 end
 
 struct EulerSlipBC <: AbstractBC end
 
-function stateBC(Qin, _, frame, _, eq::EulerEquation, ::EulerSlipBC)
+function (::EulerSlipBC)(Qin, _, frame, _, eq::EulerEquation)
     Qn = rotate2face(Qin, frame, eq) |> MVector
     Qn[2] = -Qn[2]
     return rotate2phys(Qn, frame, eq)

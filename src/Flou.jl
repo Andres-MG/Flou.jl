@@ -47,7 +47,7 @@ export get_intface, get_bdface, get_region
 export eachelement, eachboundary, eachface, eachintface, eachbdface, eachvertex, eachregion
 
 # SpatialDiscretization.jl
-export DirichletBC
+export GenericBC
 
 ## ./StdRegions.jl
 export GaussQuadrature, GL, GaussLobattoQuadrature, GLL

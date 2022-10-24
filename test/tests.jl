@@ -77,8 +77,8 @@ function SodTube1D()
         return Flou.vars_prim2cons(P, eq)
     end
     ∂Ω = Dict(
-        "1" => DirichletBC(Qext),
-        "2" => DirichletBC(Qext),
+        "1" => GenericBC(Qext),
+        "2" => GenericBC(Qext),
     )
 
     div = SplitDivOperator(
@@ -123,8 +123,8 @@ function Shockwave2D()
         return (x < 0) ? Q0 : Q1
     end
     ∂Ω = Dict(
-        "1" => DirichletBC(Qext),
-        "2" => DirichletBC(Qext),
+        "1" => GenericBC(Qext),
+        "2" => GenericBC(Qext),
     )
 
     div = SSFVDivOperator(
