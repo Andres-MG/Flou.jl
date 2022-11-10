@@ -1,6 +1,6 @@
 struct DGSEM{RT,MT,ST,G,O,C<:DGcache{RT},BCT,FT} <: DiscontinuousGalerkin{RT}
     mesh::MT
-    stdvec::ST
+    std::ST
     dofhandler::DofHandler
     geometry::G
     operators::O
@@ -11,7 +11,7 @@ end
 
 function DGSEM(
     mesh::AbstractMesh{ND,RT},
-    stdvec,
+    std,
     equation,
     operators,
     bcs,
@@ -20,21 +20,6 @@ function DGSEM(
     ND,
     RT,
 }
-    # Standard elements
-    (isa(stdvec, AbstractStdRegion) || length(stdvec) == nregions(mesh)) || throw(
-        ArgumentError(
-            "The mesh has $(nregions(mesh)) region(s) but " *
-            "$(length(stdvec)) different standard regions were given."
-        )
-    )
-    if isa(stdvec, AbstractStdRegion)
-        _stdvec = ntuple(_ -> stdvec, nregions(mesh))
-    else
-        _stdvec = Tuple(stdvec)
-    end
-
-    elem2std = [get_region(mesh, ie) for ie in 1:nelements(mesh)]
-
     # Boundary conditions
     nbounds = nboundaries(mesh)
     length(bcs) == nbounds || throw(ArgumentError(
@@ -49,7 +34,7 @@ function DGSEM(
     _bcs = Tuple(_bcs)
 
     # DOF handler
-    dofhandler = DofHandler(mesh, _stdvec, elem2std)
+    dofhandler = DofHandler(mesh, std)
 
     if operators isa AbstractOperator
         _operators = (operators,)
@@ -58,11 +43,8 @@ function DGSEM(
     end
 
     # Physical elements
-    subgrid = false
-    for std in _stdvec
-        subgrid |= any(requires_subgrid.(_operators, Ref(std)))
-    end
-    geometry = Geometry(_stdvec, dofhandler, mesh, subgrid)
+    subgrid = any(requires_subgrid.(_operators, Ref(std)))
+    geometry = Geometry(std, dofhandler, mesh, subgrid)
 
     # Equation cache
     cache = construct_cache(:dgsem, RT, dofhandler, equation)
@@ -76,7 +58,7 @@ function DGSEM(
 
     return DGSEM(
         mesh,
-        _stdvec,
+        std,
         dofhandler,
         geometry,
         _operators,
@@ -86,6 +68,7 @@ function DGSEM(
     )
 end
 
+datatype(::DGSEM{RT}) where {RT} = RT
 get_spatialdim(dg::DGSEM) = get_spatialdim(dg.mesh)
 
 nelements(dg::DGSEM) = nelements(dg.dofhandler)
@@ -96,16 +79,14 @@ eachelement(dg::DGSEM) = eachelement(dg.dofhandler)
 eachface(dg::DGSEM) = eachface(dg.dofhandler)
 eachdof(dg::DGSEM) = eachdof(dg.dofhandler)
 
-@inline function get_std(dg::DGSEM, ie)
-    return @inbounds dg.stdvec[get_stdid(dg.dofhandler, ie)]
-end
-
-function Base.show(io::IO, m::MIME"text/plain", dg::DGSEM{RT}) where {RT}
+function Base.show(io::IO, m::MIME"text/plain", dg::DGSEM)
     @nospecialize
+
+    rt = datatype(dg)
 
     # Header
     println(io, "=========================================================================")
-    println(io, "DGSEM{", RT, "} spatial discretization")
+    println(io, "DGSEM{", rt, "} spatial discretization")
 
     # Mesh
     println(io, "\nMesh:")
@@ -113,15 +94,12 @@ function Base.show(io::IO, m::MIME"text/plain", dg::DGSEM{RT}) where {RT}
     show(io, m, dg.mesh)
 
     # Standard regions
-    println(io, "\n\nStandard regions:")
-    println(io, "-----------------")
-    for std in dg.stdvec
-        show(io, m, std)
-        println(io, "\n")
-    end
+    println(io, "\n\nStandard region:")
+    println(io, "----------------")
+    show(io, m, dg.std)
 
     # Operators
-    println(io, "Operators:")
+    println(io, "\n\nOperators:")
     println(io, "----------")
     for op in dg.operators
         show(io, m, op)
@@ -133,18 +111,23 @@ function Base.show(io::IO, m::MIME"text/plain", dg::DGSEM{RT}) where {RT}
     return nothing
 end
 
-function get_max_dt(q::AbstractMatrix, dg::DGSEM, eq::AbstractEquation, cfl::Real)
-    Q = StateVector(q, dg.dofhandler)
-    Δt = typemax(eltype(q))
+function get_max_dt(
+    q::Union{AbstractVector{<:SVector},AbstractMatrix{<:Number}},
+    dg::DGSEM,
+    eq::AbstractEquation,
+    cfl::Real,
+)
+    Q = StateVector{nvariables(eq)}(q, dg.dofhandler)
+    Δt = typemax(datatype(Q))
+    std = dg.std
+    d = get_spatialdim(dg)
+    n = ndofs(std)
 
     for ie in eachelement(dg)
-        std = get_std(dg, ie)
-        d = get_spatialdim(dg)
-        Δx = dg.geometry.elements[ie].volume[] / ndofs(std)
+        Δx = dg.geometry.elements[ie].volume[] / n
         Δx = d == 1 ? Δx : (d == 2 ? sqrt(Δx) : cbrt(Δx))
-
         @inbounds for i in eachdof(std)
-            Δt = min(Δt, get_max_dt(view(Q[ie], i, :), Δx, cfl, eq))
+            Δt = min(Δt, get_max_dt(Q[ie][i], Δx, cfl, eq))
         end
     end
 

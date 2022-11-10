@@ -1,6 +1,6 @@
 abstract type AbstractEquation{ND,NV} end
 
-ndims(::AbstractEquation{ND}) where {ND} = ND
+Base.ndims(::AbstractEquation{ND}) where {ND} = ND
 nvariables(::AbstractEquation{ND,NV}) where {ND,NV} = NV
 
 eachdim(e::AbstractEquation) = Base.OneTo(ndims(e))

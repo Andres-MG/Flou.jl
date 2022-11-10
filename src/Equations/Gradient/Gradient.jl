@@ -1,15 +1,15 @@
 #==========================================================================================#
 #                                           DGSEM                                          #
 
-struct GradientDGcache{RT,Q,F} <: DGcache{RT}
-    Qf::FaceStateVector{RT,Q}
-    Fn::FaceBlockVector{RT,F}
+struct GradientDGcache{NV,RT,DQ,DF,TQ,TF} <: DGcache{RT}
+    Qf::FaceStateVector{NV,RT,DQ,TQ}
+    Fn::FaceBlockVector{NV,RT,DF,TF}
 end
 
 function construct_cache(disctype, realtype, dofhandler, eq::GradientEquation)
     if disctype == :dgsem
-        Qf = FaceStateVector{realtype}(undef, nvariables(eq), dofhandler)
-        Fn = FaceBlockVector{realtype}(undef, nvariables(eq), ndims(eq), dofhandler)
+        Qf = FaceStateVector{nvariables(eq),realtype}(undef, dofhandler)
+        Fn = FaceBlockVector{nvariables(eq),realtype}(undef, ndims(eq), dofhandler)
         return GradientDGcache(Qf, Fn)
     else
         @error "Unknown discretization type $(disctype)"
@@ -21,11 +21,11 @@ function rhs!(_G, _Q, p::Tuple{<:DGSEM,<:GradientEquation}, _)
     dg, equation = p
 
     # Wrap solution and its derivative
-    Q = StateVector(_Q, dg.dofhandler)
-    G = BlockVector(_G, dg.dofhandler)
+    Q = StateVector{nvariables(equation)}(_Q, dg.dofhandler)
+    G = BlockVector{nvariables(equation)}(_G, dg.dofhandler)
 
     # Restart gradients
-    fill!(G, zero(eltype(G)))
+    fill!(G, zero(datatype(G)))
 
     # Volume flux
     volume_contribution!(G, Q, dg, equation, dg.operators[1])
@@ -50,16 +50,14 @@ end
 
 function volume_contribution!(G, Q, dg, equation::GradientEquation, operator)
     @flouthreads for ie in eachelement(dg)
-        std = get_std(dg, ie)
-        volume_contribution!(G[ie], Q[ie], ie, std, dg, equation, operator)
+        volume_contribution!(G[ie], Q[ie], ie, dg.std, dg, equation, operator)
     end
     return nothing
 end
 
 function surface_contribution!(G, Q, Fn, dg, equation::GradientEquation, operator)
     @flouthreads for ie in eachelement(dg)
-        std = get_std(dg, ie)
-        surface_contribution!(G[ie], Q[ie], Fn, ie, std, dg, equation, operator)
+        surface_contribution!(G[ie], Q[ie], Fn, ie, dg.std, dg, equation, operator)
     end
     return nothing
 end
@@ -67,9 +65,11 @@ end
 #==========================================================================================#
 #                                 Gradient struct interface                                #
 
-function Base.show(io::IO, ::MIME"text/plain", eq::GradientEquation{ND,NV}) where {ND,NV}
+function Base.show(io::IO, ::MIME"text/plain", eq::GradientEquation)
     @nospecialize
-    print(io, ND, "D Gradient equation with ", NV, " variables")
+    nd = ndims(eq)
+    nvars = nvariables(eq)
+    print(io, nd, "D Gradient equation with ", nvars, " variables")
     return nothing
 end
 
@@ -82,12 +82,14 @@ function variablenames(::GradientEquation{ND,NV}; unicode=false) where {ND,NV}
     return names |> vec |> Tuple
 end
 
-function rotate2face(Qf::AbstractVector, _, ::GradientEquation{ND,NV}) where {ND,NV}
+function rotate2face(Qf, _, ::GradientEquation{ND,NV}) where {ND,NV}
     return SVector{NV}(Qf)
 end
 
-function rotate2phys(Qrot::AbstractMatrix, _, ::GradientEquation{ND,NV}) where {ND,NV}
-    return SMatrix{NV,ND}(Qrot)
+function rotate2phys(Qrot, _, ::GradientEquation{ND,NV}) where {ND,NV}
+    return ntuple(d -> SVector{NV}(
+            Qrot[d][v] for v in 1:NV
+        ), ND)
 end
 
 #==========================================================================================#
@@ -101,9 +103,9 @@ function numericalflux(
     ::StdAverageNumericalFlux,
 ) where {
     ND,
-    NV,
+    NV
 }
-    return SMatrix{NV,ND}(
-        (Ql[v] + Qr[v]) * n[d] / 2 for v in 1:NV, d in 1:ND
-    )
+    return ntuple(d -> SVector{NV}(
+            (Ql[v] + Qr[v]) * n[d] / 2 for v in 1:NV
+        ), ND)
 end

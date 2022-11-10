@@ -10,17 +10,15 @@ function get_monitor(dg::DGSEM, equation::EulerEquation, name::Symbol, _)
     end
 end
 
+# TODO: paralellization does not work, why?
 function entropy_monitor(dg::DGSEM, ::EulerEquation)
     monitor = (Q_, dg, equation) -> begin
-        rt = eltype(Q_)
-        Q = StateVector(Q_, dg.dofhandler)
-        s = zero(rt)
-        svec = Vector{rt}(undef, get_std(dg, 1) |> ndofs)
-        @inbounds for ie in eachelement(dg)
-            std = get_std(dg, ie)
-            resize!(svec, ndofs(std))
-            for i in eachindex(std)
-                svec[i] = math_entropy(view(Q[ie], i, :), equation)
+        Q = StateVector{nvariables(equation)}(Q_, dg.dofhandler)
+        svec = dg.std.cache.scalar[1][1]
+        s = zero(datatype(Q))
+        for ie in eachelement(dg)
+            @inbounds for i in eachindex(svec)
+                svec[i] = math_entropy(Q[ie][i], equation)
             end
             s += integrate(svec, dg.geometry.elements[ie])
         end

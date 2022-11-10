@@ -1,15 +1,15 @@
 #==========================================================================================#
 #                                           DGSEM                                          #
 
-struct HyperbolicDGcache{RT,R} <: DGcache{RT}
-    Qf::FaceStateVector{RT,R}
-    Fn::FaceStateVector{RT,R}
+struct HyperbolicDGcache{NV,RT,D,T} <: DGcache{RT}
+    Qf::FaceStateVector{NV,RT,D,T}
+    Fn::FaceStateVector{NV,RT,D,T}
 end
 
 function construct_cache(disctype, realtype, dofhandler, equation::HyperbolicEquation)
     if disctype == :dgsem
-        Qf = FaceStateVector{realtype}(undef, nvariables(equation), dofhandler)
-        Fn = FaceStateVector{realtype}(undef, nvariables(equation), dofhandler)
+        Qf = FaceStateVector{nvariables(equation),realtype}(undef, dofhandler)
+        Fn = FaceStateVector{nvariables(equation),realtype}(undef, dofhandler)
         return HyperbolicDGcache(Qf, Fn)
     else
         @error "Unknown discretization type $(disctype)"
@@ -21,11 +21,11 @@ function rhs!(_dQ, _Q, p::Tuple{<:DGSEM,<:HyperbolicEquation}, time)
     dg, equation = p
 
     # Wrap solution and its derivative
-    Q = StateVector(_Q, dg.dofhandler)
-    dQ = StateVector(_dQ, dg.dofhandler)
+    Q = StateVector{nvariables(equation)}(_Q, dg.dofhandler)
+    dQ = StateVector{nvariables(equation)}(_dQ, dg.dofhandler)
 
     # Restart time derivative
-    fill!(dQ, zero(eltype(dQ)))
+    fill!(dQ, zero(datatype(dQ)))
 
     # Volume flux
     volume_contribution!(dQ, Q, dg, equation, dg.operators[1])
@@ -53,16 +53,14 @@ end
 
 function volume_contribution!(dQ, Q, dg, equation::HyperbolicEquation, operator)
     @flouthreads for ie in eachelement(dg)
-        std = get_std(dg, ie)
-        volume_contribution!(dQ[ie], Q[ie], ie, std, dg, equation, operator)
+        volume_contribution!(dQ[ie], Q[ie], ie, dg.std, dg, equation, operator)
     end
     return nothing
 end
 
 function surface_contribution!(dQ, Q, Fn, dg, equation::HyperbolicEquation, operator)
     @flouthreads for ie in eachelement(dg)
-        std = get_std(dg, ie)
-        surface_contribution!(dQ[ie], Q[ie], Fn, ie, std, dg, equation, operator)
+        surface_contribution!(dQ[ie], Q[ie], Fn, ie, dg.std, dg, equation, operator)
     end
     return nothing
 end

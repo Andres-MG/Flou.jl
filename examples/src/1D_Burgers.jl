@@ -32,10 +32,10 @@ DG = DGSEM(mesh, std, equation, div, ())
 x0 = 0.4
 sx = 0.1
 h = 1.0
-Q = StateVector{Float64}(undef, nvariables(equation), DG.dofhandler)
+Q = StateVector{nvariables(equation),Float64}(undef, DG.dofhandler)
 for i in eachdof(DG)
     x = DG.geometry.elements.coords[i][1]
-    Q.data[i, 1] = Flou.gaussian_bump(x, 0.0, 0.0, x0, 0.0, 0.0, sx, 1.0, 1.0, h)
+    Flou.as_mut(Q.data, i) .= Flou.gaussian_bump(x, 0.0, 0.0, x0, 0.0, 0.0, sx, 1.0, 1.0, h)
 end
 
 display(DG)
@@ -44,7 +44,7 @@ println()
 @info "Starting simulation..."
 
 sol, exetime = timeintegrate(
-    Q.data, DG, equation, solver, tf;
+    Q.data.svec, DG, equation, solver, tf;
     alias_u0=true, adaptive=false, dt=Δt,
 )
 

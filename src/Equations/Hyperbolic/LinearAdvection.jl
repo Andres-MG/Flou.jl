@@ -25,7 +25,7 @@ function variablenames(::LinearAdvection; unicode=false)
 end
 
 function volumeflux(Q, eq::LinearAdvection{ND}) where {ND}
-    return SMatrix{ND,1}(a * Q[1] for a in eq.a)
+    return ntuple(d -> SVector{1}(eq.a[d] * Q[1]), ND)
 end
 
 function rotate2face(Qf, _, ::LinearAdvection)
@@ -40,28 +40,12 @@ function get_max_dt(_, Δx::Real, cfl::Real, eq::LinearAdvection)
     return cfl * Δx / norm(eq.a)
 end
 
-function numericalflux(
-    Ql,
-    Qr,
-    n,
-    eq::LinearAdvection{ND},
-    ::StdAverageNumericalFlux,
-) where {
-    ND,
-}
+function numericalflux(Ql, Qr, n, eq::LinearAdvection, ::StdAverageNumericalFlux)
     an = dot(eq.a, n)
     return SVector(an * (Ql[1] + Qr[1]) / 2)
 end
 
-function numericalflux(
-    Ql,
-    Qr,
-    n,
-    eq::LinearAdvection{ND},
-    nf::LxFNumericalFlux,
-) where {
-    ND,
-}
+function numericalflux(Ql, Qr, n, eq::LinearAdvection, nf::LxFNumericalFlux)
     # Average
     Fn = numericalflux(Ql, Qr, n, eq, nf.avg)
 

@@ -3,7 +3,7 @@ module Flou
 using LinearAlgebra: LinearAlgebra, norm, normalize, dot, cross, mul!, factorize, ldiv!
 using LinearAlgebra: transpose, Transpose, diag, Diagonal
 using SparseArrays: SparseArrays, SparseMatrixCSC, sparse, mul!
-using StaticArrays: StaticArrays, SVector, MVector, SMatrix, MMatrix, SDiagonal
+using StaticArrays: StaticArrays, SVector, MVector, SMatrix, SDiagonal, @SVector
 using FastGaussQuadrature: FastGaussQuadrature, gausslegendre, gausslobatto
 using Polynomials: Polynomials, Polynomial, derivative
 using SpecialPolynomials: SpecialPolynomials, Lagrange
@@ -35,7 +35,7 @@ end
 const AbstractVecOrTuple = Union{AbstractVector,Tuple}
 
 # EquationsInterface.jl
-export ndims, nvariables, eachdim, eachvariable, variablenames
+export nvariables, eachdim, eachvariable, variablenames
 
 # Mesh.jl
 export CartesianMesh, StepMesh, UnstructuredMesh
@@ -57,9 +57,9 @@ export get_quadrature
 
 ## ./Containers.jl
 export StateVector, BlockVector, FaceStateVector, FaceBlockVector
+export datatype, eachdim
 
 ## ./DG.jl
-export get_std
 export StdAverageNumericalFlux, LxFNumericalFlux
 export integrate
 
@@ -94,7 +94,7 @@ export open_for_write, close_file!
 export add_fielddata!, add_celldata!, add_pointdata!, add_solution!
 
 # Basic utilities
-include("Utilities.jl")
+include("Utilities/Utilities.jl")
 
 # Equations interface
 include("Equations/EquationsInterface.jl")

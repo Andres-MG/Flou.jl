@@ -14,7 +14,9 @@ function variablenames(::KPPEquation; unicode=false)
 end
 
 function volumeflux(Q, ::KPPEquation)
-    return SMatrix{2,1}(sin(Q[1]), cos(Q[1]))
+    return SVector{1}(
+        SVector{2}(sin(Q[1]), cos(Q[1]))
+    )
 end
 
 function rotate2face(Qf, _, ::KPPEquation)

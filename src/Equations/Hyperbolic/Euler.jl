@@ -41,10 +41,12 @@ function volumeflux(Q, eq::EulerEquation{1})
     ρ, ρu, ρe = Q
     u = ρu/ρ
     p = pressure(Q, eq)
-    return SMatrix{1,3}(
-        ρu,
-        ρu * u + p,
-        (ρe + p) * u,
+    return (
+        SVector{3}(
+            ρu,
+            ρu * u + p,
+            (ρe + p) * u,
+        ),
     )
 end
 
@@ -52,11 +54,19 @@ function volumeflux(Q, eq::EulerEquation{2})
     ρ, ρu, ρv, ρe = Q
     u, v = ρu/ρ, ρv/ρ
     p = pressure(Q, eq)
-    return SMatrix{2,4}(
-        ρu,           ρv,
-        ρu * u + p,   ρv * u,
-        ρu * v,       ρv * v + p,
-        (ρe + p) * u, (ρe + p) * v,
+    return (
+        SVector{4}(
+            ρu,
+            ρu * u + p,
+            ρu * v,
+            (ρe + p) * u,
+        ),
+        SVector{4}(
+            ρv,
+            ρv * u,
+            ρv * v + p,
+            (ρe + p) * v,
+        ),
     )
 end
 
@@ -64,12 +74,28 @@ function volumeflux(Q, eq::EulerEquation{3})
     ρ, ρu, ρv, ρw, ρe = Q
     u, v, w = ρu/ρ, ρv/ρ, ρw/ρ
     p = pressure(Q, eq)
-    return SMatrix{3,5}(
-        ρu,           ρv,           ρw,
-        ρu * u + p,   ρv * u,       ρw * u,
-        ρu * v,       ρv * v + p,   ρw * v,
-        ρu * w,       ρv * w,       ρw * w + p,
-        (ρe + p) * u, (ρe + p) * v, (ρe + p) * w,
+    return (
+        SVector{5}(
+            ρu,
+            ρu * u + p,
+            ρu * v,
+            ρu * w,
+            (ρe + p) * u,
+        ),
+        SVector{5}(
+            ρv,
+            ρv * u,
+            ρv * v + p,
+            ρv * w,
+            (ρe + p) * v,
+        ),
+        SVector{5}(
+            ρw,
+            ρw * u,
+            ρw * v,
+            ρw * w + p,
+            (ρe + p) * w,
+        ),
     )
 end
 
@@ -379,7 +405,7 @@ struct EulerSlipBC <: AbstractBC end
 function (::EulerSlipBC)(Qin, _, frame, _, eq::EulerEquation)
     Qn = rotate2face(Qin, frame, eq) |> MVector
     Qn[2] = -Qn[2]
-    return rotate2phys(Qn, frame, eq)
+    return rotate2phys(SVector(Qn), frame, eq)
 end
 
 #==========================================================================================#
@@ -458,7 +484,7 @@ function numericalflux(
     al = soundvelocity(ρl, pl, eq)
     ar = soundvelocity(ρr, pr, eq)
     λ = max(abs(ul) + al, abs(ur) + ar)
-    return SVector(Fn + λ .* (Ql - Qr) ./ 2 .* nf.intensity)
+    return SVector(Fn + λ * (Ql - Qr) / 2 * nf.intensity)
 end
 
 struct ChandrasekharAverage <: AbstractNumericalFlux end
@@ -594,7 +620,7 @@ function numericalflux(
                 ρ * (u * (ur - ul) + v * (vr - vl) + w * (wr - wl) + (1/βr - 1/βl) / 2(eq.γ - 1)),
         )
     end
-    return SVector(Fn .- λ / 2 .* 𝓓 .* nf.intensity)
+    return SVector(Fn - λ / 2 * 𝓓 * nf.intensity)
 end
 
 struct MatrixDissipation{T,RT} <: AbstractNumericalFlux
@@ -673,7 +699,7 @@ function numericalflux(
             one(rt),  u + a,    v,        w,        h + u * a,
         )
     end
-    return SVector(Fn .+ R * Λ * T * R' * (Wl .- Wr) ./ 2 .* nf.intensity)
+    return SVector(Fn + R * Λ * T * R' * (Wl - Wr) / 2 * nf.intensity)
 end
 
 #==========================================================================================#

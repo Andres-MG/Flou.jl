@@ -6,15 +6,15 @@ struct GaussLobattoQuadrature <: AbstractQuadrature end
 const GL = GaussQuadrature
 const GLL = GaussLobattoQuadrature
 
-abstract type AbstractStdRegion{ND,Q,Dims} end
+abstract type AbstractStdRegion{QT,ND,NP} end
 
-Base.size(::AbstractStdRegion{ND,Q,Dims}) where {ND,Q,Dims} = Dims
-Base.size(::AbstractStdRegion{ND,Q,Dims}, i) where {ND,Q,Dims} = Dims[i]
-Base.length(::AbstractStdRegion{ND,Q,Dims}) where {ND,Q,Dims} = prod(Dims)
+Base.size(::AbstractStdRegion{QT,ND,NP}) where {QT,ND,NP} = ntuple(_ -> NP, ND)
+Base.size(::AbstractStdRegion{QT,ND,NP}, i) where {QT,ND,NP} = NP
+Base.length(::AbstractStdRegion{QT,ND,NP}) where {QT,ND,NP} = NP^ND
 Base.eachindex(s::AbstractStdRegion, i) = Base.OneTo(size(s, i))
 Base.eachindex(s::AbstractStdRegion) = Base.OneTo(length(s))
-Base.LinearIndices(s::AbstractStdRegion, _=false) = LinearIndices(size(s))
-Base.CartesianIndices(s::AbstractStdRegion, _=false) = CartesianIndices(size(s))
+Base.LinearIndices(s::AbstractStdRegion) = LinearIndices(size(s))
+Base.CartesianIndices(s::AbstractStdRegion) = CartesianIndices(size(s))
 
 """
     is_tensor_product(std)
@@ -36,10 +36,10 @@ function slave2master end
 
 function master2slave end
 
-get_spatialdim(::AbstractStdRegion{ND}) where {ND} = ND
-get_quadrature(::AbstractStdRegion{ND,Q}) where {ND,Q} = Q
+get_spatialdim(::AbstractStdRegion{QT,ND}) where {QT,ND} = ND
+get_quadrature(::AbstractStdRegion{QT}) where {QT} = QT
 
-ndofs(s::AbstractStdRegion, equispaced=false) = equispaced ? length(s.ξe) : length(s)
+ndofs(s::AbstractStdRegion; equispaced=false) = equispaced ? length(s.ξe) : length(s)
 
 eachdirection(s::AbstractStdRegion) = Base.OneTo(ndirections(s))
 eachdof(s::AbstractStdRegion) = Base.OneTo(ndofs(s))
@@ -47,44 +47,51 @@ eachdof(s::AbstractStdRegion) = Base.OneTo(ndofs(s))
 #==========================================================================================#
 #                                     Temporary cache                                      #
 
-struct StdRegionCache{ND,RT,V}
-    scalar::Vector{NTuple{3,Matrix{RT}}}
-    vector::Vector{NTuple{3,Array{RT,3}}}
-    sharp::Vector{NTuple{ND,Array{RT,3}}}
-    sharptensor::Vector{NTuple{ND,V}}
-    subcell::Vector{NTuple{ND,Matrix{RT}}}
+struct StdRegionCache{ND,S,T,B,SH,ST,SC}
+    scalar::Vector{NTuple{3,S}}
+    state::Vector{NTuple{3,T}}
+    block::Vector{NTuple{3,B}}
+    sharp::Vector{NTuple{ND,SH}}
+    sharptensor::Vector{NTuple{ND,ST}}
+    subcell::Vector{NTuple{ND,SC}}
 end
 
-function StdRegionCache{RT}(np, nvars) where {RT}
-    ndims = length(np)
+StdRegionCache{RT}(np, nv, ne) where {RT} = StdRegionCache{RT}(Val(length(np)), np, nv, ne)
+
+function StdRegionCache{RT}(::Val{ND}, np, ::Val{NV}, ne) where {ND,RT,NV}
     nthr = Threads.nthreads()
+    npts = np^ND
     tmps = [
-        ntuple(_ -> Matrix{RT}(undef, prod(np), nvars), 3)
+        ntuple(_ -> Vector{RT}(undef, npts), 3)
         for _ in 1:nthr
     ]
-    tmpv = [
-        ntuple(_ -> Array{RT,3}(undef, prod(np), nvars, ndims), 3)
+    tmpst = [
+        ntuple(_ -> HybridVector{NV,RT}(undef, npts), 3)
+        for _ in 1:nthr
+    ]
+    tmpb = [
+        ntuple(_ -> HybridMatrix{NV,RT}(undef, npts, ND), 3)
         for _ in 1:nthr
     ]
     tmp♯ = [
-        ntuple(i -> Array{RT,3}(undef, np[i], prod(np), nvars), ndims)
+        ntuple(i -> HybridMatrix{NV,RT}(undef, np, npts), ND)
         for _ in 1:nthr
     ]
     tmp♯tensor = [
-        ntuple(i -> reshape(tmp♯[ithr][i], np[i], np..., nvars), ndims)
+        ntuple(i -> reshape(tmp♯[ithr][i], np, ntuple(_ -> np, ND)...), ND)
         for ithr in 1:nthr
     ]
     tmpsubcell = [
-        ntuple(i -> Matrix{RT}(undef, np[i] + 1, nvars), ndims)
+        ntuple(i -> HybridVector{NV,RT}(undef, np + 1), ND)
         for _ in 1:nthr
     ]
-    return StdRegionCache(tmps, tmpv, tmp♯, tmp♯tensor, tmpsubcell)
+    return StdRegionCache(tmps, tmpst, tmpb, tmp♯, tmp♯tensor, tmpsubcell)
 end
 
 #==========================================================================================#
 #                                      Standard point                                      #
 
-struct StdPoint <: AbstractStdRegion{0,GaussQuadrature,(1,)} end
+struct StdPoint <: AbstractStdRegion{GaussQuadrature,0,1} end
 
 is_tensor_product(::StdPoint) = true
 ndirections(::StdPoint) = 1
@@ -101,8 +108,8 @@ end
 #==========================================================================================#
 #                                     Standard segment                                     #
 
-struct StdSegment{QT,Dims,RT,MM,F,C} <: AbstractStdRegion{1,QT,Dims}
-    faces::F
+struct StdSegment{QT,NP,RT,MM,F,C} <: AbstractStdRegion{QT,1,NP}
+    face::F
     ξe::Vector{SVector{1,RT}}
     ξc::Tuple{Vector{SVector{1,RT}}}
     ξ::Vector{SVector{1,RT}}
@@ -123,19 +130,25 @@ is_tensor_product(::StdSegment) = true
 ndirections(::StdSegment) = 1
 nvertices(::StdSegment) = 2
 
+function StdSegment{RT}(np::Integer, qtype, nvars; npe=np[1]) where {RT}
+    return StdSegment{RT}(Val(np), qtype, Val(nvars); npe=npe)
+end
+
 function StdSegment{RT}(
-    np::Integer,
+    ::Val{NP},
     qtype::AbstractQuadrature,
-    nvars::Integer=1;
-    npe=np,
+    nvars::Val{NV}=Val(1);
+    npe=NP[1],
 ) where {
+    NP,
     RT<:Real,
+    NV
 }
-    fstd = (StdPoint(), StdPoint())
+    fstd = StdPoint()
     _ξ, ω = if qtype isa(GaussQuadrature)
-        gausslegendre(np)
+        gausslegendre(NP)
     elseif qtype isa(GaussLobattoQuadrature)
-        gausslobatto(np)
+        gausslobatto(NP)
     else
         throw(ArgumentError("Only Gauss and Gauss-Lobatto quadratures are implemented."))
     end
@@ -147,30 +160,30 @@ function StdSegment{RT}(
     ξe = [SVector(ξ) for ξ in _ξe]
 
     # Complementary nodes
-    ξc1 = Vector{SVector{1,RT}}(undef, np + 1)
+    ξc1 = Vector{SVector{1,RT}}(undef, NP + 1)
     ξc1[1] = SVector(-one(RT))
-    for i in 1:np
+    for i in 1:NP
         ξc1[i + 1] = ξc1[i] .+ ω[i]
     end
-    ξc2 = Vector{SVector{1,RT}}(undef, np + 1)
-    ξc2[np + 1] = SVector(one(RT))
-    for i in np:-1:1
+    ξc2 = Vector{SVector{1,RT}}(undef, NP + 1)
+    ξc2[NP + 1] = SVector(one(RT))
+    for i in NP:-1:1
         ξc2[i] = ξc2[i + 1] .- ω[i]
     end
     ξc = (ξc1 .+ ξc2) ./ 2
     ξc[1] = SVector(-one(RT))
-    ξc[np + 1] = SVector(one(RT))
+    ξc[NP + 1] = SVector(one(RT))
     ξc = tuple(ξc)
 
     # Mass matrix
     M = Diagonal(ω)
 
     # Lagrange basis
-    D = Matrix{RT}(undef, np, np)
-    _n2e = Matrix{RT}(undef, npe, np)
-    l = (Vector{RT}(undef, np), Vector{RT}(undef, np))
-    y = fill(zero(RT), np)
-    for i in 1:np
+    D = Matrix{RT}(undef, NP, NP)
+    _n2e = Matrix{RT}(undef, npe, NP)
+    l = (Vector{RT}(undef, NP), Vector{RT}(undef, NP))
+    y = fill(zero(RT), NP)
+    for i in 1:NP
         y[i] = one(RT)
         Li = convert(Polynomial, Lagrange(_ξ, y))
         dLi = derivative(Li)
@@ -197,11 +210,11 @@ function StdSegment{RT}(
     K♯ = -K♯ + B
 
     # Temporary storage
-    cache = StdRegionCache{RT}(np, nvars)
+    cache = StdRegionCache{RT}(Val(1), NP, nvars, npe)
 
     return StdSegment{
         typeof(qtype),
-        Tuple(np),
+        NP,
         eltype(ω),
         typeof(M),
         typeof(fstd),
@@ -225,16 +238,22 @@ function StdSegment{RT}(
     )
 end
 
-function Base.show(io::IO, ::MIME"text/plain", s::StdSegment{QT,D,RT}) where {QT,D,RT}
+function Base.show(io::IO, ::MIME"text/plain", s::StdSegment)
     @nospecialize
-    print(io, "StdSegment{", RT, "}: ")
-    if QT == GaussQuadrature
-        print(io,  "Gauss quadrature with ", D[1], " nodes")
-    elseif QT == GaussLobattoQuadrature
-        print(io, "Gauss-Lobatto quadrature with ", D[1], " nodes")
+
+    rt = eltype(s.D[1])
+    qt = get_quadrature(s)
+    np = ndofs(s)
+
+    print(io, "StdSegment{", rt, "}: ")
+    if qt == GaussQuadrature
+        print(io, "Gauss quadrature with ", np, " nodes")
+    elseif qt == GaussLobattoQuadrature
+        print(io, "Gauss-Lobatto quadrature with ", np, " nodes")
     else
         @assert false "[StdRegion.show] You shouldn't be here..."
     end
+
     return nothing
 end
 
@@ -269,8 +288,8 @@ end
 #==========================================================================================#
 #                                       Standard quad                                      #
 
-struct StdQuad{QT,Dims,RT,MM,F,C} <: AbstractStdRegion{2,QT,Dims}
-    faces::F
+struct StdQuad{QT,NP,RT,MM,F,C} <: AbstractStdRegion{QT,2,NP}
+    face::F
     ξe::Vector{SVector{2,RT}}
     ξc::NTuple{2,Matrix{SVector{2,RT}}}
     ξ::Vector{SVector{2,RT}}
@@ -287,103 +306,90 @@ struct StdQuad{QT,Dims,RT,MM,F,C} <: AbstractStdRegion{2,QT,Dims}
     cache::C
 end
 
-function Base.LinearIndices(s::StdQuad, transpose=false)
-    return if transpose
-        LinearIndices((size(s, 2), size(s, 1)))
-    else
-        LinearIndices(size(s))
-    end
-end
-function Base.CartesianIndices(s::StdQuad, transpose=false)
-    return if transpose
-        CartesianIndices((size(s, 2), size(s, 1)))
-    else
-        CartesianIndices(size(s))
-    end
-end
-
 is_tensor_product(::StdQuad) = true
 ndirections(::StdQuad) = 2
 nvertices(::StdQuad) = 4
 
+function StdQuad{RT}(np::Integer, qtype, nvars; npe=nothing) where {RT}
+    return StdQuad{RT}(Val(np), qtype, Val(nvars); npe=npe)
+end
+
 function StdQuad{RT}(
-    np::AbstractVecOrTuple,
+    ::Val{NP},
     qtype::AbstractQuadrature,
-    nvars::Integer=1;
+    nvars::Val{NV}=Val(1);
     npe=nothing,
 ) where {
+    NP,
     RT<:Real,
+    NV
 }
     # Quadratures
-    if isnothing(npe)
-        npe = maximum(np)
-    end
-    fstd = (
-        StdSegment{RT}(np[2], qtype, nvars; npe=npe),
-        StdSegment{RT}(np[1], qtype, nvars; npe=npe),
-    )
-    ξ = vec([SVector(ξx[1], ξy[1]) for ξx in fstd[2].ξ, ξy in fstd[1].ξ])
-    ω = vec([ωx * ωy for ωx in fstd[2].ω, ωy in fstd[1].ω])
+    npe = npe === nothing ? NP : npe
+
+    fstd = StdSegment{RT}(Val(NP), qtype, nvars; npe=npe)
+
+    ξ = vec([SVector(ξx[1], ξy[1]) for ξx in fstd.ξ, ξy in fstd.ξ])
+    ω = vec([ωx * ωy for ωx in fstd.ω, ωy in fstd.ω])
 
     # Equispaced nodes
-    ξe = vec([SVector(ξx[1], ξy[1]) for ξx in fstd[2].ξe, ξy in fstd[1].ξe])
-    _n2e = kron(fstd[1]._n2e, fstd[2]._n2e)
+    ξe = vec([SVector(ξx[1], ξy[1]) for ξx in fstd.ξe, ξy in fstd.ξe])
+    _n2e = kron(fstd._n2e, fstd._n2e)
 
     # Complementary nodes
-    ξc1 = [SVector(ξx[1], ξy[1]) for ξx in fstd[2].ξc[1], ξy in fstd[1].ξ]
-    ξc2 = [SVector(ξx[1], ξy[1]) for ξx in fstd[2].ξ, ξy in fstd[1].ξc[1]]
+    ξc1 = [SVector(ξx[1], ξy[1]) for ξx in fstd.ξc[1], ξy in fstd.ξ]
+    ξc2 = [SVector(ξx[1], ξy[1]) for ξx in fstd.ξ, ξy in fstd.ξc[1]]
     ξc = (ξc1, ξc2)
 
     # Mass matrix
     M = Diagonal(ω)
 
     # Derivative matrices
-    I = (Diagonal(ones(np[1])), Diagonal(ones(np[2])))
-    Iω = (Diagonal(fstd[2].ω), Diagonal(fstd[1].ω))
+    I = Diagonal(ones(NP))
+    Iω = Diagonal(fstd.ω)
     D = (
-        kron(I[2], fstd[2].D[1]),
-        kron(fstd[1].D[1], I[1]),
+        kron(I, fstd.D[1]),
+        kron(fstd.D[1], I),
     )
     Q = (
-        kron(I[2], fstd[2].Q[1]),
-        kron(fstd[1].Q[1], I[2]),
+        kron(I, fstd.Q[1]),
+        kron(fstd.Q[1], I),
     )
     K = (
-        kron(Iω[2], fstd[2].K[1]),
-        kron(fstd[1].K[1], Iω[1]),
+        kron(Iω, fstd.K[1]),
+        kron(fstd.K[1], Iω),
     )
     Ks = (
-        kron(Iω[2], fstd[2].Ks[1]),
-        kron(fstd[1].Ks[1], Iω[1]),
+        kron(Iω, fstd.Ks[1]),
+        kron(fstd.Ks[1], Iω),
     )
     K♯ = (
-        kron(diag(Iω[2]), fstd[2].K♯[1]),
-        kron(fstd[1].K♯[1], diag(Iω[1])),
+        kron(diag(Iω), fstd.K♯[1]),
+        kron(fstd.K♯[1], diag(Iω)),
     )
 
     # Projection operator
     l = (
-        kron(I[2], fstd[2].l[1]),
-        kron(I[2], fstd[2].l[2]),
-        kron(fstd[1].l[1], I[1]),
-        kron(fstd[1].l[2], I[1]),
+        kron(I, fstd.l[1]),
+        kron(I, fstd.l[2]),
+        kron(fstd.l[1], I),
+        kron(fstd.l[2], I),
     )
 
     # Surface contribution
     lω = (
-        kron(Iω[2], fstd[2].lω[1]),
-        kron(Iω[2], fstd[2].lω[2]),
-        kron(fstd[1].lω[1], Iω[1]),
-        kron(fstd[1].lω[2], Iω[1]),
+        kron(Iω, fstd.lω[1]),
+        kron(Iω, fstd.lω[2]),
+        kron(fstd.lω[1], Iω),
+        kron(fstd.lω[2], Iω),
     )
 
     # Temporary storage
-    cache = StdRegionCache{RT}(np, nvars)
+    cache = StdRegionCache{RT}(Val(2), NP, nvars, npe)
 
-    fstd = (fstd[1], fstd[1], fstd[2], fstd[2])
     return StdQuad{
         typeof(qtype),
-        Tuple(np),
+        NP,
         eltype(ω),
         typeof(M),
         typeof(fstd),
@@ -407,18 +413,23 @@ function StdQuad{RT}(
     )
 end
 
-function Base.show(io::IO, ::MIME"text/plain", s::StdQuad{QT,D,RT}) where {QT,D,RT}
+function Base.show(io::IO, ::MIME"text/plain", s::StdQuad)
     @nospecialize
-    println(io, "StdQuad{", RT, "}: ")
-    if QT == GaussQuadrature
-        println(io, " ξ: Gauss quadrature with ", D[1], " nodes")
-        print(io, " η: Gauss quadrature with ", D[2], " nodes")
-    elseif QT == GaussLobattoQuadrature
-        println(io, " ξ: Gauss-Lobatto quadrature with ", D[1], " nodes")
-        print(io, " η: Gauss-Lobatto quadrature with ", D[2], " nodes")
+
+    rt = eltype(s.D[1])
+    np = size(s, 1)
+    qt = get_quadrature(s)
+
+    print(io, "StdQuad{", rt, "}: ")
+    nodes = "$(np)×$(np)"
+    if qt == GaussQuadrature
+        print(io, "Gauss quadrature with ", nodes, " nodes")
+    elseif qt == GaussLobattoQuadrature
+        print(io, "Gauss-Lobatto quadrature with ", nodes, " nodes")
     else
         @assert false "[StdRegion.show] You shouldn't be here..."
     end
+
     return nothing
 end
 
@@ -428,22 +439,21 @@ end
 
 function slave2master(i::Integer, orientation, std::StdQuad)
     s = CartesianIndices(std)[i]
-    st = CartesianIndices(std, true)[i]
     li = LinearIndices(std)
     return if orientation == 0
         i
     elseif orientation == 1
-        li[size(std, 1) - st[2] + 1, st[1]]
+        li[size(std, 1) - s[2] + 1, s[1]]
     elseif orientation == 2
         li[size(std, 1) - s[1] + 1, size(std, 2) - s[2] + 1]
     elseif orientation == 3
-        li[st[2], size(std, 2) - st[1] + 1]
+        li[s[2], size(std, 2) - s[1] + 1]
     elseif orientation == 4
-        li[st[2], st[1]]
+        li[s[2], s[1]]
     elseif orientation == 5
         li[size(std, 1) - s[1] + 1, s[2]]
     elseif orientation == 6
-        li[size(std, 1) - st[2] + 1, size(std, 2) - st[1] + 1]
+        li[size(std, 1) - s[2] + 1, size(std, 2) - s[1] + 1]
     else # orientation == 7
         li[s[1], size(std, 2) - s[2] + 1]
     end
@@ -452,21 +462,20 @@ end
 function master2slave(i::Integer, orientation, std::StdQuad)
     m = CartesianIndices(std)[i]
     li = LinearIndices(std)
-    lit = LinearIndices(std, true)
     return if orientation == 0
         i
     elseif orientation == 1
-        lit[m[2], size(std, 1) - m[1] + 1]
+        li[m[2], size(std, 1) - m[1] + 1]
     elseif orientation == 2
         li[size(std, 1) - m[1] + 1, size(std, 2) - m[2] + 1]
     elseif orientation == 3
-        lit[size(std, 2) - m[2] + 1, m[1]]
+        li[size(std, 2) - m[2] + 1, m[1]]
     elseif orientation == 4
-        lit[m[2], m[1]]
+        li[m[2], m[1]]
     elseif orientation == 5
         li[size(std, 1) - m[1] + 1, m[2]]
     elseif orientation == 6
-        lit[size(std, 2) - m[2] + 1, size(std, 1) - m[1] + 1]
+        li[size(std, 2) - m[2] + 1, size(std, 1) - m[1] + 1]
     else # orientation == 7
         li[m[1], size(std, 2) - m[2] + 1]
     end
@@ -475,8 +484,8 @@ end
 _VTK_type(::StdQuad) = UInt8(70)
 
 function _VTK_connectivities(s::StdQuad)
-    n = size(s) |> maximum
-    li = LinearIndices((n, n))
+    n = size(s, 1)
+    li = LinearIndices(s)
     corners = [li[1, 1], li[n, 1], li[n, n], li[1, n]]
     edges = reduce(vcat, [
         li[2:(n - 1), 1], li[n, 2:(n - 1)],
@@ -489,7 +498,7 @@ end
 #==========================================================================================#
 #                                     Standard triangle                                    #
 
-struct StdTri{Q,Dims} <: AbstractStdRegion{2,Q,Dims} end
+struct StdTri{Q,NP} <: AbstractStdRegion{Q,2,NP} end
 
 is_tensor_product(::StdTri) = false
 ndirections(::StdTri) = 3
@@ -512,9 +521,9 @@ end
 #==========================================================================================#
 #                                       Standard hex                                       #
 
-struct StdHex{QT,Dims,RT,MM,F,E,C} <: AbstractStdRegion{3,QT,Dims}
-    faces::F
-    edges::E
+struct StdHex{QT,NP,RT,MM,F,E,C} <: AbstractStdRegion{QT,3,NP}
+    face::F
+    edge::E
     ξe::Vector{SVector{3,RT}}
     ξc::NTuple{3,Array{SVector{3,RT},3}}
     ξ::Vector{SVector{3,RT}}
@@ -535,49 +544,50 @@ is_tensor_product(::StdHex) = true
 ndirections(::StdHex) = 3
 nvertices(::StdHex) = 8
 
+function StdHex{RT}(np::Integer, qtype, nvars; npe=nothing) where {RT}
+    return StdHex{RT}(Val(np), qtype, Val(nvars); npe=npe)
+end
+
 function StdHex{RT}(
-    np::AbstractVecOrTuple,
+    ::Val{NP},
     qtype::AbstractQuadrature,
-    nvars::Integer=1;
+    nvars::Val{NV}=Val(1);
     npe=nothing,
 ) where {
+    NP,
     RT<:Real,
+    NV
 }
     # Quadratures
-    if isnothing(npe)
-        npe = maximum(np)
-    end
-    fstd = (
-        StdQuad{RT}((np[2], np[3]), qtype, nvars; npe=npe),
-        StdQuad{RT}((np[1], np[3]), qtype, nvars; npe=npe),
-        StdQuad{RT}((np[1], np[2]), qtype, nvars; npe=npe),
-    )
-    estd = (fstd[3].faces[3], fstd[3].faces[1], fstd[1].faces[1])
+    npe = npe === nothing ? NP : npe
+
+    fstd = StdQuad{RT}(Val(NP), qtype, nvars; npe=npe)
+    estd = fstd.face
     ξ = vec([
         SVector(ξx[1], ξy[1], ξz[1])
-        for ξx in estd[1].ξ, ξy in estd[2].ξ, ξz in estd[3].ξ
+        for ξx in estd.ξ, ξy in estd.ξ, ξz in estd.ξ
     ])
-    ω = vec([ωx * ωy * ωz for ωx in estd[1].ω, ωy in estd[2].ω, ωz in estd[3].ω])
+    ω = vec([ωx * ωy * ωz for ωx in estd.ω, ωy in estd.ω, ωz in estd.ω])
 
     # Equispaced nodes
     ξe = vec([
         SVector(ξx[1], ξy[1], ξz[1])
-        for ξx in estd[1].ξe, ξy in estd[2].ξe, ξz in estd[3].ξe
+        for ξx in estd.ξe, ξy in estd.ξe, ξz in estd.ξe
     ])
-    _n2e = kron(estd[3]._n2e, estd[2]._n2e, estd[1]._n2e)
+    _n2e = kron(estd._n2e, estd._n2e, estd._n2e)
 
     # Complementary nodes
     ξc1 = [
         SVector(ξx[1], ξy[1], ξz[1])
-        for ξx in estd[1].ξc[1], ξy in estd[2].ξ, ξz in estd[3].ξ
+        for ξx in estd.ξc[1], ξy in estd.ξ, ξz in estd.ξ
     ]
     ξc2 = [
         SVector(ξx[1], ξy[1], ξz[1])
-        for ξx in estd[1].ξ, ξy in estd[2].ξc[1], ξz in estd[3].ξ
+        for ξx in estd.ξ, ξy in estd.ξc[1], ξz in estd.ξ
     ]
     ξc3 = [
         SVector(ξx[1], ξy[1], ξz[1])
-        for ξx in estd[1].ξ, ξy in estd[2].ξ, ξz in estd[3].ξc[1]
+        for ξx in estd.ξ, ξy in estd.ξ, ξz in estd.ξc[1]
     ]
     ξc = (ξc1, ξc2, ξc3)
 
@@ -585,61 +595,60 @@ function StdHex{RT}(
     M = Diagonal(ω)
 
     # Derivative matrices
-    I = (Diagonal(ones(np[1])), Diagonal(ones(np[2])), Diagonal(ones(np[3])))
-    Iω = (Diagonal(estd[1].ω), Diagonal(estd[2].ω), Diagonal(estd[3].ω))
+    I = Diagonal(ones(NP))
+    Iω = Diagonal(estd.ω)
     D = (
-        kron(I[3], I[2], estd[1].D[1]),
-        kron(I[3], estd[2].D[1], I[1]),
-        kron(estd[3].D[1], I[2], I[1]),
+        kron(I, I, estd.D[1]),
+        kron(I, estd.D[1], I),
+        kron(estd.D[1], I, I),
     )
     Q = (
-        kron(I[3], I[2], estd[1].Q[1]),
-        kron(I[3], estd[2].Q[1], I[1]),
-        kron(estd[3].Q[1], I[2], I[1]),
+        kron(I, I, estd.Q[1]),
+        kron(I, estd.Q[1], I),
+        kron(estd.Q[1], I, I),
     )
     K = (
-        kron(Iω[3], Iω[2], estd[1].K[1]),
-        kron(Iω[3], estd[2].K[1], Iω[1]),
-        kron(estd[3].K[1], Iω[2], Iω[1]),
+        kron(Iω, Iω, estd.K[1]),
+        kron(Iω, estd.K[1], Iω),
+        kron(estd.K[1], Iω, Iω),
     )
     Ks = (
-        kron(Iω[3], Iω[2], estd[1].Ks[1]),
-        kron(Iω[3], estd[2].Ks[1], Iω[1]),
-        kron(estd[3].Ks[1], Iω[2], Iω[1]),
+        kron(Iω, Iω, estd.Ks[1]),
+        kron(Iω, estd.Ks[1], Iω),
+        kron(estd.Ks[1], Iω, Iω),
     )
     K♯ = (
-        kron(diag(Iω[3]), diag(Iω[2]), estd[1].K♯[1]),
-        kron(diag(Iω[3]), estd[2].K♯[1], diag(Iω[1])),
-        kron(estd[3].K♯[1], diag(Iω[2]), diag(Iω[1])),
+        kron(diag(Iω), diag(Iω), estd.K♯[1]),
+        kron(diag(Iω), estd.K♯[1], diag(Iω)),
+        kron(estd.K♯[1], diag(Iω), diag(Iω)),
     )
 
     # Projection operator
     l = (
-        kron(I[3], I[2], estd[1].l[1]),
-        kron(I[3], I[2], estd[1].l[2]),
-        kron(I[3], estd[2].l[1], I[1]),
-        kron(I[3], estd[2].l[2], I[1]),
-        kron(estd[3].l[1], I[1], I[2]),
-        kron(estd[3].l[2], I[1], I[2]),
+        kron(I, I, estd.l[1]),
+        kron(I, I, estd.l[2]),
+        kron(I, estd.l[1], I),
+        kron(I, estd.l[2], I),
+        kron(estd.l[1], I, I),
+        kron(estd.l[2], I, I),
     )
 
     # Surface contribution
     lω = (
-        kron(Iω[3], Iω[2], estd[1].lω[1]),
-        kron(Iω[3], Iω[2], estd[1].lω[2]),
-        kron(Iω[3], estd[2].lω[1], Iω[1]),
-        kron(Iω[3], estd[2].lω[2], Iω[1]),
-        kron(estd[3].lω[1], Iω[2], Iω[1]),
-        kron(estd[3].lω[2], Iω[2], Iω[1]),
+        kron(Iω, Iω, estd.lω[1]),
+        kron(Iω, Iω, estd.lω[2]),
+        kron(Iω, estd.lω[1], Iω),
+        kron(Iω, estd.lω[2], Iω),
+        kron(estd.lω[1], Iω, Iω),
+        kron(estd.lω[2], Iω, Iω),
     )
 
     # Temporary storage
-    cache = StdRegionCache{RT}(np, nvars)
+    cache = StdRegionCache{RT}(Val(3), NP, nvars, npe)
 
-    fstd = (fstd[1], fstd[1], fstd[2], fstd[2], fstd[3], fstd[3])
     return StdHex{
         typeof(qtype),
-        Tuple(np),
+        NP,
         eltype(ω),
         typeof(M),
         typeof(fstd),
@@ -665,20 +674,23 @@ function StdHex{RT}(
     )
 end
 
-function Base.show(io::IO, ::MIME"text/plain", s::StdHex{QT,D,RT}) where {QT,D,RT}
+function Base.show(io::IO, ::MIME"text/plain", s::StdHex)
     @nospecialize
-    println(io, "StdHex{", RT, "}: ")
-    if QT == GaussQuadrature
-        println(io, " ξ: Gauss quadrature with ", D[1], " nodes")
-        println(io, " η: Gauss quadrature with ", D[2], " nodes")
-        print(io, " ζ: Gauss quadrature with ", D[3], " nodes")
-    elseif QT == GaussLobattoQuadrature
-        println(io, " ξ: Gauss-Lobatto quadrature with ", D[1], " nodes")
-        println(io, " η: Gauss-Lobatto quadrature with ", D[2], " nodes")
-        print(io, " ζ: Gauss-Lobatto quadrature with ", D[3], " nodes")
+
+    rt = eltype(s.D[1])
+    np = size(s, 1)
+    qt = get_quadrature(s)
+
+    print(io, "StdHex{", rt, "}: ")
+    nodes = "$(np)×$(np)×$(np)"
+    if qt == GaussQuadrature
+        print(io, "Gauss quadrature with ", nodes, " nodes")
+    elseif qt == GaussLobattoQuadrature
+        print(io, "Gauss-Lobatto quadrature with ", nodes, " nodes")
     else
         @assert false "[StdRegion.show] You shouldn't be here..."
     end
+
     return nothing
 end
 
@@ -697,8 +709,8 @@ end
 _VTK_type(::StdHex) = UInt8(72)
 
 function _VTK_connectivities(s::StdHex)
-    n = size(s) |> maximum
-    li = LinearIndices((n, n, n))
+    n = size(s, 1)
+    li = LinearIndices(s)
     corners = [
         li[1, 1, 1], li[n, 1, 1], li[n, n, 1], li[1, n, 1],
         li[1, 1, n], li[n, 1, n], li[n, n, n], li[1, n, n],

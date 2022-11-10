@@ -17,7 +17,7 @@ end
 
 struct PhysicalSubgridVector{ND,RT} <: AbstractVector{PhysicalSubgrid}
     dh::DofHandler
-    frames::Vector{NTuple{ND,Array{ReferenceFrame{ND,RT}}}}
+    frames::Vector{NTuple{ND,Array{ReferenceFrame{ND,RT},ND}}}
     J::Vector{NTuple{ND,Array{RT,ND}}}
     function PhysicalSubgridVector(dh, frames, J)
         length(frames) == length(J) && length(frames) == nelements(dh) ||
@@ -41,12 +41,8 @@ Base.size(sv::PhysicalSubgridVector) = (length(sv),)
     )
 end
 
-function PhysicalSubgridVector(stdvec, dh::DofHandler, mesh::AbstractMesh)
-    subgridvec = []
-    for ie in eachelement(mesh)
-        std = stdvec[get_stdid(dh, ie)]
-        push!(subgridvec, PhysicalSubgrid(std, mesh, ie))
-    end
+function PhysicalSubgridVector(std, dh::DofHandler, mesh::AbstractMesh)
+    subgridvec = [PhysicalSubgrid(std, mesh, ie) for ie in eachelement(mesh)]
     return PhysicalSubgridVector(
         dh,
         [s.frames for s in subgridvec],
@@ -212,7 +208,7 @@ function PhysicalSubgrid(std, mesh::UnstructuredMesh{2,RT}, ie) where {RT}
         n /= J[2][i, j]
         frames[2][i, j] = ReferenceFrame(n, t, b)
     end
-    return (frames, J)
+    return PhysicalSubgrid(frames, J)
 end
 
 function PhysicalSubgrid(std, mesh::UnstructuredMesh{3,RT}, ie) where {RT}
@@ -302,7 +298,7 @@ Base.size(ev::PhysicalElementVector) = (length(ev),)
 end
 
 function PhysicalElementVector(
-    stdvec,
+    std,
     dh::DofHandler,
     mesh::AbstractMesh{ND,RT},
 ) where {
@@ -317,7 +313,6 @@ function PhysicalElementVector(
     volumevec = []
 
     for ie in eachelement(mesh)
-        std = stdvec[get_stdid(dh, ie)]
         elem = PhysicalElement(std, mesh, ie)
         append!(coords, elem.coords)
         push!(Mvec, elem.M)
@@ -335,7 +330,12 @@ function PhysicalElementVector(
 end
 
 @inline function integrate(f::AbstractVector, elem::PhysicalElement)
-    return sum(elem.Mfac[] * f)
+    M = elem.Mfac[]
+    return if M isa Diagonal
+        dot(M.diag, f)
+    else
+        sum(M * f)
+    end
 end
 
 function PhysicalElement(std, mesh::CartesianMesh{ND,RT}, ie) where {ND,RT}
@@ -477,7 +477,7 @@ Base.size(fv::PhysicalFaceVector) = (length(fv),)
     end
 end
 
-function PhysicalFaceVector(stdvec, dh, mesh)
+function PhysicalFaceVector(std, dh, mesh)
     coords = []
     framevec = []
     Jvec = []
@@ -485,8 +485,7 @@ function PhysicalFaceVector(stdvec, dh, mesh)
     surfacevec = []
 
     for iface in eachface(mesh)
-        ielem = mesh.faces[iface].eleminds[1]
-        face = PhysicalFace(stdvec[get_stdid(dh, ielem)], mesh, iface)
+        face = PhysicalFace(std, mesh, iface)
         append!(coords, face.coords)
         append!(framevec, face.frames)
         append!(Jvec, face.J)
@@ -504,7 +503,12 @@ function PhysicalFaceVector(stdvec, dh, mesh)
 end
 
 @inline function integrate(f::AbstractVector, face::PhysicalFace)
-    return sum(face.M[] * f)
+    M = face.M[]
+    return if M isa Diagonal
+        dot(M.diag, f)
+    else
+        sum(M * f)
+    end
 end
 
 function PhysicalFace(_, mesh::CartesianMesh{1,RT}, iface) where {RT}
@@ -536,8 +540,8 @@ end
 
 function PhysicalFace(std, mesh::CartesianMesh{2,RT}, iface) where {RT}
     (; Δx) = mesh
+    fstd = std.face
     pos = mesh.faces[iface].elempos[1]
-    fstd = std.faces[pos]
     if pos == 1 || pos == 2  # Vertical
         J = fill(Δx[2] / 2, ndofs(fstd))
         if pos == 1
@@ -591,8 +595,8 @@ end
 
 function PhysicalFace(std, mesh::CartesianMesh{3,RT}, iface) where {RT}
     (; Δx) = mesh
+    fstd = std.face
     pos = mesh.faces[iface].elempos[1]
-    fstd = std.faces[pos]
     if pos == 1 || pos == 2  # X faces
         J = fill(Δx[2] * Δx[3] / 4, ndofs(fstd))
         if pos == 1
@@ -666,10 +670,10 @@ end
 
 function PhysicalFace(std, mesh::StepMesh{RT}, iface) where {RT}
     (; Δx) = mesh
+    fstd = std.face
     ie = mesh.faces[iface].eleminds[1]
     ireg = get_region(mesh, ie)
     pos = mesh.faces[iface].elempos[1]
-    fstd = std.faces[pos]
 
     if pos == 1 || pos == 2  # Vertical
         J = fill(Δx[ireg][2] / 2, ndofs(fstd))
@@ -761,10 +765,10 @@ function PhysicalFace(_, mesh::UnstructuredMesh{1,RT}, iface) where {RT}
 end
 
 function PhysicalFace(std, mesh::UnstructuredMesh{2,RT}, iface) where {RT}
+    fstd = std.face
     face = mesh.faces[iface]
     ielem = face.eleminds[1]
     pos = face.elempos[1]
-    fstd = std.faces[pos]
 
     xy = Vector{SVector{2,RT}}(undef, ndofs(fstd))
     frames = Vector{ReferenceFrame{2,RT}}(undef, ndofs(fstd))
@@ -833,10 +837,10 @@ function PhysicalFace(std, mesh::UnstructuredMesh{2,RT}, iface) where {RT}
 end
 
 function PhysicalFace(std, mesh::UnstructuredMesh{3,RT}, iface) where {RT}
+    fstd = std.face
     face = mesh.faces[iface]
     ielem = face.eleminds[1]
     pos = face.elempos[1]
-    fstd = std.faces[pos]
 
     xyz = Vector{SVector{3,RT}}(undef, ndofs(fstd))
     frames = Vector{ReferenceFrame{3,RT}}(undef, ndofs(fstd))
@@ -935,11 +939,11 @@ struct Geometry{PE,PF,SG}
     subgrids::SG
 end
 
-function Geometry(stdvec, dh::DofHandler, mesh::AbstractMesh, subgrid=false)
-    elemvec = PhysicalElementVector(stdvec, dh, mesh)
-    facevec = PhysicalFaceVector(stdvec, dh, mesh)
+function Geometry(std, dh::DofHandler, mesh::AbstractMesh, subgrid=false)
+    elemvec = PhysicalElementVector(std, dh, mesh)
+    facevec = PhysicalFaceVector(std, dh, mesh)
     subgridvec = if subgrid
-        PhysicalSubgridVector(stdvec, dh, mesh)
+        PhysicalSubgridVector(std, dh, mesh)
     else
         nothing
     end
@@ -954,19 +958,21 @@ nfaces(g::Geometry) = nfaces(g.faces)
 ndofs(v::PhysicalElementVector) = ndofs(v.dh)
 ndofs(g::Geometry) = ndofs(g.elements)
 
-function contravariant(F, Ja::SMatrix{1,1})
-    return SVector(F[1] * Ja[1, 1])
+Base.@propagate_inbounds function contravariant(F, Ja::SMatrix{1,1})
+    return (
+        F[1] * Ja[1, 1],
+    )
 end
 
-function contravariant(F, Ja::SMatrix{2,2})
-    return SVector(
+Base.@propagate_inbounds function contravariant(F, Ja::SMatrix{2,2})
+    return (
         F[1] * Ja[1, 1] + F[2] * Ja[2, 1],
         F[1] * Ja[1, 2] + F[2] * Ja[2, 2],
     )
 end
 
-function contravariant(F, Ja::SMatrix{3,3})
-    return SVector(
+Base.@propagate_inbounds function contravariant(F, Ja::SMatrix{3,3})
+    return (
         F[1] * Ja[1, 1] + F[2] * Ja[2, 1] + F[3] * Ja[3, 1],
         F[1] * Ja[1, 2] + F[2] * Ja[2, 2] + F[3] * Ja[3, 2],
         F[1] * Ja[1, 3] + F[2] * Ja[2, 3] + F[3] * Ja[3, 3],

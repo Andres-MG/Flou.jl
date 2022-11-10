@@ -14,7 +14,7 @@ function variablenames(::BurgersEquation; unicode=false)
 end
 
 function volumeflux(Q, ::BurgersEquation)
-    return SMatrix{1,1}(Q[1]^2 / 2)
+    return (SVector{1}(Q[1]^2 / 2),)
 end
 
 function rotate2face(Qf, _, ::BurgersEquation)
