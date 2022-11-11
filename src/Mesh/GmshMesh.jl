@@ -19,6 +19,7 @@ nelements(m::UnstructuredMesh, _) = m.nelements
 eachelement(m::UnstructuredMesh, _) = Base.OneTo(nelements(m))
 
 function UnstructuredMesh{ND,RT}(filename) where {ND,RT}
+    isfile(filename) || throw(ArgumentError("File $filename does not exist"))
     gmsh.initialize()
     gmsh.open(filename)
     mesh = try
