@@ -2,11 +2,6 @@ using Flou
 using OrdinaryDiffEq
 using LinearAlgebra: BLAS
 
-# Progress of ODEsolver
-using Logging: global_logger
-using TerminalLoggers: TerminalLogger
-global_logger(TerminalLogger())
-
 # Header
 print_flou_header()
 
