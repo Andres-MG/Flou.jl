@@ -7,6 +7,7 @@ using StaticArrays: StaticArrays, SVector, MVector, SMatrix, SDiagonal, @SVector
 using FastGaussQuadrature: FastGaussQuadrature, gausslegendre, gausslobatto
 using Polynomials: Polynomials, Polynomial, derivative
 using SpecialPolynomials: SpecialPolynomials, Lagrange
+using Polyester: Polyester, @batch
 using Printf: Printf, @printf, @sprintf
 using HDF5: HDF5
 using OrdinaryDiffEq: OrdinaryDiffEq, ODEProblem, solve, DiscreteCallback, CallbackSet

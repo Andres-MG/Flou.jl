@@ -15,13 +15,14 @@ function logarithmic_mean(al, ar)
 end
 
 macro flouthreads(expr)
-    esc(quote
-        return if Threads.nthreads() == 1
-            $(expr)
-        else
-            Threads.@threads $(expr)
-        end
-    end)
+    # esc(quote
+    #     return if Threads.nthreads() == 1
+    #         $(expr)
+    #     else
+    #         Threads.@threads $(expr)
+    #     end
+    # end)
+    return esc(:(@batch $(expr)))
 end
 
 # TODO: mul! will not work without this
