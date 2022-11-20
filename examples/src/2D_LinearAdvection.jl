@@ -31,7 +31,7 @@ h = 1.0
 Q = StateVector{nvariables(equation),Float64}(undef, DG.dofhandler)
 for i in eachdof(DG)
     x, y = DG.geometry.elements.coords[i]
-    Flou.as_mut(Q.data, i) .= Flou.gaussian_bump(x, y, 0.0, x0, y0, 0.0, sx, sy, 1.0, h)
+    Q.data.flat[:, i] .= Flou.gaussian_bump(x, y, 0.0, x0, y0, 0.0, sx, sy, 1.0, h)
 end
 
 display(DG)
@@ -42,7 +42,7 @@ sb = get_save_callback("../results/solution"; iter=save_steps)
 @info "Starting simulation..."
 
 _, exetime = timeintegrate(
-    Q.data.svec, DG, equation, solver, tf;
+    Q.data.flat, DG, equation, solver, tf;
     save_everystep=false, alias_u0=true, adaptive=false, dt=Δt, callback=sb,
 )
 

@@ -1,20 +1,50 @@
 #==========================================================================================#
 #                                       Hybrid array                                       #
 
-struct HybridArray{NI,RT,N,V<:AbstractArray{SVector{NI,RT}}} <:
-        AbstractArray{SVector{NI,RT},N}
-    svec::V
-    @inline function HybridArray(svec::AbstractArray{SVector{NI,RT}}) where {NI, RT}
-        nd = ndims(svec)
-        return new{NI,RT,nd,typeof(svec)}(svec)
+struct HybridArray{
+    NI,RT,N,S<:AbstractArray{SVector{NI,RT},N},F<:AbstractArray{RT}
+} <: AbstractArray{SVector{NI,RT},N}
+    svec::S
+    flat::F
+    @inline function HybridArray(
+        svec::AbstractArray{SVector{NI,RT}},
+        flat::AbstractArray{RT},
+    ) where {
+        NI,
+        RT
+    }
+        @boundscheck begin
+            size(flat) == (NI, size(svec)...) || throw(DimensionMismatch(
+                "The sizes of `flat` and `svec` do not match"
+            ))
+        end
+        new{NI,RT,ndims(svec),typeof(svec),typeof(flat)}(svec, flat)
     end
 end
 
-const HybridVector{NI,RT,V} = HybridArray{NI,RT,1,V}
-const HybridMatrix{NI,RT,V} = HybridArray{NI,RT,2,V}
+const HybridVector{NI,RT,S,F} = HybridArray{NI,RT,1,S,F}
+const HybridMatrix{NI,RT,S,F} = HybridArray{NI,RT,2,S,F}
 
-HybridVector(svec::AbstractVector{SVector{NI,RT}}) where {NI,RT} = HybridArray(svec)
-HybridMatrix(svec::AbstractMatrix{SVector{NI,RT}}) where {NI,RT} = HybridArray(svec)
+@inline function HybridArray{NI}(flat::DenseArray{RT}) where {NI,RT<:Number}
+    @boundscheck size(flat, 1) == NI || throw(DimensionMismatch("size(flat, 1) != $NI"))
+    sshape = size(flat)[2:end]
+    svec = reinterpret(SVector{NI,RT}, flat)
+    svec = unsafe_wrap(Array, pointer(svec), sshape)
+    return HybridArray(svec, flat)
+end
+
+HybridVector{NI}(flat) where {NI} = HybridArray{NI}(flat)
+HybridMatrix{NI}(flat) where {NI} = HybridArray{NI}(flat)
+
+@inline function HybridArray(svec::DenseArray{SVector{NI,RT}}) where {NI,RT<:Number}
+    fshape = (NI, size(svec)...)
+    flat = reinterpret(RT, svec)
+    flat = unsafe_wrap(Array, pointer(flat), fshape)
+    return HybridArray(svec, flat)
+end
+
+HybridVector(svec) = HybridArray(svec)
+HybridMatrix(svec) = HybridArray(svec)
 
 function HybridArray{NI,RT}(
     value::Union{UndefInitializer,Missing,Nothing},
@@ -23,20 +53,12 @@ function HybridArray{NI,RT}(
     NI,
     RT
 }
-    svec = Array{SVector{NI,RT},length(dims)}(value, dims...)
-    return HybridArray(svec)
+    flat = Array{RT,length(dims)+1}(value, NI, dims...)
+    return HybridArray{NI}(flat)
 end
 
 HybridVector{NI,RT}(val, dim) where {NI,RT} = HybridArray{NI,RT}(val, dim)
 HybridMatrix{NI,RT}(val, dim1, dim2) where {NI,RT} = HybridArray{NI,RT}(val, dim1, dim2)
-
-function HybridArray{NI}(flat::AbstractArray{RT}) where {NI,RT<:Number}
-    svec = reshape(reinterpret(SVector{NI,RT}, flat), size(flat)[2:end])
-    return HybridArray(svec)
-end
-
-HybridVector{NI}(flat) where {NI} = HybridArray{NI}(flat)
-HybridMatrix{NI}(flat) where {NI} = HybridArray{NI}(flat)
 
 Base.IndexStyle(::Type{<:HybridArray}) = IndexLinear()
 Base.BroadcastStyle(::Type{<:HybridArray}) = Broadcast.ArrayStyle{HybridArray}()
@@ -67,7 +89,10 @@ end
 
 @inline function Base.view(ha::HybridArray{NI,RT,N}, I::Vararg{Any,N}) where {NI,RT,N}
     @boundscheck checkbounds(ha, I...)
-    return @inbounds HybridArray(view(ha.svec, I...))
+    return @inbounds HybridArray(
+        view(ha.svec, I...),
+        view(ha.flat, 1:NI, I...),
+    )
 end
 
 @inline function Base.reshape(
@@ -80,18 +105,11 @@ end
 }
     @boundscheck prod(dims) == length(ha) || throw(DimensionMismatch())
     @inbounds begin
-        svec = reshape(ha.svec, dims...)
-        return HybridArray(svec)
+        return HybridArray(
+            reshape(ha.svec, dims...),
+            reshape(ha.flat, NI, dims...),
+        )
     end
-end
-
-@inline function flatten(ha::HybridArray{NI,RT}) where {NI,RT}
-    return reshape(reinterpret(RT, ha.svec), NI, size(ha)...)
-end
-
-@inline function as_mut(ha::HybridArray{NI,RT,N}, I::Vararg{Integer,N}) where {NI,RT,N}
-    @boundscheck checkbounds(ha, I...)
-    return @inbounds view(flatten(ha), 1:NI, I...)
 end
 
 datatype(::HybridArray{NI,RT}) where {NI,RT} = RT
@@ -108,6 +126,7 @@ Base.@propagate_inbounds function LinearAlgebra.mul!(
 )
     return LinearAlgebra.mul!(C.svec, A, B.svec, α, β)
 end
+
 Base.@propagate_inbounds function LinearAlgebra.mul!(
     C::HybridVecOrMat,
     A::Transpose{<:Any,<:AbstractVecOrMat},

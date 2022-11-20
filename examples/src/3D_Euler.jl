@@ -56,7 +56,7 @@ cb = make_callback_list(mb, sb)
 @info "Starting simulation..."
 
 _, exetime = timeintegrate(
-    Q.data.svec, DG, equation, solver, tf;
+    Q.data.flat, DG, equation, solver, tf;
     save_everystep=false, alias_u0=true, adaptive=false, dt=Δt, callback=cb,
     progress=true, progress_steps=5,
 )

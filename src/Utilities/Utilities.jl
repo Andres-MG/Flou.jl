@@ -31,8 +31,4 @@ end
 # TODO: dot will not work without this
 @inline LinearAlgebra.dot(a::Number, b::SVector) = a * b
 
-# TODO: OrdinaryDiffEq will not work without this
-@inline Base.abs2(a::SVector) = abs2.(a)
-@inline Base.abs(a::SVector) = abs.(a)
-
 include("Storage.jl")

@@ -22,7 +22,7 @@ function Advection1D()
     end
 
     sol, _ = timeintegrate(
-        Q.data.svec, DG, equation, solver, tf;
+        Q.data.flat, DG, equation, solver, tf;
         saveat=(0, tf), adaptive=false, dt=Δt, alias_u0=true,
     )
     return sol
@@ -52,7 +52,7 @@ function Advection2D()
     end
 
     sol, _ = timeintegrate(
-        Q.data.svec, DG, equation, solver, tf;
+        Q.data.flat, DG, equation, solver, tf;
         saveat=(0, tf), adaptive=false, dt=Δt, alias_u0=true,
     )
     return sol
@@ -94,7 +94,7 @@ function SodTube1D()
     end
 
     sol, _ = timeintegrate(
-        Q.data.svec, DG, equation, solver, tf;
+        Q.data.flat, DG, equation, solver, tf;
         saveat=(0, tf), adaptive=false, dt=Δt, alias_u0=true,
     )
     return sol
@@ -145,7 +145,7 @@ function Shockwave2D()
     end
 
     sol, _ = timeintegrate(
-        Q.data.svec, DG, equation, solver, tf;
+        Q.data.flat, DG, equation, solver, tf;
         saveat=(0, tf), adaptive=false, dt=Δt, alias_u0=true,
     )
     return sol
@@ -185,7 +185,7 @@ function Implosion2D()
     end
 
     sol, _ = timeintegrate(
-        Q.data.svec, DG, equation, solver, tf;
+        Q.data.flat, DG, equation, solver, tf;
         saveat=(0, tf), adaptive=false, dt=Δt, alias_u0=true,
     )
     return sol
@@ -228,7 +228,7 @@ function ForwardFacingStep2D()
     Q.data .= (Q0,)
 
     sol, _ = timeintegrate(
-        Q.data.svec, DG, equation, solver, tf;
+        Q.data.flat, DG, equation, solver, tf;
         saveat=(0, tf), adaptive=false, dt=Δt, alias_u0=true,
     )
     return sol

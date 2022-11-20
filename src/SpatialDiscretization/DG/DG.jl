@@ -77,9 +77,8 @@ function pointdata2VTKHDF(
     tmp = HybridVector{nvars,rt}(undef, ndofs(std, equispaced=true))
     for ie in eachelement(dg)
         project2equispaced!(tmp, Q_[ie], std)
-        flat = flatten(tmp)
         for iv in 1:nvars
-            append!(Qe[iv], view(flat, iv, :))
+            append!(Qe[iv], view(tmp.flat, iv, :))
         end
     end
     return Qe
@@ -106,9 +105,8 @@ function pointdata2VTKHDF(
     tmp = HybridMatrix{nvars,rt}(undef, ndofs(std, equispaced=true), ndims(Q_))
     for ie in eachelement(dg)
         project2equispaced!(tmp, Q_[ie], std)
-        flat = flatten(tmp)
         for id in 1:dims, iv in 1:nvars
-            append!(Qe[iv, id], view(flat, iv, :, id))
+            append!(Qe[iv, id], view(tmp.flat, iv, :, id))
         end
     end
     return Qe |> vec
@@ -259,7 +257,7 @@ function integrate(f::StateVector, dg::DiscontinuousGalerkin, ivar::Integer)
     (; geometry) = dg
     integral = zero(datatype(f))
     @flouthreads for ie in eachelement(dg)
-        integral += integrate(view(flatten(f[ie]), ivar, :), geometry.elements[ie])
+        integral += integrate(view(f[ie].flat, ivar, :), geometry.elements[ie])
     end
     return integral
 end
