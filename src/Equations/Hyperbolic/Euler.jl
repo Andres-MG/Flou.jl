@@ -1,12 +1,11 @@
 struct EulerEquation{ND,NV,RT} <: HyperbolicEquation{ND,NV}
     γ::RT
-end
-
-function EulerEquation{ND}(γ) where {ND}
-    1 <= ND <= 3 || throw(ArgumentError(
-        "The Euler equations are only implemented in 1D, 2D and 3D."
-    ))
-    return EulerEquation{ND,ND + 2,typeof(γ)}(γ)
+    function EulerEquation{ND}(γ) where {ND}
+        1 <= ND <= 3 || throw(ArgumentError(
+            "The Euler equations are only implemented in 1D, 2D and 3D."
+        ))
+        return new{ND,ND + 2,typeof(γ)}(γ)
+    end
 end
 
 function Base.show(io::IO, ::MIME"text/plain", eq::EulerEquation{ND}) where {ND}

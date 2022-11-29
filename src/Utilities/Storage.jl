@@ -27,7 +27,7 @@ const HybridMatrix{NI,RT,S,F} = HybridArray{NI,RT,2,S,F}
 
 @inline function HybridArray{NI}(flat::DenseArray{RT}) where {NI,RT<:Number}
     @boundscheck size(flat, 1) == NI || throw(DimensionMismatch("size(flat, 1) != $NI"))
-    sshape = size(flat)[2:end]
+    sshape = size(flat) |> Base.tail
     svec = reinterpret(SVector{NI,RT}, flat)
     svec = unsafe_wrap(Array, pointer(svec), sshape)
     return HybridArray(svec, flat)
@@ -46,14 +46,14 @@ end
 HybridVector(svec) = HybridArray(svec)
 HybridMatrix(svec) = HybridArray(svec)
 
-function HybridArray{NI,RT}(
+@inline function HybridArray{NI,RT}(
     value::Union{UndefInitializer,Missing,Nothing},
     dims::Integer...,
 ) where {
     NI,
     RT
 }
-    flat = Array{RT,length(dims)+1}(value, NI, dims...)
+    flat = Array{RT,length(dims) + 1}(value, NI, dims...)
     return HybridArray{NI}(flat)
 end
 
@@ -63,11 +63,22 @@ HybridMatrix{NI,RT}(val, dim1, dim2) where {NI,RT} = HybridArray{NI,RT}(val, dim
 Base.IndexStyle(::Type{<:HybridArray}) = IndexLinear()
 Base.BroadcastStyle(::Type{<:HybridArray}) = Broadcast.ArrayStyle{HybridArray}()
 Base.size(ha::HybridArray) = size(ha.svec)
-Base.fill!(ha::HybridArray, v::SVector) = fill!(ha.svec, v)
-Base.fill!(ha::HybridArray{NI}, v) where {NI} = fill!(ha, @SVector fill(v, NI))
 
-function Base.similar(ha::HybridArray{NI,RT}) where {NI,RT}
-    return HybridArray{NI,RT}(undef, size(ha)...)
+function Base.fill!(ha::HybridArray, v::SVector)
+    fill!(ha.svec, v)
+    return ha
+end
+function Base.fill!(ha::HybridArray{NI}, v) where {NI}
+    fill!(ha, @SVector fill(v, NI))
+    return ha
+end
+
+function Base.similar(::HybridArray{NI}, ::Type{<:SVector{NI,S}}, dims::Dims) where {NI,S}
+    return HybridArray{NI,S}(undef, dims...)
+end
+
+function Base.similar(::HybridArray{NI}, ::Type{S}, dims::Dims) where {NI,S}
+    return HybridArray{NI,S}(undef, dims...)
 end
 
 @inline function Base.getindex(ha::HybridArray{NI}, i::Integer) where {NI}
@@ -78,21 +89,20 @@ end
 @inline function Base.setindex!(ha::HybridArray{NI}, value, i::Integer) where {NI}
     @boundscheck checkbounds(ha, i)
     @inbounds ha.svec[i] = value
-    return nothing
 end
 
 @inline function Base.setindex!(ha::HybridArray{NI}, value::Number, i::Integer) where {NI}
     @boundscheck checkbounds(ha, i)
     @inbounds ha.svec[i] = @SVector fill(value, NI)
-    return nothing
 end
 
 @inline function Base.view(ha::HybridArray{NI,RT,N}, I::Vararg{Any,N}) where {NI,RT,N}
     @boundscheck checkbounds(ha, I...)
-    return @inbounds HybridArray(
-        view(ha.svec, I...),
-        view(ha.flat, 1:NI, I...),
-    )
+    @inbounds begin
+        svec = view(ha.svec, I...)
+        flat = view(ha.flat, 1:NI, I...)
+        return HybridArray(svec, flat)
+    end
 end
 
 @inline function Base.reshape(
@@ -105,13 +115,13 @@ end
 }
     @boundscheck prod(dims) == length(ha) || throw(DimensionMismatch())
     @inbounds begin
-        return HybridArray(
-            reshape(ha.svec, dims...),
-            reshape(ha.flat, NI, dims...),
-        )
+        svec = reshape(ha.svec, dims)
+        flat = reshape(ha.flat, (NI, dims...))
+        return HybridArray(svec, flat)
     end
 end
 
+datatype(a::AbstractArray) = eltype(a)
 datatype(::HybridArray{NI,RT}) where {NI,RT} = RT
 innerdim(::HybridArray{NI}) where {NI} = NI
 
@@ -136,6 +146,12 @@ Base.@propagate_inbounds function LinearAlgebra.mul!(
 )
     return LinearAlgebra.mul!(C.svec, A, B.svec, α, β)
 end
+
+# TODO: dot in DifferentialEquations.jl will not work without this
+Base.@propagate_inbounds LinearAlgebra.dot(a::Number, b::SVector) = a * b
+
+# TODO: Required for mul!
+Base.@propagate_inbounds Base.:+(s::SVector, n::Number) = s .+ n
 
 #==========================================================================================#
 #                                        Lazy vector                                       #
@@ -168,6 +184,6 @@ end
 
 @inline function Base.setindex!(v::LazyVector, x, i)
     @boundscheck checkbounds(v, i)
-    return @inbounds v.data[v.indices[i]] = x
+    @inbounds v.data[v.indices[i]] = x
 end
 

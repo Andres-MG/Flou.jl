@@ -24,7 +24,7 @@ solver = ORK256(williamson_condition=false)
 equation = EulerEquation{3}(1.4)
 
 std = StdHex{Float64}(4, GLL(), nvariables(equation))
-mesh = UnstructuredMesh{3,Float64}("../test/meshes/mesh3d_refined.msh")
+mesh = UnstructuredMesh{3,Float64}("../test/meshes/3D_bullet_refined.msh")
 
 Q0 = Flou.vars_prim2cons((1.0, 2.0, 0.0, 0.0, 1.0), equation)
 ∂Ω = Dict(
@@ -44,7 +44,9 @@ Q0 = Flou.vars_prim2cons((1.0, 2.0, 0.0, 0.0, 1.0), equation)
 DG = DGSEM(mesh, std, equation, ∇, ∂Ω)
 
 Q = StateVector{nvariables(equation),Float64}(undef, DG.dofhandler)
-Q.data .= (Q0,)
+for i in eachdof(Q)
+    Q.dof[i] = Q0
+end
 
 display(DG)
 println()
@@ -56,7 +58,7 @@ cb = make_callback_list(mb, sb)
 @info "Starting simulation..."
 
 _, exetime = timeintegrate(
-    Q.data.flat, DG, equation, solver, tf;
+    Q, DG, equation, solver, tf;
     save_everystep=false, alias_u0=true, adaptive=false, dt=Δt, callback=cb,
     progress=true, progress_steps=5,
 )

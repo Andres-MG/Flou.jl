@@ -1,9 +1,9 @@
 #==========================================================================================#
 #                                           DGSEM                                          #
 
-struct HyperbolicDGcache{NV,RT,D,T} <: DGcache{RT}
-    Qf::FaceStateVector{NV,RT,D,T}
-    Fn::FaceStateVector{NV,RT,D,T}
+struct HyperbolicDGcache{NV,RT,D} <: DGcache{RT}
+    Qf::FaceStateVector{NV,RT,D}
+    Fn::FaceStateVector{NV,RT,D}
 end
 
 function construct_cache(disctype, realtype, dofhandler, equation::HyperbolicEquation)
@@ -16,16 +16,12 @@ function construct_cache(disctype, realtype, dofhandler, equation::HyperbolicEqu
     end
 end
 
-function rhs!(_dQ, _Q, p::Tuple{<:DGSEM,<:HyperbolicEquation}, time)
+function rhs!(dQ, Q, p::Tuple{<:DGSEM,<:HyperbolicEquation}, time)
     # Unpack
     dg, equation = p
 
-    # Wrap solution and its derivative
-    Q = StateVector{nvariables(equation)}(_Q, dg.dofhandler)
-    dQ = StateVector{nvariables(equation)}(_dQ, dg.dofhandler)
-
     # Restart time derivative
-    fill!(dQ, zero(datatype(dQ)))
+    fill!(dQ, zero(eltype(dQ)))
 
     # Volume flux
     volume_contribution!(dQ, Q, dg, equation, dg.operators[1])
@@ -53,14 +49,20 @@ end
 
 function volume_contribution!(dQ, Q, dg, equation::HyperbolicEquation, operator)
     @flouthreads for ie in eachelement(dg)
-        volume_contribution!(dQ[ie], Q[ie], ie, dg.std, dg, equation, operator)
+        @inbounds volume_contribution!(
+            dQ.element[ie], Q.element[ie],
+            ie, dg.std, dg, equation, operator,
+        )
     end
     return nothing
 end
 
 function surface_contribution!(dQ, Q, Fn, dg, equation::HyperbolicEquation, operator)
     @flouthreads for ie in eachelement(dg)
-        surface_contribution!(dQ[ie], Q[ie], Fn, ie, dg.std, dg, equation, operator)
+        @inbounds surface_contribution!(
+            dQ.element[ie], Q.element[ie],
+            Fn, ie, dg.std, dg, equation, operator,
+        )
     end
     return nothing
 end

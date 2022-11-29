@@ -58,7 +58,6 @@ export get_quadrature
 
 ## ./Containers.jl
 export StateVector, BlockVector, FaceStateVector, FaceBlockVector
-export datatype, eachdim
 
 ## ./DG.jl
 export StdAverageNumericalFlux, LxFNumericalFlux

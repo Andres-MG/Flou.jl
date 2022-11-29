@@ -47,16 +47,13 @@ eachdof(s::AbstractStdRegion) = Base.OneTo(ndofs(s))
 #==========================================================================================#
 #                                     Temporary cache                                      #
 
-struct StdRegionCache{ND,S,T,B,SH,ST,SC}
+struct StdRegionCache{S,T,B,SH,SC}
     scalar::Vector{NTuple{3,S}}
     state::Vector{NTuple{3,T}}
     block::Vector{NTuple{3,B}}
-    sharp::Vector{NTuple{ND,SH}}
-    sharptensor::Vector{NTuple{ND,ST}}
-    subcell::Vector{NTuple{ND,SC}}
+    sharp::Vector{NTuple{3,SH}}
+    subcell::Vector{NTuple{3,SC}}
 end
-
-StdRegionCache{RT}(np, nv, ne) where {RT} = StdRegionCache{RT}(Val(length(np)), np, nv, ne)
 
 function StdRegionCache{RT}(::Val{ND}, np, ::Val{NV}, ne) where {ND,RT,NV}
     nthr = Threads.nthreads()
@@ -74,18 +71,14 @@ function StdRegionCache{RT}(::Val{ND}, np, ::Val{NV}, ne) where {ND,RT,NV}
         for _ in 1:nthr
     ]
     tmp♯ = [
-        ntuple(i -> HybridMatrix{NV,RT}(undef, np, npts), ND)
+        ntuple(i -> HybridMatrix{NV,RT}(undef, np, np), 3)
         for _ in 1:nthr
-    ]
-    tmp♯tensor = [
-        ntuple(i -> reshape(tmp♯[ithr][i], np, ntuple(_ -> np, ND)...), ND)
-        for ithr in 1:nthr
     ]
     tmpsubcell = [
-        ntuple(i -> HybridVector{NV,RT}(undef, np + 1), ND)
+        ntuple(i -> HybridVector{NV,RT}(undef, np + 1), 3)
         for _ in 1:nthr
     ]
-    return StdRegionCache(tmps, tmpst, tmpb, tmp♯, tmp♯tensor, tmpsubcell)
+    return StdRegionCache(tmps, tmpst, tmpb, tmp♯, tmpsubcell)
 end
 
 #==========================================================================================#
@@ -363,10 +356,7 @@ function StdQuad{RT}(
         kron(Iω, fstd.Ks[1]),
         kron(fstd.Ks[1], Iω),
     )
-    K♯ = (
-        kron(diag(Iω), fstd.K♯[1]),
-        kron(fstd.K♯[1], diag(Iω)),
-    )
+    K♯ = ntuple(_ -> fstd.K♯[1], 2)
 
     # Projection operator
     l = (
@@ -617,11 +607,7 @@ function StdHex{RT}(
         kron(Iω, estd.Ks[1], Iω),
         kron(estd.Ks[1], Iω, Iω),
     )
-    K♯ = (
-        kron(diag(Iω), diag(Iω), estd.K♯[1]),
-        kron(diag(Iω), estd.K♯[1], diag(Iω)),
-        kron(estd.K♯[1], diag(Iω), diag(Iω)),
-    )
+    K♯ = ntuple(_ -> estd.K♯[1], 3)
 
     # Projection operator
     l = (

@@ -13,12 +13,12 @@ function surface_contribution!(
     # Unpack
     (; mesh, std) = dg
 
-    rt = eltype(first(G))
+    rt = datatype(G)
     iface = mesh.elements[ielem].faceinds
     facepos = mesh.elements[ielem].facepos
 
     @inbounds for (s, (face, pos)) in enumerate(zip(iface, facepos))
-        mul!(G, std.lω[s], Fn[face][pos], one(rt), one(rt))
+        mul!(G, std.lω[s], Fn.face[face][pos], one(rt), one(rt))
     end
     return nothing
 end

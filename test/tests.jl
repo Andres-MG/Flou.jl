@@ -18,11 +18,11 @@ function Advection1D()
     Q = StateVector{nvariables(equation),Float64}(undef, DG.dofhandler)
     for i in eachdof(DG)
         x = DG.geometry.elements.coords[i][1]
-        Q.data[i] = Flou.gaussian_bump(x, 0.0, 0.0, x0, 0.0, 0.0, sx, 1.0, 1.0, h)
+        Q.dof[i] = Flou.gaussian_bump(x, 0.0, 0.0, x0, 0.0, 0.0, sx, 1.0, 1.0, h)
     end
 
     sol, _ = timeintegrate(
-        Q.data.flat, DG, equation, solver, tf;
+        Q, DG, equation, solver, tf;
         saveat=(0, tf), adaptive=false, dt=Δt, alias_u0=true,
     )
     return sol
@@ -48,11 +48,11 @@ function Advection2D()
     Q = StateVector{nvariables(equation),Float64}(undef, DG.dofhandler)
     for i in eachdof(DG)
         x, y = DG.geometry.elements.coords[i]
-        Q.data[i] = Flou.gaussian_bump(x, y, 0.0, x0, y0, 0.0, sx, sy, 1.0, h)
+        Q.dof[i] = Flou.gaussian_bump(x, y, 0.0, x0, y0, 0.0, sx, sy, 1.0, h)
     end
 
     sol, _ = timeintegrate(
-        Q.data.flat, DG, equation, solver, tf;
+        Q, DG, equation, solver, tf;
         saveat=(0, tf), adaptive=false, dt=Δt, alias_u0=true,
     )
     return sol
@@ -90,11 +90,11 @@ function SodTube1D()
     Q = StateVector{nvariables(equation),Float64}(undef, DG.dofhandler)
     for i in eachdof(DG)
         x = DG.geometry.elements.coords[i]
-        Q.data[i] = Qext((), x, (), 0.0, equation)
+        Q.dof[i] = Qext((), x, (), 0.0, equation)
     end
 
     sol, _ = timeintegrate(
-        Q.data.flat, DG, equation, solver, tf;
+        Q, DG, equation, solver, tf;
         saveat=(0, tf), adaptive=false, dt=Δt, alias_u0=true,
     )
     return sol
@@ -141,11 +141,11 @@ function Shockwave2D()
     Q = StateVector{nvariables(equation),Float64}(undef, DG.dofhandler)
     for i in eachdof(DG)
         xy = DG.geometry.elements.coords[i]
-        Q.data[i] = Qext((), xy, (), 0.0, equation)
+        Q.dof[i] = Qext((), xy, (), 0.0, equation)
     end
 
     sol, _ = timeintegrate(
-        Q.data.flat, DG, equation, solver, tf;
+        Q, DG, equation, solver, tf;
         saveat=(0, tf), adaptive=false, dt=Δt, alias_u0=true,
     )
     return sol
@@ -178,14 +178,14 @@ function Implosion2D()
     for i in eachdof(DG)
         x, y = DG.geometry.elements.coords[i]
         if x <= 0.15 && y <= 0.15 - x
-            Q.data[i] = (0.125, 0.0, 0.0, 0.14 / 0.4)
+            Q.dof[i] = (0.125, 0.0, 0.0, 0.14 / 0.4)
         else
-            Q.data[i] = (1.0, 0.0, 0.0, 1.0 / 0.4)
+            Q.dof[i] = (1.0, 0.0, 0.0, 1.0 / 0.4)
         end
     end
 
     sol, _ = timeintegrate(
-        Q.data.flat, DG, equation, solver, tf;
+        Q, DG, equation, solver, tf;
         saveat=(0, tf), adaptive=false, dt=Δt, alias_u0=true,
     )
     return sol
@@ -225,10 +225,12 @@ function ForwardFacingStep2D()
     DG = DGSEM(mesh, std, equation, ∇, ∂Ω)
 
     Q = StateVector{nvariables(equation),Float64}(undef, DG.dofhandler)
-    Q.data .= (Q0,)
+    for i in eachdof(Q)
+        Q.dof[i] = Q0
+    end
 
     sol, _ = timeintegrate(
-        Q.data.flat, DG, equation, solver, tf;
+        Q, DG, equation, solver, tf;
         saveat=(0, tf), adaptive=false, dt=Δt, alias_u0=true,
     )
     return sol

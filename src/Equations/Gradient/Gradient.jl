@@ -1,9 +1,9 @@
 #==========================================================================================#
 #                                           DGSEM                                          #
 
-struct GradientDGcache{NV,RT,DQ,DF,TQ,TF} <: DGcache{RT}
-    Qf::FaceStateVector{NV,RT,DQ,TQ}
-    Fn::FaceBlockVector{NV,RT,DF,TF}
+struct GradientDGcache{NV,RT,DQ,DF} <: DGcache{RT}
+    Qf::FaceStateVector{NV,RT,DQ}
+    Fn::FaceBlockVector{NV,RT,DF}
 end
 
 function construct_cache(disctype, realtype, dofhandler, eq::GradientEquation)
@@ -16,16 +16,12 @@ function construct_cache(disctype, realtype, dofhandler, eq::GradientEquation)
     end
 end
 
-function rhs!(_G, _Q, p::Tuple{<:DGSEM,<:GradientEquation}, _)
+function rhs!(G, Q, p::Tuple{<:DGSEM,<:GradientEquation}, _)
     # Unpack
     dg, equation = p
 
-    # Wrap solution and its derivative
-    Q = StateVector{nvariables(equation)}(_Q, dg.dofhandler)
-    G = BlockVector{nvariables(equation)}(_G, dg.dofhandler)
-
     # Restart gradients
-    fill!(G, zero(datatype(G)))
+    fill!(G, zero(eltype(G)))
 
     # Volume flux
     volume_contribution!(G, Q, dg, equation, dg.operators[1])
@@ -50,14 +46,20 @@ end
 
 function volume_contribution!(G, Q, dg, equation::GradientEquation, operator)
     @flouthreads for ie in eachelement(dg)
-        volume_contribution!(G[ie], Q[ie], ie, dg.std, dg, equation, operator)
+        @inbounds volume_contribution!(
+            G.element[ie], Q.element[ie],
+            ie, dg.std, dg, equation, operator,
+        )
     end
     return nothing
 end
 
 function surface_contribution!(G, Q, Fn, dg, equation::GradientEquation, operator)
     @flouthreads for ie in eachelement(dg)
-        surface_contribution!(G[ie], Q[ie], Fn, ie, dg.std, dg, equation, operator)
+        @inbounds surface_contribution!(
+            G.element[ie], Q.element[ie],
+            Fn, ie, dg.std, dg, equation, operator,
+        )
     end
     return nothing
 end
@@ -69,7 +71,8 @@ function Base.show(io::IO, ::MIME"text/plain", eq::GradientEquation)
     @nospecialize
     nd = ndims(eq)
     nvars = nvariables(eq)
-    print(io, nd, "D Gradient equation with ", nvars, " variables")
+    vstr = (nvars == 1) ? " variable" : " variables"
+    print(io, nd, "D Gradient equation with ", nvars, vstr)
     return nothing
 end
 

@@ -23,8 +23,13 @@ end
 
 function pointdata2VTKHDF end
 
-function add_pointdata!(file::SolutionFile, data, disc::AbstractSpatialDiscretization, name)
-    datavec = pointdata2VTKHDF(Val(1), data, disc)
+function add_pointdata!(
+    file::SolutionFile,
+    data::AbstractArray,
+    disc::AbstractSpatialDiscretization,
+    name::String,
+)
+    datavec = pointdata2VTKHDF(data, disc)
     HDF5.write(file.handler, "VTKHDF/PointData/" * name, datavec)
     return nothing
 end
@@ -37,7 +42,7 @@ function add_solution!(
     disc::AbstractSpatialDiscretization,
     equation::AbstractEquation,
 )
-    datavec = pointdata2VTKHDF(Val(nvariables(equation)), sol, disc)
+    datavec = pointdata2VTKHDF(sol, disc)
     vnames = variablenames(equation)
     for (iv, data) in enumerate(datavec)
         HDF5.write(file.handler, "VTKHDF/PointData/" * vnames[iv], data)

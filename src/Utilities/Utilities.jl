@@ -25,10 +25,4 @@ macro flouthreads(expr)
     return esc(:(@batch $(expr)))
 end
 
-# TODO: mul! will not work without this
-@inline Base.:+(a::SVector{N,T}, s::Number) where {N,T} = SVector{N,T}(a .+ s)
-
-# TODO: dot will not work without this
-@inline LinearAlgebra.dot(a::Number, b::SVector) = a * b
-
 include("Storage.jl")

@@ -118,7 +118,7 @@ function get_max_dt(
     cfl::Real,
 )
     Q = StateVector{nvariables(eq)}(q, dg.dofhandler)
-    Δt = typemax(datatype(Q))
+    Δt = typemax(eltype(Q))
     std = dg.std
     d = get_spatialdim(dg)
     n = ndofs(std)
@@ -127,7 +127,7 @@ function get_max_dt(
         Δx = dg.geometry.elements[ie].volume[] / n
         Δx = d == 1 ? Δx : (d == 2 ? sqrt(Δx) : cbrt(Δx))
         @inbounds for i in eachdof(std)
-            Δt = min(Δt, get_max_dt(Q[ie][i], Δx, cfl, eq))
+            Δt = min(Δt, get_max_dt(Q.element[ie][i], Δx, cfl, eq))
         end
     end
 

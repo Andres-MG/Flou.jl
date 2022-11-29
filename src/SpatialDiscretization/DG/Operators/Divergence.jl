@@ -18,7 +18,7 @@ function surface_contribution!(
     facepos = mesh.elements[ielem].facepos
 
     @inbounds for (s, (face, pos)) in enumerate(zip(iface, facepos))
-        mul!(dQ, std.lω[s], Fn[face][pos], -one(rt), one(rt))
+        mul!(dQ, std.lω[s], Fn.face[face][pos], -one(rt), one(rt))
     end
     return nothing
 end
@@ -195,7 +195,7 @@ function surface_contribution!(
         l = std.l[1]
         r = std.l[2]
         _split_gauss_deriv_1d!(
-            dQ, Fn[iface[1]][facepos[1]][1], Fn[iface[2]][facepos[2]][1],
+            dQ, Fn.face[iface[1]][facepos[1]][1], Fn.face[iface[2]][facepos[2]][1],
             Q, W, Fli, Fri, Ja, frames[1], Js[1], std, l, r, one(rt), equation, op, 1,
         )
 
@@ -211,7 +211,7 @@ function surface_contribution!(
         @inbounds for j in eachindex(std, 2)
             @views _split_gauss_deriv_1d!(
                 dQr[:, j],
-                Fn[iface[1]][facepos[1]][j], Fn[iface[2]][facepos[2]][j],
+                Fn.face[iface[1]][facepos[1]][j], Fn.face[iface[2]][facepos[2]][j],
                 Qr[:, j], W, Fli, Fri, Ja[:, j], frames[1][:, j], Js[1][:, j],
                 std, l, r, ω[j], equation, op, 1,
             )
@@ -221,7 +221,7 @@ function surface_contribution!(
         @inbounds for i in eachindex(std, 1)
             @views _split_gauss_deriv_1d!(
                 dQr[i, :],
-                Fn[iface[3]][facepos[3]][i], Fn[iface[4]][facepos[4]][i],
+                Fn.face[iface[3]][facepos[3]][i], Fn.face[iface[4]][facepos[4]][i],
                 Qr[i, :], W, Fli, Fri, Ja[i, :], frames[2][i, :], Js[2][i, :],
                 std, l, r, ω[i], equation, op, 2,
             )
@@ -241,7 +241,7 @@ function surface_contribution!(
             ind = li[j, k]
             @views _split_gauss_deriv_1d!(
                 dQr[:, j, k],
-                Fn[iface[1]][facepos[1]][ind], Fn[iface[2]][facepos[2]][ind],
+                Fn.face[iface[1]][facepos[1]][ind], Fn.face[iface[2]][facepos[2]][ind],
                 Qr[:, j, k], W, Fli, Fri, Ja[:, j, k], frames[1][:, j, k],
                 Js[1][:, j, k], std, l, r, ω[ind], equation, op, 1,
             )
@@ -252,7 +252,7 @@ function surface_contribution!(
             ind = li[i, k]
             @views _split_gauss_deriv_1d!(
                 dQr[i, :, k],
-                Fn[iface[3]][facepos[3]][ind], Fn[iface[4]][facepos[4]][ind],
+                Fn.face[iface[3]][facepos[3]][ind], Fn.face[iface[4]][facepos[4]][ind],
                 Qr[i, :, k], W, Fli, Fri, Ja[i, :, k], frames[2][i, :, k],
                 Js[2][i, :, k], std, l, r, ω[ind], equation, op, 2,
             )
@@ -263,7 +263,7 @@ function surface_contribution!(
             ind = li[i, j]
             @views _split_gauss_deriv_1d!(
                 dQr[i, j, :],
-                Fn[iface[5]][facepos[5]][ind], Fn[iface[6]][facepos[6]][ind],
+                Fn.face[iface[5]][facepos[5]][ind], Fn.face[iface[6]][facepos[6]][ind],
                 Qr[i, j, :], W, Fli, Fri, Ja[i, j, :], frames[3][i, j, :],
                 Js[3][i, j, :], std, l, r, ω[ind], equation, op, 3,
             )
@@ -272,17 +272,20 @@ function surface_contribution!(
     return nothing
 end
 
-Base.@propagate_inbounds function _split_flux_1d!(F♯, Q, Ja, std, equation, op, idir)
-    for i in eachindex(std, idir), l in (i + 1):size(std, idir)
-        F♯[l, i] = twopointflux(
-            Q[i],
-            Q[l],
-            view(Ja[i], :, idir),
-            view(Ja[l], :, idir),
-            equation,
-            op.tpflux,
-        )
-        F♯[i, l] = F♯[l, i]
+Base.@propagate_inbounds function _split_flux_1d!(F♯, F̃, Q, Ja, std, equation, op, idir)
+    for i in eachindex(std, idir)
+        F♯[i, i] = F̃[i]
+        for l in (i + 1):size(std, idir)
+            F♯[l, i] = twopointflux(
+                Q[i],
+                Q[l],
+                view(Ja[i], :, idir),
+                view(Ja[l], :, idir),
+                equation,
+                op.tpflux,
+            )
+            F♯[i, l] = F♯[l, i]
+        end
     end
     return nothing
 end
@@ -308,65 +311,93 @@ function volume_contribution!(
 
     # Buffers
     tid = Threads.threadid()
+    F̃ = std.cache.block[tid][1]
     F♯ = std.cache.sharp[tid]
-    F♯r = std.cache.sharptensor[tid]
-
-    # Indexing
-    ci = CartesianIndices(std)
 
     # Volume fluxes (diagonal of F♯ matrices)
     Ja = geometry.elements[ielem].Ja
     @inbounds for i in eachindex(std)
         F = volumeflux(Q[i], equation)
-        F̃ = contravariant(F, Ja[i])
-        for idir in eachdirection(std)
-            F♯[idir][ci[i][idir], i] = F̃[idir]
-        end
+        F̃[i, :] .= contravariant(F, Ja[i])
     end
 
     # Two-point fluxes
+    dQr = reshape(dQ, size(std))
     Qr = reshape(Q, size(std))
     Jar = reshape(Ja, size(std))
+    F̃r = reshape(F̃, (size(std)..., ND))
 
     if ND == 1
-        _split_flux_1d!(F♯r[1], Q, Jar, std, equation, op, 1)
+        _split_flux_1d!(F♯[1], F̃, Q, Jar, std, equation, op, 1)
+        for i in eachindex(std)
+            dQ[i] += dot(view(std.K♯[1], i, :), view(F♯[1], :, i))
+        end
 
     elseif ND == 2
+        # X direction
         @inbounds for j in eachindex(std, 2)
             @views _split_flux_1d!(
-                F♯r[1][:, :, j], Qr[:, j], Jar[:, j], std, equation, op, 1,
+                F♯[1], F̃r[:, j, 1], Qr[:, j], Jar[:, j],
+                std, equation, op, 1,
             )
+            ω = std.face.ω[j]
+            for i in eachindex(std, 1)
+                dQr[i, j] += ω * dot(view(std.K♯[1], i, :), view(F♯[1], :, i))
+            end
         end
+
+        # Y direction
         @inbounds for i in eachindex(std, 1)
             @views _split_flux_1d!(
-                F♯r[2][:, i, :], Qr[i, :], Jar[i, :], std, equation, op, 2,
+                F♯[2], F̃r[i, :, 2], Qr[i, :], Jar[i, :],
+                std, equation, op, 2,
             )
+            ω = std.face.ω[i]
+            for j in eachindex(std, 2)
+                dQr[i, j] += ω * dot(view(std.K♯[2], j, :), view(F♯[2], :, j))
+            end
         end
 
     else # ND == 3
+        li = LinearIndices(std.face)
+
+        # X direction
         @inbounds for k in eachindex(std, 3), j in eachindex(std, 2)
             @views _split_flux_1d!(
-                F♯r[1][:, :, j, k], Qr[:, j, k], Jar[:, j, k], std, equation, op, 1,
+                F♯[1], F̃r[:, j, k, 1], Qr[:, j, k], Jar[:, j, k],
+                std, equation, op, 1,
             )
+            ω = std.face.ω[li[j, k]]
+            for i in eachindex(std, 1)
+                dQr[i, j, k] += ω * dot(view(std.K♯[1], i, :), view(F♯[1], :, i))
+            end
         end
+
+        # Y direction
         @inbounds for k in eachindex(std, 3), i in eachindex(std, 1)
             @views _split_flux_1d!(
-                F♯r[2][:, i, :, k], Qr[i, :, k], Jar[i, :, k], std, equation, op, 2,
+                F♯[2], F̃r[i, :, k, 2], Qr[i, :, k], Jar[i, :, k],
+                std, equation, op, 2,
             )
+            ω = std.face.ω[li[i, k]]
+            for j in eachindex(std, 2)
+                dQr[i, j, k] += ω * dot(view(std.K♯[2], j, :), view(F♯[2], :, j))
+            end
         end
+
+        # Z direction
         @inbounds for j in eachindex(std, 2), i in eachindex(std, 1)
             @views _split_flux_1d!(
-                F♯r[3][:, i, j, :], Qr[i, j, :], Jar[i, j, :], std, equation, op, 3,
+                F♯[3], F̃r[i, j, :, 3], Qr[i, j, :], Jar[i, j, :],
+                std, equation, op, 3,
             )
+            ω = std.face.ω[li[i, j]]
+            for k in eachindex(std, 3)
+                dQr[i, j, k] += ω * dot(view(std.K♯[3], k, :), view(F♯[3], :, k))
+            end
         end
     end
 
-    # Strong derivative
-    @inbounds for i in eachindex(std)
-        for (K♯, Fs) in zip(std.K♯, F♯)
-            @views dQ[i] += dot(K♯[i, :], Fs[:, i])
-        end
-    end
     return nothing
 end
 
@@ -420,7 +451,7 @@ function _ssfv_compute_delta(b, c)
 end
 
 Base.@propagate_inbounds function _ssfv_gauss_flux_1d!(
-    F̄c, F♯, Fnl, Fnr, Q, W, Fli, Fri, K♯mat, Ja, frames, Js,
+    F̄c, F♯, F̃, Fnl, Fnr, Q, W, Fli, Fri, K♯mat, Ja, frames, Js,
     std, l, r, equation, op, idir,
 )
     # Precompute two-point and entropy-projected fluxes
@@ -452,6 +483,7 @@ Base.@propagate_inbounds function _ssfv_gauss_flux_1d!(
             equation,
             op.tpflux,
         )
+        F♯[i, i] = F̃[i]
         for l in (i + 1):size(std, idir)
             F♯[l, i] = twopointflux(
                 Q[i],
@@ -514,20 +546,14 @@ function surface_contribution!(
 
     # Buffers
     tid = Threads.threadid()
+    F̃ = std.cache.block[tid][1]
     F♯ = std.cache.sharp[tid]
-    F♯r = std.cache.sharptensor[tid]
-
-    # Indexing
-    ci = CartesianIndices(std)
 
     # Volume fluxes (diagonal of F♯ matrices)
     Ja = geometry.elements[ielem].Ja
     @inbounds for i in eachindex(std)
         F = volumeflux(Q[i], equation)
-        F̃ = contravariant(F, Ja[i])
-        for idir in eachdirection(std)
-            F♯[idir][ci[i][idir], i] = F̃[idir]
-        end
+        F̃[i, :] .= contravariant(F, Ja[i])
     end
 
     iface = dg.mesh.elements[ielem].faceinds
@@ -536,6 +562,7 @@ function surface_contribution!(
     Qr = reshape(Q, size(std))
     dQr = reshape(dQ, size(std))
     Jar = reshape(Ja, size(std))
+    F̃r = reshape(F̃, (size(std)..., ND))
     frames = geometry.subgrids[ielem].frames[]
     Js = geometry.subgrids[ielem].J[]
 
@@ -546,11 +573,10 @@ function surface_contribution!(
         Fri = std.cache.state[tid][3]
         l = std.l[1]
         r = std.l[2]
-        K♯ = std.K♯[1]
         _ssfv_gauss_flux_1d!(
-            F̄c, F♯r[1],
-            Fn[iface[1]][facepos[1]][1], Fn[iface[2]][facepos[2]][1],
-            Q, W, Fli, Fri, K♯, Jar, frames[1], Js[1],
+            F̄c, F♯[1], F̃,
+            Fn.face[iface[1]][facepos[1]][1], Fn.face[iface[2]][facepos[2]][1],
+            Q, W, Fli, Fri, std.K♯[1], Jar, frames[1], Js[1],
             std, l, r, equation, op, 1,
         )
 
@@ -567,14 +593,13 @@ function surface_contribution!(
         Fri = std.face.cache.state[tid][3]
         l = std.face.l[1]
         r = std.face.l[2]
-        K♯ = std.face.K♯[1]
 
         # X direction
         @inbounds for j in eachindex(std, 2)
             @views _ssfv_gauss_flux_1d!(
-                F̄c, F♯r[1][:, :, j],
-                Fn[iface[1]][facepos[1]][j], Fn[iface[2]][facepos[2]][j],
-                Qr[:, j], W, Fli, Fri, K♯,
+                F̄c, F♯[1], F̃r[:, j, 1],
+                Fn.face[iface[1]][facepos[1]][j], Fn.face[iface[2]][facepos[2]][j],
+                Qr[:, j], W, Fli, Fri, std.K♯[1],
                 Jar[:, j], frames[1][:, j], Js[1][:, j],
                 std, l, r, equation, op, 1,
             )
@@ -588,9 +613,9 @@ function surface_contribution!(
         # Y direction
         @inbounds for i in eachindex(std, 1)
             @views _ssfv_gauss_flux_1d!(
-                F̄c, F♯r[2][:, i, :],
-                Fn[iface[3]][facepos[3]][i], Fn[iface[4]][facepos[4]][i],
-                Qr[i, :], W, Fli, Fri, K♯,
+                F̄c, F♯[2], F̃r[i, :, 2],
+                Fn.face[iface[3]][facepos[3]][i], Fn.face[iface[4]][facepos[4]][i],
+                Qr[i, :], W, Fli, Fri, std.K♯[2],
                 Jar[i, :], frames[2][i, :], Js[2][i, :],
                 std, l, r, equation, op, 2,
             )
@@ -610,15 +635,14 @@ function surface_contribution!(
         Fri = std.edge.cache.state[tid][3]
         l = std.edge.l[1]
         r = std.edge.l[2]
-        K♯ = std.edge.K♯[1]
 
         # X direction
         @inbounds for k in eachindex(std, 3), j in eachindex(std, 2)
             ind = li[j, k]
             @views _ssfv_gauss_flux_1d!(
-                F̄c, F♯r[1][:, :, j, k],
-                Fn[iface[1]][facepos[1]][ind], Fn[iface[2]][facepos[2]][ind],
-                Qr[:, j, k], W, Fli, Fri, K♯, Jar[:, j, k],
+                F̄c, F♯[1], F̃r[:, j, k, 1],
+                Fn.face[iface[1]][facepos[1]][ind], Fn.face[iface[2]][facepos[2]][ind],
+                Qr[:, j, k], W, Fli, Fri, std.K♯[1], Jar[:, j, k],
                 frames[1][:, j, k], Js[1][:, j, k],
                 std, l, r, equation, op, 1,
             )
@@ -633,9 +657,9 @@ function surface_contribution!(
         @inbounds for k in eachindex(std, 3), i in eachindex(std, 1)
             ind = li[i, k]
             @views _ssfv_gauss_flux_1d!(
-                F̄c, F♯r[2][:, i, :, k],
-                Fn[iface[3]][facepos[3]][ind], Fn[iface[4]][facepos[4]][ind],
-                Qr[i, :, k], W, Fli, Fri, K♯, Jar[i, :, k],
+                F̄c, F♯[2], F̃r[i, :, k, 2],
+                Fn.face[iface[3]][facepos[3]][ind], Fn.face[iface[4]][facepos[4]][ind],
+                Qr[i, :, k], W, Fli, Fri, std.K♯[2], Jar[i, :, k],
                 frames[2][i, :, k], Js[2][i, :, k],
                 std, l, r, equation, op, 2,
             )
@@ -650,9 +674,9 @@ function surface_contribution!(
         @inbounds for j in eachindex(std, 2), i in eachindex(std, 1)
             ind = li[i, j]
             @views _ssfv_gauss_flux_1d!(
-                F̄c, F♯r[3][:, i, j, :],
-                Fn[iface[5]][facepos[5]][ind], Fn[iface[6]][facepos[6]][ind],
-                Qr[i, j, :], W, Fli, Fri, K♯, Jar[i, j, :],
+                F̄c, F♯[3], F̃r[i, j, :, 3],
+                Fn.face[iface[5]][facepos[5]][ind], Fn.face[iface[6]][facepos[6]][ind],
+                Qr[i, j, :], W, Fli, Fri, std.K♯[3], Jar[i, j, :],
                 frames[i, j, :], Js[3][i, j, :],
                 std, l, r, equation, op, 3,
             )
@@ -670,7 +694,7 @@ Base.@propagate_inbounds function _ssfv_flux_1d!(
     F̄c, Q, Qmat, Ja, frames, Js, std, equation, op, idir,
 )
     # Zero everything, boundaries will remain zero
-    fill!(F̄c, zero(eltype(first(Q))))
+    fill!(F̄c, zero(datatype(Q)))
     for i in 2:size(std, idir)
 
         # Two-point fluxes
