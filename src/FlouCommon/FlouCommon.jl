@@ -46,6 +46,7 @@ export AbstractSpatialDiscretization, EquationConfig
 export rhs!
 
 export list_monitors, get_monitor
+export list_limiters, get_limiter
 
 # Basic utilities
 include("Utilities.jl")
@@ -56,7 +57,9 @@ include("Mesh.jl")
 # Equations interface and definitions
 include("Equations.jl")
 
-# Discretization of the spatial terms of the equations
+############################################################################################
+#                                  Spatial discretization                                  #
+
 abstract type AbstractSpatialDiscretization{ND,RT} end
 
 """
@@ -98,7 +101,9 @@ Evaluate the right-hand side (spatial part) of the ODE.
 """
 function rhs!(::AbstractArray, ::AbstractArray, ::EquationConfig, ::Real) end
 
-# Monitors
+############################################################################################
+#                                         Monitors                                         #
+
 """
     list_monitors(disc, equation)
 
@@ -112,6 +117,28 @@ function list_monitors(::AbstractSpatialDiscretization, ::AbstractEquation) end
 Get the monitor with the given name for the given discretization and equation.
 """
 function get_monitor(
+    ::AbstractSpatialDiscretization,
+    ::AbstractEquation,
+    ::Symbol,
+    ::Any,
+) end
+
+############################################################################################
+#                                         Limiters                                         #
+
+"""
+    list_limiters(disc, equation)
+
+List the limiters available for the given discretization and equation.
+"""
+function list_limiters(::AbstractSpatialDiscretization, ::AbstractEquation) end
+
+"""
+    get_limiter(disc, equation, name, params=nothing)
+
+Get the limiter with the given name for the given discretization and equation.
+"""
+function get_limiter(
     ::AbstractSpatialDiscretization,
     ::AbstractEquation,
     ::Symbol,

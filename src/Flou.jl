@@ -56,6 +56,7 @@ export EquationConfig
 export rhs!
 
 export list_monitors
+export list_limiters
 
 # Visualization
 include("FlouBiz/FlouBiz.jl")
@@ -93,6 +94,6 @@ include("FlouTime/FlouTime.jl")
 using .FlouTime
 
 export timeintegrate, make_callback_list
-export get_save_callback, get_cfl_callback, get_monitor_callback
+export get_save_callback, get_cfl_callback, get_monitor_callback, get_limiter_callback
 
 end # Flou
