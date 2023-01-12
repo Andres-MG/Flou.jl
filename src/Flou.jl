@@ -5,8 +5,7 @@ using LinearAlgebra: transpose, Transpose, diag, Diagonal
 using SparseArrays: SparseArrays, SparseMatrixCSC, sparse, mul!
 using StaticArrays: StaticArrays, SVector, MVector, SMatrix, SDiagonal, @SVector
 using FastGaussQuadrature: FastGaussQuadrature, gausslegendre, gausslobatto
-using Polynomials: Polynomials, Polynomial, derivative
-using SpecialPolynomials: SpecialPolynomials, Lagrange
+using Polynomials: Polynomials, Polynomial, derivative, fit
 using Polyester: Polyester, @batch
 using Printf: Printf, @printf, @sprintf
 using HDF5: HDF5

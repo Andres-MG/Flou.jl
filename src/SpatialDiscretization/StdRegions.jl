@@ -178,7 +178,7 @@ function StdSegment{RT}(
     y = fill(zero(RT), NP)
     for i in 1:NP
         y[i] = one(RT)
-        Li = convert(Polynomial, Lagrange(_ξ, y))
+        Li = fit(_ξ, y)
         dLi = derivative(Li)
         D[:, i] .= dLi.(_ξ)
         l[1][i] = Li(-one(RT))
