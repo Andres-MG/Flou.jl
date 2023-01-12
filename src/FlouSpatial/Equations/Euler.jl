@@ -588,3 +588,67 @@ function entropy_monitor(::MultielementDisc, ::EulerEquation)
         return s
     end
 end
+
+############################################################################################
+#                                         Limiters                                         #
+
+function FlouCommon.list_limiters(::MultielementDisc, ::EulerEquation)
+    return (:zhang_shu,)
+end
+
+function FlouCommon.get_limiter(
+    disc::MultielementDisc,
+    equation::EulerEquation,
+    name::Symbol,
+    p=nothing,
+)
+    if name == :zhang_shu
+        return zhang_shu_limiter(disc, equation, p)
+    else
+        error("Unknown monitor '$(name)'.")
+    end
+end
+
+function zhang_shu_limiter(::MultielementDisc, ::EulerEquation, minval)
+    minval |> isnothing && throw(ArgumentError(
+        "The minimum value must be specified when using the limiter of Zhang & Shu."
+    ))
+    return (_Q, disc, equation) -> begin
+        Q = GlobalStateVector{nvariables(equation)}(_Q, disc.dofhandler)
+        @flouthreads for ie in eachelement(disc)
+            Qe = Q.elements[ie]
+            geom = disc.geometry.elements[ie]
+            rt = datatype(Q)
+
+            # Density limiting
+            Q̄ = integrate(Qe.dofs, geom)
+            Q̄ /= geom.volume
+
+            m = min(minval, Q̄[1])
+            ρmin = minimum(Qe.vars[1])
+            θ = abs((Q̄[1] - m) / (Q̄[1] - ρmin))
+            if θ <= one(rt)
+                @inbounds for i in eachindex(Qe.dofs)
+                    Qe.vars[1][i] = θ * (Qe.vars[1][i] - Q̄[1]) + Q̄[1]
+                end
+            end
+
+            # Pressure limiting
+            p = disc.std.cache.scalar[Threads.threadid()][1].vars[1]
+            p .= pressure.(Qe.dofs, Ref(equation))
+
+            p̄ = integrate(p, geom)
+            p̄ /= geom.volume
+
+            m = min(minval, p̄)
+            pmin = minimum(p)
+            θ = abs((p̄ - m) / (p̄ - pmin))
+            if θ <= one(rt)
+                @inbounds for i in eachindex(Qe.dofs)
+                    Qe.dofs[i] = θ * (Qe.dofs[i] - Q̄) + Q̄
+                end
+            end
+        end
+        return nothing
+    end
+end

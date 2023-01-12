@@ -22,7 +22,7 @@ using OrdinaryDiffEq: OrdinaryDiffEq, ODEProblem, solve, DiscreteCallback, Callb
 
 export MonitorOutput
 export timeintegrate, make_callback_list
-export get_save_callback, get_cfl_callback, get_monitor_callback
+export get_save_callback, get_cfl_callback, get_monitor_callback, get_limiter_callback
 
 """
     timeintegrate(rhs::Function, Q0::AbstractArray, disc::AbstractSpatialDiscretization,
@@ -130,7 +130,21 @@ function get_monitor_callback(
         push!(monitor.value, value)
         OrdinaryDiffEq.u_modified!(integrator, false)
     end
-    return (DiscreteCallback(condition, affect, save_positions=(false, false)), monitor)
+    return DiscreteCallback(condition, affect, save_positions=(false, false)), monitor
+end
+
+function get_limiter_callback(
+    disc::AbstractSpatialDiscretization,
+    equation::AbstractEquation,
+    name::Symbol,
+    p=nothing,
+)
+    _limiterfunc = get_limiter(disc, equation, name, p)
+    return (_, integrator, _, _) -> begin
+        (; disc, equation) = integrator.p
+        _limiterfunc(integrator.u, disc, equation)
+        OrdinaryDiffEq.u_modified!(integrator, true)
+    end
 end
 
 function make_callback_list(callbacks...)
