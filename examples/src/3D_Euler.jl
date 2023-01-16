@@ -17,8 +17,8 @@ end
 
 # Discretization
 Δt = 1e-4
-tf = 0.25
-save_steps = range(0, 2500, 11)
+tf = 0.1
+save_steps = range(0, 1000, 11)
 solver = ORK256(williamson_condition=false)
 
 equation = EulerEquation{3}(1.4)
@@ -38,30 +38,29 @@ Q0 = Flou.vars_prim2cons((1.0, 2.0, 0.0, 0.0, 1.0), equation)
 )
 
 ∇ = SplitDivOperator(
-    ChandrasekharAverage(),
-    MatrixDissipation(ChandrasekharAverage(), 1.0),
+    MatrixDissipation(ChandrasekharAverage(), 1.0)
 )
-DG = DGSEM(mesh, std, equation, ∇, ∂Ω)
+dg = DGSEM(mesh, std, equation, ∇, ∂Ω)
 
-Q = StateVector{nvariables(equation),Float64}(undef, DG.dofhandler)
+Q = StateVector{nvariables(equation),Float64}(undef, dg.dofhandler)
 for i in eachdof(Q)
     Q.dof[i] = Q0
 end
 
-display(DG)
+display(dg)
 println()
 
-mb, mvals = get_monitor_callback(Float64, DG, equation, :entropy)
+mb, mvals = get_monitor_callback(Float64, dg, equation, :entropy)
 sb = get_save_callback("../results/solution"; iter=save_steps)
 cb = make_callback_list(mb, sb)
 
 @info "Starting simulation..."
 
 _, exetime = timeintegrate(
-    Q, DG, equation, solver, tf;
+    Q, dg, equation, solver, tf;
     save_everystep=false, alias_u0=true, adaptive=false, dt=Δt, callback=cb,
     progress=true, progress_steps=5,
 )
 
 @info "Elapsed time: $(exetime) s"
-@info "Time per iteration and DOF: $(exetime / (tf/Δt) / ndofs(DG)) s"
+@info "Time per iteration and DOF: $(exetime / (tf/Δt) / ndofs(dg)) s"

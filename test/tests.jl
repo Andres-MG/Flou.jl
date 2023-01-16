@@ -10,19 +10,19 @@ function Advection1D()
     apply_periodicBCs!(mesh, "1" => "2")
 
     ∇ = WeakDivOperator(LxFNumericalFlux(StdAverageNumericalFlux(), 1.0))
-    DG = DGSEM(mesh, std, equation, ∇, ())
+    dg = DGSEM(mesh, std, equation, ∇, ())
 
     x0 = 0.5
     sx = 0.1
     h = 1.0
-    Q = StateVector{nvariables(equation),Float64}(undef, DG.dofhandler)
-    for i in eachdof(DG)
-        x = DG.geometry.elements.coords[i][1]
-        Q.dof[i] = Flou.gaussian_bump(x, 0.0, 0.0, x0, 0.0, 0.0, sx, 1.0, 1.0, h)
+    Q = StateVector{nvariables(equation),Float64}(undef, dg.dofhandler)
+    for i in eachdof(dg)
+        x = dg.geometry.elements.coords[i][1]
+        Q.dof[i] = Flou.gaussian_bump(x, x0, sx, h)
     end
 
     sol, _ = timeintegrate(
-        Q, DG, equation, solver, tf;
+        Q, dg, equation, solver, tf;
         saveat=(0, tf), adaptive=false, dt=Δt, alias_u0=true,
     )
     return sol
@@ -40,19 +40,19 @@ function Advection2D()
     apply_periodicBCs!(mesh, "1" => "2", "3" => "4")
 
     ∇ = WeakDivOperator(LxFNumericalFlux(StdAverageNumericalFlux(), 1.0))
-    DG = DGSEM(mesh, std, equation, ∇, ())
+    dg = DGSEM(mesh, std, equation, ∇, ())
 
     x0, y0 = 0.75, 1.0
     sx, sy = 0.2, 0.2
     h = 1.0
-    Q = StateVector{nvariables(equation),Float64}(undef, DG.dofhandler)
-    for i in eachdof(DG)
-        x, y = DG.geometry.elements.coords[i]
-        Q.dof[i] = Flou.gaussian_bump(x, y, 0.0, x0, y0, 0.0, sx, sy, 1.0, h)
+    Q = StateVector{nvariables(equation),Float64}(undef, dg.dofhandler)
+    for i in eachdof(dg)
+        x, y = dg.geometry.elements.coords[i]
+        Q.dof[i] = Flou.gaussian_bump(x, y, x0, y0, sx, sy, h)
     end
 
     sol, _ = timeintegrate(
-        Q, DG, equation, solver, tf;
+        Q, dg, equation, solver, tf;
         saveat=(0, tf), adaptive=false, dt=Δt, alias_u0=true,
     )
     return sol
@@ -85,16 +85,16 @@ function SodTube1D()
         ChandrasekharAverage(),
         MatrixDissipation(ChandrasekharAverage(), 1.0),
     )
-    DG = DGSEM(mesh, std, equation, ∇, ∂Ω)
+    dg = DGSEM(mesh, std, equation, ∇, ∂Ω)
 
-    Q = StateVector{nvariables(equation),Float64}(undef, DG.dofhandler)
-    for i in eachdof(DG)
-        x = DG.geometry.elements.coords[i]
+    Q = StateVector{nvariables(equation),Float64}(undef, dg.dofhandler)
+    for i in eachdof(dg)
+        x = dg.geometry.elements.coords[i]
         Q.dof[i] = Qext((), x, (), 0.0, equation)
     end
 
     sol, _ = timeintegrate(
-        Q, DG, equation, solver, tf;
+        Q, dg, equation, solver, tf;
         saveat=(0, tf), adaptive=false, dt=Δt, alias_u0=true,
     )
     return sol
@@ -136,16 +136,16 @@ function Shockwave2D()
         1e+0,
         MatrixDissipation(ChandrasekharAverage(), 1.0),
     )
-    DG = DGSEM(mesh, std, equation, ∇, ∂Ω)
+    dg = DGSEM(mesh, std, equation, ∇, ∂Ω)
 
-    Q = StateVector{nvariables(equation),Float64}(undef, DG.dofhandler)
-    for i in eachdof(DG)
-        xy = DG.geometry.elements.coords[i]
+    Q = StateVector{nvariables(equation),Float64}(undef, dg.dofhandler)
+    for i in eachdof(dg)
+        xy = dg.geometry.elements.coords[i]
         Q.dof[i] = Qext((), xy, (), 0.0, equation)
     end
 
     sol, _ = timeintegrate(
-        Q, DG, equation, solver, tf;
+        Q, dg, equation, solver, tf;
         saveat=(0, tf), adaptive=false, dt=Δt, alias_u0=true,
     )
     return sol
@@ -172,11 +172,11 @@ function Implosion2D()
         ChandrasekharAverage(),
         MatrixDissipation(ChandrasekharAverage(), 1.0),
     )
-    DG = DGSEM(mesh, std, equation, ∇, ∂Ω)
+    dg = DGSEM(mesh, std, equation, ∇, ∂Ω)
 
-    Q = StateVector{nvariables(equation),Float64}(undef, DG.dofhandler)
-    for i in eachdof(DG)
-        x, y = DG.geometry.elements.coords[i]
+    Q = StateVector{nvariables(equation),Float64}(undef, dg.dofhandler)
+    for i in eachdof(dg)
+        x, y = dg.geometry.elements.coords[i]
         if x <= 0.15 && y <= 0.15 - x
             Q.dof[i] = (0.125, 0.0, 0.0, 0.14 / 0.4)
         else
@@ -185,7 +185,7 @@ function Implosion2D()
     end
 
     sol, _ = timeintegrate(
-        Q, DG, equation, solver, tf;
+        Q, dg, equation, solver, tf;
         saveat=(0, tf), adaptive=false, dt=Δt, alias_u0=true,
     )
     return sol
@@ -222,15 +222,15 @@ function ForwardFacingStep2D()
         0.1^2,
         MatrixDissipation(ChandrasekharAverage(), 1.0),
     )
-    DG = DGSEM(mesh, std, equation, ∇, ∂Ω)
+    dg = DGSEM(mesh, std, equation, ∇, ∂Ω)
 
-    Q = StateVector{nvariables(equation),Float64}(undef, DG.dofhandler)
+    Q = StateVector{nvariables(equation),Float64}(undef, dg.dofhandler)
     for i in eachdof(Q)
         Q.dof[i] = Q0
     end
 
     sol, _ = timeintegrate(
-        Q, DG, equation, solver, tf;
+        Q, dg, equation, solver, tf;
         saveat=(0, tf), adaptive=false, dt=Δt, alias_u0=true,
     )
     return sol

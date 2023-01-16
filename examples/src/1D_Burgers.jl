@@ -22,26 +22,26 @@ mesh = CartesianMesh{1,Float64}(0, 1, 20)
 apply_periodicBCs!(mesh, "1" => "2")
 
 div = WeakDivOperator(LxFNumericalFlux(StdAverageNumericalFlux(), 1.0))
-DG = DGSEM(mesh, std, equation, div, ())
+dg = DGSEM(mesh, std, equation, div, ())
 
 x0 = 0.4
 sx = 0.1
 h = 1.0
-Q = StateVector{nvariables(equation),Float64}(undef, DG.dofhandler)
-for i in eachdof(DG)
-    x = DG.geometry.elements.coords[i][1]
-    Q.dof[i] = Flou.gaussian_bump(x, 0.0, 0.0, x0, 0.0, 0.0, sx, 1.0, 1.0, h)
+Q = StateVector{nvariables(equation),Float64}(undef, dg.dofhandler)
+for i in eachdof(dg)
+    x = dg.geometry.elements.coords[i][1]
+    Q.dof[i] = Flou.gaussian_bump(x, x0, sx, h)
 end
 
-display(DG)
+display(dg)
 println()
 
 @info "Starting simulation..."
 
 sol, exetime = timeintegrate(
-    Q, DG, equation, solver, tf;
+    Q, dg, equation, solver, tf;
     alias_u0=true, adaptive=false, dt=Δt,
 )
 
 @info "Elapsed time: $(exetime) s"
-@info "Time per iteration and DOF: $(exetime / (tf/Δt) / ndofs(DG)) s"
+@info "Time per iteration and DOF: $(exetime / (tf/Δt) / ndofs(dg)) s"
