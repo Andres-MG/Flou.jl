@@ -14,8 +14,7 @@ solver = CarpenterKennedy2N54(williamson_condition=false)
 nelem_list = [2^i for i in 2:6]
 order_list = 1:5
 
-divergence = SplitDivOperator(
-    ChandrasekharAverage(),
+∇ = SplitDivOperator(
     LxFNumericalFlux(ChandrasekharAverage(), 1.0),
 )
 
@@ -30,32 +29,32 @@ end
 
 @everywhere function l2error(q, t, dg, equation)
     (; geometry) = dg
-    s = zero(eltype(q))
-    for (i, qi) in enumerate(eachrow(q))
-        qe = solution(geometry.elements.coords[i], t, equation)
-        s += sum(abs2, qe - qi)
+    s = zero(Flou.datatype(q))
+    for (i, xi) in enumerate(geometry.elements.coords)
+        qe = solution(xi, t, equation)
+        s += sum(abs2, qe - q.dof[i])
     end
     return sqrt(s / ndofs(dg))
 end
 
-@everywhere function run(nelem, order, quad, div, tf, solver, equation, cfl)
+@everywhere function run(nelem, order, quad, ∇, tf, solver, equation, cfl)
     # Solve the problem
-    std = StdSegment{Float64}(order + 1, quad, nvariables(equation))
+    std = FRStdSegment{Float64}(order + 1, quad, :dgsem, nvariables(equation))
     mesh = CartesianMesh{1,Float64}(-1, 1, nelem)
     apply_periodicBCs!(mesh, "1" => "2")
-    DG = DGSEM(mesh, std, equation, div, ())
-    Q = StateVector{Float64}(undef, nvariables(equation), DG.dofhandler)
-    for i in eachdof(DG)
-        x = DG.geometry.elements.coords[i]
-        Q.data[i, :] .= solution(x, 0.0, equation)
+    dg = FR(mesh, std, equation, ∇, ())
+    Q = StateVector{nvariables(equation),Float64}(undef, dg.dofhandler)
+    for i in eachdof(dg)
+        x = dg.geometry.elements.coords[i]
+        Q.dof[i] = solution(x, 0.0, equation)
     end
     timeintegrate(
-        Q.data, DG, equation, solver, tf;
+        Q, dg, equation, solver, tf;
         alias_u0=true, adaptive=false, callback=cfl, dt=1.0,
     )
 
     # Compute the L2 error
-    return l2error(Q.data, tf, DG, equation)
+    return l2error(Q, tf, dg, equation)
 end
 
 # Parallel execution
@@ -64,7 +63,7 @@ tasks = [(nelem, order, quad)
     order in order_list,
     quad in (GLL(), GL())
 ]
-error = pmap((t) -> run(t..., divergence, tf, solver, equation, cfl_callback), tasks)
+error = pmap((t) -> run(t..., ∇, tf, solver, equation, cfl_callback), tasks)
 
 # Post-processing
 using Plots

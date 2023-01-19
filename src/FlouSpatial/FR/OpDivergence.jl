@@ -1,12 +1,12 @@
 abstract type AbstractDivOperator <: AbstractOperator end
 
 """
-    dg_requires_subgrid(divergence, std)
+    requires_subgrid(divergence, std)
 
 Return `true` if the specified `divergence` operator needs the allocation of the
 subcell grid.
 """
-function dg_requires_subgrid(::AbstractDivOperator, ::DGStdRegion)
+function requires_subgrid(::AbstractDivOperator, ::AbstractStdRegion)
     return false
 end
 
@@ -15,20 +15,20 @@ function surface_contribution!(
     _,
     Fn,
     ielem,
-    std::DGStdRegion,
-    dg::DGSEM,
+    std::AbstractStdRegion,
+    fr::FR,
     ::AbstractEquation,
     ::AbstractDivOperator,
 )
     # Unpack
-    (; mesh) = dg
+    (; mesh) = fr
 
     rt = datatype(dQ)
     iface = mesh.elements[ielem].faceinds
     facepos = mesh.elements[ielem].facepos
 
     @inbounds for (s, (face, pos)) in enumerate(zip(iface, facepos))
-        mul!(dQ, std.lω[s], Fn.face[face][pos], -one(rt), one(rt))
+        mul!(dQ, std.∂g[s], Fn.face[face][pos], -one(rt), one(rt))
     end
     return nothing
 end
@@ -44,13 +44,13 @@ function volume_contribution!(
     dQ,
     Q,
     ielem,
-    std::DGStdRegion,
-    dg::DGSEM,
+    std::AbstractStdRegion,
+    fr::FR,
     equation::AbstractEquation,
     ::WeakDivOperator,
 )
     # Unpack
-    (; geometry) = dg
+    (; geometry) = fr
 
     # Volume fluxes
     F̃ = std.cache.block[Threads.threadid()][1]
@@ -62,43 +62,8 @@ function volume_contribution!(
 
     # Weak derivative
     rt = datatype(dQ)
-    @inbounds for s in eachindex(std.K)
-        mul!(dQ, std.K[s], view(F̃, :, s), one(rt), one(rt))
-    end
-    return nothing
-end
-
-#==========================================================================================#
-#                                Strong divergence operator                                #
-
-struct StrongDivOperator{F<:AbstractNumericalFlux} <: AbstractDivOperator
-    numflux::F
-end
-
-function volume_contribution!(
-    dQ,
-    Q,
-    ielem,
-    std::DGStdRegion,
-    dg::DGSEM,
-    equation::AbstractEquation,
-    ::StrongDivOperator,
-)
-    # Unpack
-    (; geometry) = dg
-
-    # Volume fluxes
-    F̃ = std.cache.block[Threads.threadid()][1]
-    Ja = geometry.elements[ielem].metric
-    @inbounds for i in eachdof(std)
-        F = volumeflux(Q[i], equation)
-        F̃[i, :] .= contravariant(F, Ja[i])
-    end
-
-    # Strong derivative
-    rt = datatype(dQ)
-    @inbounds for s in eachindex(std.K)
-        mul!(dQ, std.Ks[s], view(F̃, :, s), one(rt), one(rt))
+    @inbounds for s in eachindex(std.Dw)
+        mul!(dQ, std.Dw[s], view(F̃, :, s), -one(rt), one(rt))
     end
     return nothing
 end
@@ -107,7 +72,7 @@ end
 #                                 Split divergence operator                                #
 
 """
-    SplitDivOperator([twopointflux, ]numericalflux)
+    SplitDivOperator([tpflux=numflux.avg], numflux)
 
 Split-divergence operator, only implemented for tensor-product elements. The two-point flux
 represents the splitting strategy.
@@ -124,13 +89,12 @@ function SplitDivOperator(numflux)
     return SplitDivOperator(numflux.avg, numflux)
 end
 
-function dg_requires_subgrid(::SplitDivOperator, std::DGStdRegion{Q}) where {Q}
-    return Q == GaussQuadrature
+function requires_subgrid(::SplitDivOperator, std::AbstractStdRegion)
+    return nodetype(std) == GaussNodes
 end
 
 Base.@propagate_inbounds function _split_gauss_deriv_1d!(
-    dQ, Fnl, Fnr, Q, W, Fli, Fri, Ja, frames, Js,
-    std, l, r, ω, equation, op, idir,
+    dQ, Fnl, Fnr, Q, W, Fli, Fri, Ja, frames, Js, std, l, r, ω, equation, op, idir,
 )
     # Precompute two-point and entropy-projected fluxes
     for i in eachdof(std, idir)
@@ -167,8 +131,8 @@ Base.@propagate_inbounds function _split_gauss_deriv_1d!(
     l_Fli = l * Fli
     r_Fri = r * Fri
     for i in eachdof(std, idir)
-        dQ[i] += l[i] * ω * (Fli[i] - l_Fli - Fnl) -
-                 r[i] * ω * (Fri[i] - r_Fri + Fnr)
+        dQ[i] += (l[i] * (Fli[i] - l_Fli - Fnl) -
+                 r[i] * (Fri[i] - r_Fri + Fnr)) / ω[i]
     end
     return nothing
 end
@@ -178,15 +142,16 @@ function surface_contribution!(
     Q,
     Fn,
     ielem,
-    std::DGStdRegion{<:GaussQuadrature,ND},
-    dg::DGSEM,
+    std::AbstractStdRegion{ND,NP,<:GaussNodes},
+    fr::FR,
     equation::AbstractEquation,
     op::SplitDivOperator,
 ) where {
-    ND
+    ND,
+    NP,
 }
     # Unpack
-    (; mesh, geometry) = dg
+    (; mesh, geometry) = fr
 
     rt = datatype(Q)
     iface = mesh.elements[ielem].faceinds
@@ -201,6 +166,7 @@ function surface_contribution!(
     tid = Threads.threadid()
 
     if ND == 1
+        ω = std.ω
         W = std.cache.state[tid][1]
         Fli = std.cache.state[tid][2]
         Fri = std.cache.state[tid][3]
@@ -208,7 +174,7 @@ function surface_contribution!(
         r = std.l[2]
         _split_gauss_deriv_1d!(
             dQ, Fn.face[iface[1]][facepos[1]][1], Fn.face[iface[2]][facepos[2]][1],
-            Q, W, Fli, Fri, Ja, frames[1], Js[1], std, l, r, one(rt), equation, op, 1,
+            Q, W, Fli, Fri, Ja, frames[1], Js[1], std, l, r, ω, equation, op, 1,
         )
 
     elseif ND == 2
@@ -225,7 +191,7 @@ function surface_contribution!(
                 dQr[:, j],
                 Fn.face[iface[1]][facepos[1]][j], Fn.face[iface[2]][facepos[2]][j],
                 Qr[:, j], W, Fli, Fri, Ja[:, j], frames[1][:, j], Js[1][:, j],
-                std, l, r, ω[j], equation, op, 1,
+                std, l, r, ω, equation, op, 1,
             )
         end
 
@@ -235,13 +201,13 @@ function surface_contribution!(
                 dQr[i, :],
                 Fn.face[iface[3]][facepos[3]][i], Fn.face[iface[4]][facepos[4]][i],
                 Qr[i, :], W, Fli, Fri, Ja[i, :], frames[2][i, :], Js[2][i, :],
-                std, l, r, ω[i], equation, op, 2,
+                std, l, r, ω, equation, op, 2,
             )
         end
 
     else # ND == 3
         li = lineardofs(std.face)
-        ω = std.face.ω
+        ω = std.edge.ω
         W = std.edge.cache.state[tid][1]
         Fli = std.edge.cache.state[tid][2]
         Fri = std.edge.cache.state[tid][3]
@@ -255,7 +221,7 @@ function surface_contribution!(
                 dQr[:, j, k],
                 Fn.face[iface[1]][facepos[1]][ind], Fn.face[iface[2]][facepos[2]][ind],
                 Qr[:, j, k], W, Fli, Fri, Ja[:, j, k], frames[1][:, j, k],
-                Js[1][:, j, k], std, l, r, ω[ind], equation, op, 1,
+                Js[1][:, j, k], std, l, r, ω, equation, op, 1,
             )
         end
 
@@ -266,7 +232,7 @@ function surface_contribution!(
                 dQr[i, :, k],
                 Fn.face[iface[3]][facepos[3]][ind], Fn.face[iface[4]][facepos[4]][ind],
                 Qr[i, :, k], W, Fli, Fri, Ja[i, :, k], frames[2][i, :, k],
-                Js[2][i, :, k], std, l, r, ω[ind], equation, op, 2,
+                Js[2][i, :, k], std, l, r, ω, equation, op, 2,
             )
         end
 
@@ -277,7 +243,7 @@ function surface_contribution!(
                 dQr[i, j, :],
                 Fn.face[iface[5]][facepos[5]][ind], Fn.face[iface[6]][facepos[6]][ind],
                 Qr[i, j, :], W, Fli, Fri, Ja[i, j, :], frames[3][i, j, :],
-                Js[3][i, j, :], std, l, r, ω[ind], equation, op, 3,
+                Js[3][i, j, :], std, l, r, ω, equation, op, 3,
             )
         end
     end
@@ -306,16 +272,15 @@ function volume_contribution!(
     dQ,
     Q,
     ielem,
-    std::DGStdRegion{QT,ND},
-    dg::DGSEM,
+    std::AbstractStdRegion{ND},
+    fr::FR,
     equation::AbstractEquation,
     op::SplitDivOperator,
 ) where {
-    QT,
     ND
 }
     # Unpack
-    (; geometry) = dg
+    (; geometry) = fr
 
     is_tensor_product(std) || throw(ArgumentError(
         "All the standard regions must be tensor-products."
@@ -342,7 +307,7 @@ function volume_contribution!(
     if ND == 1
         _split_flux_1d!(F♯[1], F̃, Q, Jar, std, equation, op, 1)
         for i in eachdof(std)
-            dQ[i] += dot(view(std.K♯[1], i, :), view(F♯[1], :, i))
+            dQ[i] -= dot(view(std.D♯[1], i, :), view(F♯[1], :, i))
         end
 
     elseif ND == 2
@@ -352,9 +317,8 @@ function volume_contribution!(
                 F♯[1], F̃r[:, j, 1], Qr[:, j], Jar[:, j],
                 std, equation, op, 1,
             )
-            ω = std.face.ω[j]
             for i in eachdof(std, 1)
-                dQr[i, j] += ω * dot(view(std.K♯[1], i, :), view(F♯[1], :, i))
+                dQr[i, j] -= dot(view(std.D♯[1], i, :), view(F♯[1], :, i))
             end
         end
 
@@ -364,24 +328,20 @@ function volume_contribution!(
                 F♯[2], F̃r[i, :, 2], Qr[i, :], Jar[i, :],
                 std, equation, op, 2,
             )
-            ω = std.face.ω[i]
             for j in eachdof(std, 2)
-                dQr[i, j] += ω * dot(view(std.K♯[2], j, :), view(F♯[2], :, j))
+                dQr[i, j] -= dot(view(std.D♯[2], j, :), view(F♯[2], :, j))
             end
         end
 
     else # ND == 3
-        li = lineardofs(std.face)
-
         # X direction
         @inbounds for k in eachdof(std, 3), j in eachdof(std, 2)
             @views _split_flux_1d!(
                 F♯[1], F̃r[:, j, k, 1], Qr[:, j, k], Jar[:, j, k],
                 std, equation, op, 1,
             )
-            ω = std.face.ω[li[j, k]]
             for i in eachdof(std, 1)
-                dQr[i, j, k] += ω * dot(view(std.K♯[1], i, :), view(F♯[1], :, i))
+                dQr[i, j, k] -= dot(view(std.D♯[1], i, :), view(F♯[1], :, i))
             end
         end
 
@@ -391,9 +351,8 @@ function volume_contribution!(
                 F♯[2], F̃r[i, :, k, 2], Qr[i, :, k], Jar[i, :, k],
                 std, equation, op, 2,
             )
-            ω = std.face.ω[li[i, k]]
             for j in eachdof(std, 2)
-                dQr[i, j, k] += ω * dot(view(std.K♯[2], j, :), view(F♯[2], :, j))
+                dQr[i, j, k] -= dot(view(std.D♯[2], j, :), view(F♯[2], :, j))
             end
         end
 
@@ -403,9 +362,8 @@ function volume_contribution!(
                 F♯[3], F̃r[i, j, :, 3], Qr[i, j, :], Jar[i, j, :],
                 std, equation, op, 3,
             )
-            ω = std.face.ω[li[i, j]]
             for k in eachdof(std, 3)
-                dQr[i, j, k] += ω * dot(view(std.K♯[3], k, :), view(F♯[3], :, k))
+                dQr[i, j, k] -= dot(view(std.D♯[3], k, :), view(F♯[3], :, k))
             end
         end
     end
@@ -417,7 +375,7 @@ end
 #                               Telescopic divergence operator                             #
 
 """
-    SSFVDivOperator(twopointflux, fvflux, blending)
+    SSFVDivOperator([tpflux=numflux.avg, [fvflux=numflux]], numflux, blend)
 
 Split-divergence operator in telescopic form. Only implemented for tensor-product elements.
 
@@ -434,15 +392,19 @@ struct SSFVDivOperator{
 } <: AbstractDivOperator
     tpflux::T
     fvflux::F
-    blend::RT
     numflux::N
+    blend::RT
 end
 
-function SSFVDivOperator(fvflux, blend, numflux)
-    return SSFVDivOperator(numflux.avg, fvflux, blend, numflux)
+function SSFVDivOperator(tpflux, numflux, blend)
+    return SSFVDivOperator(tpflux, numflux, numflux, blend)
 end
 
-dg_requires_subgrid(::SSFVDivOperator, ::DGStdRegion) = true
+function SSFVDivOperator(numflux, blend)
+    return SSFVDivOperator(numflux.avg, numflux, numflux, blend)
+end
+
+requires_subgrid(::SSFVDivOperator, ::AbstractStdRegion) = true
 
 function _ssfv_compute_delta(b, c)
     # Fisher
@@ -467,8 +429,8 @@ function _ssfv_compute_delta(b, c)
 end
 
 Base.@propagate_inbounds function _ssfv_gauss_flux_1d!(
-    F̄c, F♯, F̃, Fnl, Fnr, Q, W, Fli, Fri, K♯mat, Ja, frames, Js,
-    std, l, r, equation, op, idir,
+    F̄c, F♯, F̃, Fnl, Fnr, Q, W, Fli, Fri, D♯, Ja, frames, Js,
+    std, l, r, ω, equation, op, idir,
 )
     # Precompute two-point and entropy-projected fluxes
     for i in eachdof(std, idir)
@@ -521,7 +483,7 @@ Base.@propagate_inbounds function _ssfv_gauss_flux_1d!(
     l_Fli = l * Fli
     r_Fri = r * Fri
     for i in 1:(ndofs(std, idir) - 1)
-        @views F̄c[i + 1] = F̄c[i] - dot(K♯mat[i, :], F♯[:, i]) -
+        @views F̄c[i + 1] = F̄c[i] + dot(D♯[i, :], F♯[:, i]) * ω[i] -
                     l[i] * (Fli[i] - l_Fli - Fnl) +
                     r[i] * (Fri[i] - r_Fri + Fnr)
     end
@@ -550,15 +512,16 @@ function surface_contribution!(
     Q,
     Fn,
     ielem,
-    std::DGStdRegion{<:GaussQuadrature,ND},
-    dg::DGSEM,
+    std::AbstractStdRegion{ND,NP,<:GaussNodes},
+    fr::FR,
     equation::AbstractEquation,
     op::SSFVDivOperator,
 ) where {
-    ND
+    ND,
+    NP,
 }
     # Unpack
-    (; geometry) = dg
+    (; geometry) = fr
 
     # Buffers
     tid = Threads.threadid()
@@ -572,8 +535,8 @@ function surface_contribution!(
         F̃[i, :] .= contravariant(F, Ja[i])
     end
 
-    iface = dg.mesh.elements[ielem].faceinds
-    facepos = dg.mesh.elements[ielem].facepos
+    iface = fr.mesh.elements[ielem].faceinds
+    facepos = fr.mesh.elements[ielem].facepos
 
     Qr = reshape(Q, dofsize(std))
     dQr = reshape(dQ, dofsize(std))
@@ -583,6 +546,7 @@ function surface_contribution!(
     Js = geometry.subgrids[ielem].jac[]
 
     if ND == 1
+        ω = std.ω
         F̄c = std.cache.subcell[tid][1]
         W = std.cache.state[tid][1]
         Fli = std.cache.state[tid][2]
@@ -592,13 +556,13 @@ function surface_contribution!(
         _ssfv_gauss_flux_1d!(
             F̄c, F♯[1], F̃,
             Fn.face[iface[1]][facepos[1]][1], Fn.face[iface[2]][facepos[2]][1],
-            Q, W, Fli, Fri, std.K♯[1], Jar, frames[1], Js[1],
-            std, l, r, equation, op, 1,
+            Q, W, Fli, Fri, std.D♯[1], Jar, frames[1], Js[1],
+            std, l, r, ω, equation, op, 1,
         )
 
         # Strong derivative
         @inbounds for i in eachdof(std)
-            dQ[i] += F̄c[i] - F̄c[i + 1]
+            dQ[i] += (F̄c[i] - F̄c[i + 1]) / ω[i]
         end
 
     elseif ND == 2
@@ -615,14 +579,14 @@ function surface_contribution!(
             @views _ssfv_gauss_flux_1d!(
                 F̄c, F♯[1], F̃r[:, j, 1],
                 Fn.face[iface[1]][facepos[1]][j], Fn.face[iface[2]][facepos[2]][j],
-                Qr[:, j], W, Fli, Fri, std.K♯[1],
+                Qr[:, j], W, Fli, Fri, std.D♯[1],
                 Jar[:, j], frames[1][:, j], Js[1][:, j],
-                std, l, r, equation, op, 1,
+                std, l, r, ω, equation, op, 1,
             )
 
             # Strong derivative
             @inbounds for i in eachdof(std, 1)
-                dQr[i, j] += (F̄c[i] - F̄c[i + 1]) * ω[j]
+                dQr[i, j] += (F̄c[i] - F̄c[i + 1]) / ω[i]
             end
         end
 
@@ -631,21 +595,21 @@ function surface_contribution!(
             @views _ssfv_gauss_flux_1d!(
                 F̄c, F♯[2], F̃r[i, :, 2],
                 Fn.face[iface[3]][facepos[3]][i], Fn.face[iface[4]][facepos[4]][i],
-                Qr[i, :], W, Fli, Fri, std.K♯[2],
+                Qr[i, :], W, Fli, Fri, std.D♯[2],
                 Jar[i, :], frames[2][i, :], Js[2][i, :],
-                std, l, r, equation, op, 2,
+                std, l, r, ω, equation, op, 2,
             )
 
             # Strong derivative
             for j in eachdof(std, 2)
-                dQr[i, j] += (F̄c[j] - F̄c[j + 1]) * ω[i]
+                dQr[i, j] += (F̄c[j] - F̄c[j + 1]) / ω[j]
             end
         end
 
     else # ND == 3
         F̄c = std.cache.subcell[tid][1]
         li = lineardofs(std.face)
-        ω = std.face.ω
+        ω = std.edge.ω
         W = std.edge.cache.state[tid][1]
         Fli = std.edge.cache.state[tid][2]
         Fri = std.edge.cache.state[tid][3]
@@ -658,14 +622,14 @@ function surface_contribution!(
             @views _ssfv_gauss_flux_1d!(
                 F̄c, F♯[1], F̃r[:, j, k, 1],
                 Fn.face[iface[1]][facepos[1]][ind], Fn.face[iface[2]][facepos[2]][ind],
-                Qr[:, j, k], W, Fli, Fri, std.K♯[1], Jar[:, j, k],
+                Qr[:, j, k], W, Fli, Fri, std.D♯[1], Jar[:, j, k],
                 frames[1][:, j, k], Js[1][:, j, k],
-                std, l, r, equation, op, 1,
+                std, l, r, ω, equation, op, 1,
             )
 
             # Strong derivative
             for i in eachdof(std, 1)
-                dQr[i, j, k] += (F̄c[i] - F̄c[i + 1]) * ω[ind]
+                dQr[i, j, k] += (F̄c[i] - F̄c[i + 1]) / ω[i]
             end
         end
 
@@ -675,14 +639,14 @@ function surface_contribution!(
             @views _ssfv_gauss_flux_1d!(
                 F̄c, F♯[2], F̃r[i, :, k, 2],
                 Fn.face[iface[3]][facepos[3]][ind], Fn.face[iface[4]][facepos[4]][ind],
-                Qr[i, :, k], W, Fli, Fri, std.K♯[2], Jar[i, :, k],
+                Qr[i, :, k], W, Fli, Fri, std.D♯[2], Jar[i, :, k],
                 frames[2][i, :, k], Js[2][i, :, k],
-                std, l, r, equation, op, 2,
+                std, l, r, ω, equation, op, 2,
             )
 
             # Strong derivative
             for j in eachdof(std, 2)
-                @views dQr[i, j, k] += (F̄c[j] - F̄c[j + 1]) * ω[ind]
+                @views dQr[i, j, k] += (F̄c[j] - F̄c[j + 1]) / ω[j]
             end
         end
 
@@ -692,14 +656,14 @@ function surface_contribution!(
             @views _ssfv_gauss_flux_1d!(
                 F̄c, F♯[3], F̃r[i, j, :, 3],
                 Fn.face[iface[5]][facepos[5]][ind], Fn.face[iface[6]][facepos[6]][ind],
-                Qr[i, j, :], W, Fli, Fri, std.K♯[3], Jar[i, j, :],
+                Qr[i, j, :], W, Fli, Fri, std.D♯[3], Jar[i, j, :],
                 frames[i, j, :], Js[3][i, j, :],
-                std, l, r, equation, op, 3,
+                std, l, r, ω, equation, op, 3,
             )
 
             # Strong derivative
             for k in eachdof(std, 3)
-                @views dQr[i, j, k] += (F̄c[k] - F̄c[k + 1]) * ω[ind]
+                @views dQr[i, j, k] += (F̄c[k] - F̄c[k + 1]) / ω[k]
             end
         end
     end
@@ -707,7 +671,7 @@ function surface_contribution!(
 end
 
 Base.@propagate_inbounds function _ssfv_flux_1d!(
-    F̄c, Q, Qmat, Ja, frames, Js, std, equation, op, idir,
+    F̄c, Q, D, ω, Ja, frames, Js, std, equation, op, idir,
 )
     # Zero everything, boundaries will remain zero
     fill!(F̄c, zero(datatype(Q)))
@@ -723,7 +687,7 @@ Base.@propagate_inbounds function _ssfv_flux_1d!(
                 equation,
                 op.tpflux,
             )
-            F̄c[i] += 2Qmat[l, k] * F̄t
+            F̄c[i] += 2ω[l] * D[l, k] * F̄t
         end
 
         # FV fluxes
@@ -747,16 +711,15 @@ function volume_contribution!(
     dQ,
     Q,
     ielem,
-    std::DGStdRegion{QT,ND},
-    dg::DGSEM,
+    std::AbstractStdRegion{ND},
+    fr::FR,
     equation::AbstractEquation,
     op::SSFVDivOperator,
 ) where {
-    QT,
     ND
 }
     # Unpack
-    (; geometry) = dg
+    (; geometry) = fr
 
     is_tensor_product(std) || throw(ArgumentError(
         "All the standard regions must be tensor-products."
@@ -772,92 +735,85 @@ function volume_contribution!(
     F̄ = std.cache.subcell[tid][1]
 
     if ND == 1
-        _ssfv_flux_1d!(F̄, Q, std.Q[1], Ja, frames[1], Js[1], std, equation, op, 1)
+        ω = std.ω
+        _ssfv_flux_1d!(F̄, Q, std.D[1], ω, Ja, frames[1], Js[1], std, equation, op, 1)
 
         # Strong derivative
         @inbounds for i in eachdof(std)
-            dQ[i] += F̄[i] - F̄[i + 1]
+            dQ[i] += (F̄[i] - F̄[i + 1]) / ω[i]
         end
 
     elseif ND == 2
-        Qmat = std.face.Q[1]
-        ω = std.face.ω
-
         # X direction
+        ω = std.face.ω
         @inbounds for j in eachdof(std, 2)
             @views _ssfv_flux_1d!(
-                F̄, Qr[:, j], Qmat, Ja[:, j],
+                F̄, Qr[:, j], std.face.D[1], ω, Ja[:, j],
                 frames[1][:, j], Js[1][:, j],
                 std, equation, op, 1,
             )
 
             # Strong derivative
             for i in eachdof(std, 1)
-                dQr[i, j] += (F̄[i] - F̄[i + 1]) * ω[j]
+                dQr[i, j] += (F̄[i] - F̄[i + 1]) / ω[i]
             end
         end
 
         # Y derivative
         @inbounds for i in eachdof(std, 1)
             @views _ssfv_flux_1d!(
-                F̄, Qr[i, :], Qmat, Ja[i, :],
+                F̄, Qr[i, :], std.face.D[1], ω, Ja[i, :],
                 frames[2][i, :], Js[2][i, :],
                 std, equation, op, 2,
             )
 
             # Strong derivative
             for j in eachdof(std, 2)
-                dQr[i, j] += (F̄[j] - F̄[j + 1]) * ω[i]
+                dQr[i, j] += (F̄[j] - F̄[j + 1]) / ω[j]
             end
         end
 
     else # ND == 3
-        li = lineardofs(std.face)
-        Qmat = std.edge.Q[1]
-        ω = std.face.ω
-
         # X direction
+        ω = std.edge.ω
         @inbounds for k in eachdof(std, 3), j in eachdof(std, 2)
             @views _ssfv_flux_1d!(
-                F̄, Qr[:, j, k], Qmat, Ja[:, j, k],
+                F̄, Qr[:, j, k], std.edge.D[1], ω, Ja[:, j, k],
                 frames[1][:, j, k], Js[1][:, j, k],
                 std, equation, op, 1,
             )
 
             # Strong derivative
-            ind = li[j, k]
             for i in eachdof(std, 1)
-                dQr[i, j, k] += (F̄[i] - F̄[i + 1]) * ω[ind]
+                dQr[i, j, k] += (F̄[i] - F̄[i + 1]) / ω[i]
             end
         end
 
         # Y direction
         @inbounds for k in eachdof(std, 3), i in eachdof(std, 1)
             @views _ssfv_flux_1d!(
-                F̄, Qr[i, :, k], Qmat, Ja[i, :, k],
+                F̄, Qr[i, :, k], std.edge.D[1], ω, Ja[i, :, k],
                 frames[2][i, :, k], Js[2][i, :, k],
                 std, equation, op, 2,
             )
 
             # Strong derivative
-            ind = li[i, k]
             for j in eachdof(std, 2)
-                dQr[i, j, k] += (F̄[j] - F̄[j + 1]) * ω[ind]
+                dQr[i, j, k] += (F̄[j] - F̄[j + 1]) / ω[j]
             end
         end
 
         # Z direction
         @inbounds for j in eachdof(std, 2), i in eachdof(std, 1)
             @views _ssfv_flux_1d!(
-                F̄, Qr[i, j, :], Qmat, Ja[i, j, :],
+                F̄, Qr[i, j, :], std.edge.D[1], ω, Ja[i, j, :],
                 frames[3][i, j, :], Js[3][i, j, :],
                 std, equation, op, 3,
             )
 
             # Strong derivative
-            ind = li[i, j]
             for k in eachdof(std, 3)
-                dQr[i, j, k] += (F̄[k] - F̄[k + 1]) * ω[ind]
+                dQr[i, j, k] += (F̄[k] - F̄[k + 1]) / ω[k]
             end
         end
     end
@@ -868,12 +824,13 @@ function volume_contribution!(
     _,
     _,
     _,
-    ::DGStdRegion{<:GaussQuadrature,ND},
-    ::DGSEM,
+    ::AbstractStdRegion{ND,NP,<:GaussNodes},
+    ::FR,
     ::AbstractEquation,
     ::SSFVDivOperator,
 ) where {
-    ND
+    ND,
+    NP,
 }
     # Do everything in the surface operator since we need the values of the Riemann problem
     return nothing

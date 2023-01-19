@@ -7,7 +7,7 @@ struct LxFNumericalFlux{T,RT} <: AbstractNumericalFlux
     intensity::RT
 end
 
-function applyBCs!(Qf, disc::HighOrderElements, equation::AbstractEquation, time)
+function applyBCs!(Qf, disc::AbstractFluxReconstruction, equation::AbstractEquation, time)
     (; mesh, geometry, bcs) = disc
     @flouthreads for ibc in eachboundary(mesh)  # TODO: @batch does not work w/ enumerate
         bc = bcs[ibc]
@@ -36,7 +36,7 @@ end
 function interface_fluxes!(
     Fn::FaceStateVector,
     Qf::FaceStateVector,
-    disc::HighOrderElements,
+    disc::AbstractFluxReconstruction,
     equation::AbstractEquation,
     riemannsolver,
 )
@@ -63,7 +63,7 @@ end
 function interface_fluxes!(
     Fn::FaceBlockVector,
     Qf::FaceStateVector,
-    disc::HighOrderElements,
+    disc::AbstractFluxReconstruction,
     equation::AbstractEquation,
     riemannsolver,
 )
@@ -89,7 +89,7 @@ function interface_fluxes!(
     return nothing
 end
 
-function apply_sourceterm!(dQ, Q, disc::HighOrderElements, time)
+function apply_sourceterm!(dQ, Q, disc::AbstractFluxReconstruction, time)
     (; geometry, source!) = disc
     @flouthreads for i in eachdof(disc)
         x = geometry.elements.coords[i]
@@ -98,12 +98,12 @@ function apply_sourceterm!(dQ, Q, disc::HighOrderElements, time)
     return nothing
 end
 
-function integrate(f::AbstractVector, disc::HighOrderElements)
+function integrate(f::AbstractVector, disc::AbstractFluxReconstruction)
     f_ = StateVector{1}(f, disc.dofhandler)
     return integrate(f_, disc, 1)
 end
 
-function integrate(f::StateVector, disc::HighOrderElements, ivar::Integer)
+function integrate(f::StateVector, disc::AbstractFluxReconstruction, ivar::Integer)
     (; geometry) = disc
     integral = zero(eltype(f))
     @flouthreads for ie in eachelement(disc)
@@ -112,7 +112,7 @@ function integrate(f::StateVector, disc::HighOrderElements, ivar::Integer)
     return integral
 end
 
-function integrate(f::StateVector, disc::HighOrderElements)
+function integrate(f::StateVector, disc::AbstractFluxReconstruction)
     (; geometry) = disc
     integral = zero(eltype(f))
     @flouthreads for ie in eachelement(disc)

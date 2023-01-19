@@ -4,18 +4,22 @@ using ..FlouCommon
 using ..FlouBiz
 using StaticArrays: StaticArrays, SVector, MVector, SMatrix, SDiagonal
 using LinearAlgebra: LinearAlgebra, Transpose, Diagonal
-using LinearAlgebra: dot, cross, mul!, ldiv!, diag, factorize, normalize, norm
+using LinearAlgebra: dot, cross, mul!, lmul!, diag, factorize, normalize, norm
 using BlockDiagonals: BlockDiagonals, BlockDiagonal, blocks
 using SparseArrays: SparseArrays, SparseMatrixCSC, sparse, mul!
-using FastGaussQuadrature: FastGaussQuadrature, gausslegendre, gausslobatto
-using Polynomials: Polynomials, Polynomial, derivative, fit
+using FastGaussQuadrature: FastGaussQuadrature, gausslegendre, gausschebyshev, gausslobatto
+using Polynomials: Polynomials
 using Polyester: Polyester, @batch
 using HDF5: HDF5, File, write, create_group, attributes
 
 export StateVector, BlockVector
 
+export GaussNodes, GaussChebyshevNodes, GaussLobattoNodes
+export GL, GC, GLL
+
 export dofsize, lineardofs, cartesiandofs, ndofs, eachdof
 export ndirections, eachdirection
+export equisize, nequispaced, nodetype
 export is_tensor_product, project2equispaced!
 export nfacedofs, get_dofid
 export integrate, contravariant
@@ -26,19 +30,21 @@ export ChandrasekharAverage, ScalarDissipation, MatrixDissipation
 export GenericBC
 export EulerInflowBC, EulerOutflowBC, EulerSlipBC
 
-export DGSEM
-export GaussQuadrature, GaussLobattoQuadrature, GL, GLL
-export StdPoint, StdSegment, StdQuad, StdHex
-export quadrature
+export FR
+export FRStdPoint, FRStdSegment, FRStdQuad, FRStdHex
 
-export WeakDivOperator, StrongDivOperator, SplitDivOperator, SSFVDivOperator
-export WeakGradOperator, StrongGradOperator
+export WeakDivOperator, SplitDivOperator, SSFVDivOperator
+export WeakGradOperator
 
-# Abstract spatial discretization for high-order multi-element methods
-abstract type HighOrderElements{ND,RT} <: AbstractSpatialDiscretization{ND,RT} end
+# export SD
+# export SDStdPoint, SDStdSegment, SDStdQuad, SDStdHex
+# export nodetype_flux
 
-FlouCommon.nelements(disc::HighOrderElements) = nelements(disc.dh)
-ndofs(disc::HighOrderElements) = ndofs(disc.dh)
+# Abstract spatial discretization for flux-reconstruction methods
+abstract type AbstractFluxReconstruction{ND,RT} <: AbstractSpatialDiscretization{ND,RT} end
+
+FlouCommon.nelements(disc::AbstractFluxReconstruction) = nelements(disc.dh)
+ndofs(disc::AbstractFluxReconstruction) = ndofs(disc.dh)
 
 # Code common to all spatial discretizations
 include("StdRegions.jl")
@@ -75,7 +81,7 @@ function (bc::GenericBC)(Qin, x, frame, time, eq)
 end
 
 # Spatial discretizations
-include("DGSEM/DGSEM.jl")
-include("SD/SD.jl")
+include("FR/FR.jl")
+# include("StaggeredFR/StaggeredFR.jl")
 
 end # FlouSpatial

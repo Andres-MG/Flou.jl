@@ -1,7 +1,8 @@
 # Standard regions
 include("StdRegions.jl")
 
-struct DGSEM{ND,RT,MT<:AbstractMesh{ND,RT},ST,G,O,C,BCT,M,FT} <: HighOrderElements{ND,RT}
+struct FR{ND,RT,MT<:AbstractMesh{ND,RT},ST,G,O,C,BCT,M,FT} <:
+        AbstractFluxReconstruction{ND,RT}
     mesh::MT
     std::ST
     dofhandler::DofHandler
@@ -9,11 +10,11 @@ struct DGSEM{ND,RT,MT<:AbstractMesh{ND,RT},ST,G,O,C,BCT,M,FT} <: HighOrderElemen
     operators::O
     cache::C
     bcs::BCT
-    mass::M
+    massinv::M
     source!::FT
 end
 
-function DGSEM(
+function FR(
     mesh::AbstractMesh{ND,RT},
     std,
     equation,
@@ -47,16 +48,14 @@ function DGSEM(
     end
 
     # Physical elements
-    subgrid = any(dg_requires_subgrid.(_operators, Ref(std)))
+    subgrid = any(requires_subgrid.(_operators, Ref(std)))
     geometry = Geometry(std, dofhandler, mesh, subgrid)
 
     # Equation cache
-    cache = construct_cache(:dgsem, RT, dofhandler, equation)
+    cache = construct_cache(:fr, RT, dofhandler, equation)
 
     # Mass matrix
-    mass = BlockDiagonal([
-        massmatrix(std, elem.jac) |> factorize for elem in geometry.elements
-    ])
+    massinv = BlockDiagonal([Diagonal(elem.invjac) for elem in geometry.elements])
 
     # Source term
     sourceterm = if isnothing(source)
@@ -65,7 +64,7 @@ function DGSEM(
         source
     end
 
-    return DGSEM(
+    return FR(
         mesh,
         std,
         dofhandler,
@@ -73,40 +72,40 @@ function DGSEM(
         _operators,
         cache,
         _bcs,
-        mass,
+        massinv,
         sourceterm,
     )
 end
 
-FlouCommon.nelements(dg::DGSEM) = nelements(dg.dofhandler)
-FlouCommon.nfaces(dg::DGSEM) = nfaces(dg.dofhandler)
-ndofs(dg::DGSEM) = ndofs(dg.dofhandler)
+FlouCommon.nelements(fr::FR) = nelements(fr.dofhandler)
+FlouCommon.nfaces(fr::FR) = nfaces(fr.dofhandler)
+ndofs(fr::FR) = ndofs(fr.dofhandler)
 
-FlouCommon.eachelement(dg::DGSEM) = eachelement(dg.dofhandler)
-FlouCommon.eachface(dg::DGSEM) = eachface(dg.dofhandler)
-eachdof(dg::DGSEM) = eachdof(dg.dofhandler)
+FlouCommon.eachelement(fr::FR) = eachelement(fr.dofhandler)
+FlouCommon.eachface(fr::FR) = eachface(fr.dofhandler)
+eachdof(fr::FR) = eachdof(fr.dofhandler)
 
-function Base.show(io::IO, m::MIME"text/plain", dg::DGSEM)
+function Base.show(io::IO, m::MIME"text/plain", fr::FR)
     @nospecialize
 
     # Header
     println(io, "=========================================================================")
-    println(io, "DGSEM spatial discretization")
+    println(io, "FR spatial discretization")
 
     # Mesh
     println(io, "\nMesh:")
     println(io, "-----")
-    show(io, m, dg.mesh)
+    show(io, m, fr.mesh)
 
     # Standard regions
     println(io, "\n\nStandard region:")
     println(io, "----------------")
-    show(io, m, dg.std)
+    show(io, m, fr.std)
 
     # Operators
     println(io, "\n\nOperators:")
     println(io, "----------")
-    for op in dg.operators
+    for op in fr.operators
         show(io, m, op)
         print(io, "\n")
     end
@@ -116,11 +115,11 @@ function Base.show(io::IO, m::MIME"text/plain", dg::DGSEM)
     return nothing
 end
 
-function project2faces!(Qf, Q, dg::DGSEM)
+function project2faces!(Qf, Q, fr::FR)
     # Unpack
-    (; mesh, std) = dg
+    (; mesh, std) = fr
 
-    @flouthreads for ie in eachelement(dg)
+    @flouthreads for ie in eachelement(fr)
         iface = mesh.elements[ie].faceinds
         facepos = mesh.elements[ie].facepos
         @inbounds for (s, (face, pos)) in enumerate(zip(iface, facepos))
@@ -130,27 +129,22 @@ function project2faces!(Qf, Q, dg::DGSEM)
     return nothing
 end
 
-function apply_massmatrix!(dQ, dg::DGSEM)
-    @flouthreads for ie in eachelement(dg)
-        ldiv!(blocks(dg.mass)[ie], dQ.element[ie])
+function apply_massmatrix!(dQ, fr::FR)
+    @flouthreads for ie in eachelement(fr)
+        lmul!(blocks(fr.massinv)[ie], dQ.element[ie])
     end
     return nothing
 end
 
-function FlouCommon.get_max_dt(
-    q::Union{AbstractVector{<:SVector},AbstractMatrix{<:Number}},
-    dg::DGSEM,
-    eq::AbstractEquation,
-    cfl::Real,
-)
-    Q = StateVector{nvariables(eq)}(q, dg.dofhandler)
+function FlouCommon.get_max_dt(q, fr::FR, eq::AbstractEquation, cfl)
+    Q = StateVector{nvariables(eq)}(q, fr.dofhandler)
     Δt = typemax(eltype(Q))
-    std = dg.std
-    d = spatialdim(dg)
+    std = fr.std
+    d = spatialdim(fr)
     n = ndofs(std)
 
-    for ie in eachelement(dg)
-        Δx = dg.geometry.elements[ie].volume[] / n
+    for ie in eachelement(fr)
+        Δx = fr.geometry.elements[ie].volume[] / n
         Δx = d == 1 ? Δx : (d == 2 ? sqrt(Δx) : cbrt(Δx))
         @inbounds for i in eachdof(std)
             Δt = min(Δt, get_max_dt(Q.element[ie][i], Δx, cfl, eq))

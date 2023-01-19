@@ -147,6 +147,17 @@ Base.@propagate_inbounds function LinearAlgebra.mul!(
     return mul!(C.svec, A, B.svec, α, β)
 end
 
+Base.@propagate_inbounds function LinearAlgebra.mul!(
+    C::HybridVecOrMat,
+    A::Diagonal,
+    B::HybridVecOrMat,
+    α::Number,
+    β::Number,
+)
+    return mul!(C.svec, A, B.svec, α, β)
+    println("heeey")
+end
+
 # TODO: dot in DifferentialEquations.jl will not work without this
 Base.@propagate_inbounds LinearAlgebra.dot(a::Number, b::SVector) = a * b
 

@@ -1,7 +1,7 @@
 module FlouCommon
 
 using StaticArrays: StaticArrays, SVector, @SVector
-using LinearAlgebra: LinearAlgebra, Transpose, dot, cross, mul!
+using LinearAlgebra: LinearAlgebra, Transpose, Diagonal, dot, cross, mul!
 using Gmsh: Gmsh, gmsh
 
 export HybridArray, HybridMatrix, HybridVector, HybridVecOrMat, LazyVector

@@ -9,7 +9,7 @@ function construct_cache(
     dofhandler::DofHandler,
     equation::HyperbolicEquation,
 )
-    if disctype == :dgsem
+    if disctype == :fr
         Qf = FaceStateVector{nvariables(equation),realtype}(undef, dofhandler)
         Fn = FaceStateVector{nvariables(equation),realtype}(undef, dofhandler)
         return HyperbolicDGcache(Qf, Fn)
@@ -21,7 +21,7 @@ end
 function FlouCommon.rhs!(
     dQ::StateVector,
     Q::StateVector,
-    p::EquationConfig{<:DGSEM,<:HyperbolicEquation},
+    p::EquationConfig{<:FR,<:HyperbolicEquation},
     time::Real,
 )
     # Unpack

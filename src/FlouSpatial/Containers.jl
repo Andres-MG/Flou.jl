@@ -87,6 +87,10 @@ function StateVector{NV}(mat::AbstractMatrix, dh::DofHandler) where {NV}
     return StateVector(HybridVector{NV}(mat), dh)
 end
 
+function StateVector{NV}(s::StateVector, ::DofHandler) where {NV}
+    return s
+end
+
 function StateVector{NV,RT}(
     value::Union{UndefInitializer,Missing,Nothing},
     dh::DofHandler,
@@ -130,6 +134,8 @@ end
     @boundscheck checkbounds(s, i)
     @inbounds s.data.flat[i] = v
 end
+
+FlouCommon.datatype(s::StateVector) = datatype(s.data)
 
 FlouCommon.nelements(s::StateVector) = nelements(s.dh)
 FlouCommon.nvariables(s::StateVector) = innerdim(s.data)
@@ -242,6 +248,10 @@ function BlockVector{NV}(array::AbstractArray{RT,3}, dh::DofHandler) where {NV,R
     return BlockVector(HybridMatrix{NV}(array), dh)
 end
 
+function BlockVector{NV}(b::BlockVector, ::DofHandler) where {NV}
+    return b
+end
+
 function BlockVector{NV,RT}(
     value::Union{UndefInitializer,Missing,Nothing},
     ndims::Integer,
@@ -287,6 +297,8 @@ end
     @boundscheck checkbounds(b, i)
     @inbounds b.data.flat[i] = v
 end
+
+FlouCommon.datatype(b::BlockVector) = datatype(b.data)
 
 FlouCommon.nelements(b::BlockVector) = nelements(b.dh)
 FlouCommon.nvariables(b::BlockVector) = innerdim(b.data)
@@ -441,6 +453,8 @@ end
     @boundscheck checkbounds(s, i)
     @inbounds s.data.flat[i] = v
 end
+
+FlouCommon.datatype(s::FaceStateVector) = datatype(s.data)
 
 FlouCommon.nfaces(s::FaceStateVector) = nfaces(s.dh)
 FlouCommon.nvariables(s::FaceStateVector) = innerdim(s.data)
@@ -606,6 +620,8 @@ end
     @boundscheck checkbounds(b, i)
     @inbounds b.data.flat[i] = v
 end
+
+FlouCommon.datatype(b::FaceBlockVector) = datatype(b.data)
 
 FlouCommon.nfaces(b::FaceBlockVector) = nfaces(b.dh)
 FlouCommon.nvariables(b::FaceBlockVector) = innerdim(b.data)

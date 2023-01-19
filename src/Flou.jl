@@ -53,7 +53,11 @@ using .FlouSpatial
 export StateVector, BlockVector
 
 export dofsize, ndofs, eachdof
+export nequispaced, nodetype
 export integrate
+
+export GaussNodes, GaussChebyshevNodes, GaussLobattoNodes
+export GL, GC, GLL
 
 export StdAverageNumericalFlux, LxFNumericalFlux
 export ChandrasekharAverage, ScalarDissipation, MatrixDissipation
@@ -61,13 +65,15 @@ export ChandrasekharAverage, ScalarDissipation, MatrixDissipation
 export GenericBC
 export EulerInflowBC, EulerOutflowBC, EulerSlipBC
 
-export DGSEM
-export GaussQuadrature, GaussLobattoQuadrature, GL, GLL
-export StdPoint, StdSegment, StdQuad, StdHex
-export quadrature
+export FR
+export FRStdPoint, FRStdSegment, FRStdQuad, FRStdHex
 
-export WeakDivOperator, StrongDivOperator, SplitDivOperator, SSFVDivOperator
-export WeakGradOperator, StrongGradOperator
+export WeakDivOperator, SplitDivOperator, SSFVDivOperator
+export WeakGradOperator
+
+# export SD
+# export SDStdPoint, SDStdSegment, SDStdQuad, SDStdHex
+# export nodetype_solution, nodetype_flux
 
 # Time discretizations
 include("FlouTime/FlouTime.jl")

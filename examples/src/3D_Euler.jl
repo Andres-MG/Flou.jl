@@ -23,7 +23,7 @@ solver = ORK256(williamson_condition=false)
 
 equation = EulerEquation{3}(1.4)
 
-std = StdHex{Float64}(4, GLL(), nvariables(equation))
+std = FRStdHex{Float64}(4, GLL(), :dgsem, nvariables(equation))
 mesh = UnstructuredMesh{3,Float64}("../test/meshes/3D_bullet_refined.msh")
 
 Q0 = Flou.vars_prim2cons((1.0, 2.0, 0.0, 0.0, 1.0), equation)
@@ -40,7 +40,7 @@ Q0 = Flou.vars_prim2cons((1.0, 2.0, 0.0, 0.0, 1.0), equation)
 ∇ = SplitDivOperator(
     MatrixDissipation(ChandrasekharAverage(), 1.0)
 )
-dg = DGSEM(mesh, std, equation, ∇, ∂Ω)
+dg = FR(mesh, std, equation, ∇, ∂Ω)
 
 Q = StateVector{nvariables(equation),Float64}(undef, dg.dofhandler)
 for i in eachdof(Q)

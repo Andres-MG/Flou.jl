@@ -1,4 +1,4 @@
-function FlouBiz.open_for_write!(file::File, disc::HighOrderElements)
+function FlouBiz.open_for_write!(file::File, disc::AbstractFluxReconstruction)
     # Unpack
     (; mesh) = disc
 
@@ -49,7 +49,7 @@ function FlouBiz.open_for_write!(file::File, disc::HighOrderElements)
     return nothing
 end
 
-function FlouBiz.pointdata2VTKHDF(Q::StateVector, disc::HighOrderElements)
+function FlouBiz.pointdata2VTKHDF(Q::StateVector, disc::AbstractFluxReconstruction)
     rt = eltype(Q)
     npoints = ndofs(disc)
     nvars = nvariables(Q)
@@ -70,7 +70,7 @@ function FlouBiz.pointdata2VTKHDF(Q::StateVector, disc::HighOrderElements)
     return Qe
 end
 
-function FlouBiz.pointdata2VTKHDF(Q::BlockVector, disc::HighOrderElements)
+function FlouBiz.pointdata2VTKHDF(Q::BlockVector, disc::AbstractFluxReconstruction)
     rt = eltype(Q)
     npoints = ndofs(disc)
     dims = spatialdim(Q)

@@ -442,11 +442,11 @@ end
 #==========================================================================================#
 #                                    Monitors                                              #
 
-function FlouCommon.list_monitors(::DGSEM, ::EulerEquation)
+function FlouCommon.list_monitors(::FR, ::EulerEquation)
     return (:kinetic_energy, :entropy,)
 end
 
-function FlouCommon.get_monitor(dg::DGSEM, equation::EulerEquation, name::Symbol, _)
+function FlouCommon.get_monitor(dg::FR, equation::EulerEquation, name::Symbol, _)
     if name == :energy
         return kinetic_energy_monitor(dg, equation)
     elseif name == :entropy
@@ -456,7 +456,7 @@ function FlouCommon.get_monitor(dg::DGSEM, equation::EulerEquation, name::Symbol
     end
 end
 
-function kinetic_energy_monitor(dg::DGSEM, ::EulerEquation)
+function kinetic_energy_monitor(dg::FR, ::EulerEquation)
     monitor = (Q, dg, equation) -> begin
         s = zero(eltype(Q))
         @flouthreads for ie in eachelement(dg)
@@ -471,7 +471,7 @@ function kinetic_energy_monitor(dg::DGSEM, ::EulerEquation)
     return (datatype(dg), monitor)
 end
 
-function entropy_monitor(dg::DGSEM, ::EulerEquation)
+function entropy_monitor(dg::FR, ::EulerEquation)
     monitor = (Q, dg, equation) -> begin
         s = zero(eltype(Q))
         @flouthreads for ie in eachelement(dg)

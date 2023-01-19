@@ -1,4 +1,4 @@
-struct GradientDGcache{NV,RT,DQ,DF} <: AbstractCache
+struct GradientFRcache{NV,RT,DQ,DF} <: AbstractCache
     Qf::FaceStateVector{NV,RT,DQ}
     Fn::FaceBlockVector{NV,RT,DF}
 end
@@ -9,10 +9,10 @@ function construct_cache(
     dofhandler::DofHandler,
     eq::GradientEquation,
 )
-    if disctype == :dgsem
+    if disctype == :fr
         Qf = FaceStateVector{nvariables(eq),realtype}(undef, dofhandler)
         Fn = FaceBlockVector{nvariables(eq),realtype}(undef, ndims(eq), dofhandler)
-        return GradientDGcache(Qf, Fn)
+        return GradientFRcache(Qf, Fn)
     else
         @error "Unknown discretization type $(disctype)"
     end
@@ -21,7 +21,7 @@ end
 function FlouCommon.rhs!(
     G::BlockVector,
     Q::StateVector,
-    p::EquationConfig{<:DGSEM,<:GradientEquation},
+    p::EquationConfig{<:FR,<:GradientEquation},
     _::Real,
 )
     # Unpack
