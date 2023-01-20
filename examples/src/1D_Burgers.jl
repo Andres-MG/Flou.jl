@@ -17,7 +17,7 @@ solver = ORK256(williamson_condition=false)
 
 equation = BurgersEquation()
 
-std = FRStdSegment{Float64}(4, GLL(), :dgsem, nvariables(equation))
+std = FRStdSegment{Float64}(4, GLL(), :DGSEM, nvariables(equation))
 mesh = CartesianMesh{1,Float64}(0, 1, 20)
 apply_periodicBCs!(mesh, "1" => "2")
 

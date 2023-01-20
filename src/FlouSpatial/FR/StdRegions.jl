@@ -56,6 +56,7 @@ struct FRStdSegment{NP,SN,RT,C} <: AbstractStdSegment{NP,SN}
     ∂g::NTuple{2,Vector{RT}}
     node2eq::Transpose{RT,Matrix{RT}}
     cache::C
+    reconstruction::Symbol
 end
 
 function FRStdSegment{RT}(
@@ -134,7 +135,7 @@ function FRStdSegment{RT}(
     end
 
     # Surface contribution
-    if reconstruction == :dgsem
+    if reconstruction == :DGSEM
         ∂g = (l[1] ./ ω, l[2] ./ ω)
     else
         throw(ArgumentError("Unkown flux reconstruction type: $(reconstruction)"))
@@ -167,6 +168,7 @@ function FRStdSegment{RT}(
         ∂g,
         node2eq |> transpose |> collect |> transpose,
         cache,
+        reconstruction,
     )
 end
 
@@ -177,14 +179,15 @@ function Base.show(io::IO, ::MIME"text/plain", s::FRStdSegment)
     qt = nodetype(s)
     np = ndofs(s)
 
-    print(io, "FRStdSegment{", rt, "}: ")
-    if qt == GaussNodes
-        print(io, "Gauss quadrature with ", np, " nodes")
+    qname = if qt == GaussNodes
+        "Gauss"
     elseif qt == GaussLobattoNodes
-        print(io, "Gauss-Lobatto quadrature with ", np, " nodes")
+        "Gauss-Lobatto"
     else
         @assert false "[StdRegion.show] You shouldn't be here..."
     end
+    print(io, "FRStdSegment{", rt, "}: ")
+    print(io, np, " ", qname, " node(s) with ", s.reconstruction, " reconstruction")
 
     return nothing
 end
@@ -205,6 +208,7 @@ struct FRStdQuad{NP,SN,RT,F,C} <: AbstractStdQuad{NP,SN}
     ∂g::NTuple{4,Transpose{RT,SparseMatrixCSC{RT,Int}}}
     node2eq::Transpose{RT,Matrix{RT}}
     cache::C
+    reconstruction::Symbol
 end
 
 function FRStdQuad{RT}(
@@ -298,6 +302,7 @@ function FRStdQuad{RT}(
         ∂g .|> transpose .|> sparse .|> transpose |> Tuple,
         node2eq |> transpose |> collect |> transpose,
         cache,
+        reconstruction,
     )
 end
 
@@ -308,15 +313,16 @@ function Base.show(io::IO, ::MIME"text/plain", s::FRStdQuad)
     np = ndofs(s, 1)
     qt = nodetype(s)
 
-    print(io, "FRStdQuad{", rt, "}: ")
     nodes = "$(np)×$(np)"
-    if qt == GaussNodes
-        print(io, "Gauss quadrature with ", nodes, " nodes")
+    qname = if qt == GaussNodes
+        "Gauss"
     elseif qt == GaussLobattoNodes
-        print(io, "Gauss-Lobatto quadrature with ", nodes, " nodes")
+        "Gauss-Lobatto"
     else
         @assert false "[StdRegion.show] You shouldn't be here..."
     end
+    print(io, "FRStdQuad{", rt, "}: ")
+    print(io, nodes, " ", qname, " node(s) with ", s.reconstruction, " reconstruction")
 
     return nothing
 end
@@ -343,6 +349,7 @@ struct FRStdHex{NP,SN,RT,F,E,C} <: AbstractStdHex{NP,SN}
     ∂g::NTuple{6,Transpose{RT,SparseMatrixCSC{RT,Int}}}
     node2eq::Transpose{RT,Matrix{RT}}
     cache::C
+    reconstruction::Symbol
 end
 
 function FRStdHex{RT}(
@@ -461,6 +468,7 @@ function FRStdHex{RT}(
         ∂g .|> transpose .|> sparse .|> transpose |> Tuple,
         node2eq |> transpose |> collect |> transpose,
         cache,
+        reconstruction,
     )
 end
 
@@ -471,15 +479,16 @@ function Base.show(io::IO, ::MIME"text/plain", s::FRStdHex)
     np = ndofs(s, 1)
     qt = nodetype(s)
 
-    print(io, "FRStdHex{", rt, "}: ")
     nodes = "$(np)×$(np)×$(np)"
-    if qt == GaussNodes
-        print(io, "Gauss quadrature with ", nodes, " nodes")
+    qname = if qt == GaussNodes
+        "Gauss"
     elseif qt == GaussLobattoNodes
-        print(io, "Gauss-Lobatto quadrature with ", nodes, " nodes")
+        "Gauss-Lobatto"
     else
         @assert false "[StdRegion.show] You shouldn't be here..."
     end
+    print(io, "FRStdHex{", rt, "}: ")
+    print(io, nodes, " ", qname, " node(s) with ", s.reconstruction, " reconstruction")
 
     return nothing
 end

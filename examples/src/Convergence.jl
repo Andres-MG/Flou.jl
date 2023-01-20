@@ -39,7 +39,7 @@ end
 
 @everywhere function run(nelem, order, quad, ∇, tf, solver, equation, cfl)
     # Solve the problem
-    std = FRStdSegment{Float64}(order + 1, quad, :dgsem, nvariables(equation))
+    std = FRStdSegment{Float64}(order + 1, quad, :DGSEM, nvariables(equation))
     mesh = CartesianMesh{1,Float64}(-1, 1, nelem)
     apply_periodicBCs!(mesh, "1" => "2")
     dg = FR(mesh, std, equation, ∇, ())

@@ -18,7 +18,7 @@ solver = ORK256(williamson_condition=false)
 
 equation = LinearAdvection(2.0, -1.0)
 
-std = FRStdQuad{Float64}(4, GLL(), :dgsem, nvariables(equation))
+std = FRStdQuad{Float64}(4, GLL(), :DGSEM, nvariables(equation))
 mesh = CartesianMesh{2,Float64}((0, 0), (1, 1), (10, 10))
 apply_periodicBCs!(mesh, "1" => "2", "3" => "4")
 
