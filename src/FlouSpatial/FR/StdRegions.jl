@@ -53,12 +53,18 @@ end
 #==========================================================================================#
 #                                      Standard point                                      #
 
-struct FRStdPoint <: AbstractStdPoint end
+struct FRStdPoint <: AbstractStdPoint
+    nodetype::GaussNodes
+    function FRStdPoint()
+        return new(GaussNodes(1))
+    end
+end
 
 #==========================================================================================#
 #                                     Standard segment                                     #
 
-struct FRStdSegment{NP,SN,RT,C} <: AbstractStdSegment{NP,SN}
+struct FRStdSegment{SN,RT,C} <: AbstractStdSegment{SN}
+    nodetype::SN
     face::FRStdPoint
     ξe::Vector{SVector{1,RT}}
     ξc::Tuple{Vector{SVector{1,RT}}}
@@ -75,38 +81,36 @@ struct FRStdSegment{NP,SN,RT,C} <: AbstractStdSegment{NP,SN}
 end
 
 function FRStdSegment{RT}(
-    np::Integer,
-    qtype,
+    ntype,
     reconstruction,
     nvars=1;
-    nequispaced=np,
+    nequispaced=nnodes(ntype),
 ) where {
     RT,
 }
     return FRStdSegment{RT}(
-        Val(np), qtype, reconstruction, Val(nvars); nequispaced=nequispaced,
+        ntype, reconstruction, Val(nvars); nequispaced=nequispaced,
     )
 end
 
 function FRStdSegment{RT}(
-    ::Val{NP},
-    qtype::AbstractNodeDistribution,
+    ntype::AbstractNodeDistribution,
     reconstruction::Symbol,
     nvars::Val{NV}=Val(1);
-    nequispaced=NP,
+    nequispaced=nnodes(ntype),
 ) where {
     RT<:Real,
-    NP,
     NV,
 }
     # Face regions
     fstd = FRStdPoint()
 
     # Quadrature
-    _ξ, ω = if qtype isa(GaussNodes)
-        gausslegendre(NP)
-    elseif qtype isa(GaussLobattoNodes)
-        gausslobatto(NP)
+    np = nnodes(ntype)
+    _ξ, ω = if ntype isa(GaussNodes)
+        gausslegendre(np)
+    elseif ntype isa(GaussLobattoNodes)
+        gausslobatto(np)
     else
         throw(ArgumentError("Only Gauss and Gauss-Lobatto quadratures are implemented."))
     end
@@ -118,27 +122,27 @@ function FRStdSegment{RT}(
     ξe = [SVector(ξ) for ξ in _ξe]
 
     # Complementary nodes
-    ξc1 = Vector{SVector{1,RT}}(undef, NP + 1)
+    ξc1 = Vector{SVector{1,RT}}(undef, np + 1)
     ξc1[1] = SVector(-one(RT))
-    for i in 1:NP
+    for i in 1:np
         ξc1[i + 1] = ξc1[i] .+ ω[i]
     end
-    ξc2 = Vector{SVector{1,RT}}(undef, NP + 1)
-    ξc2[NP + 1] = SVector(one(RT))
-    for i in NP:-1:1
+    ξc2 = Vector{SVector{1,RT}}(undef, np + 1)
+    ξc2[np + 1] = SVector(one(RT))
+    for i in np:-1:1
         ξc2[i] = ξc2[i + 1] .- ω[i]
     end
     ξc = (ξc1 .+ ξc2) ./ 2
     ξc[1] = SVector(-one(RT))
-    ξc[NP + 1] = SVector(one(RT))
+    ξc[np + 1] = SVector(one(RT))
     ξc = tuple(ξc)
 
     # Lagrange basis
-    D = Matrix{RT}(undef, NP, NP)
-    node2eq = Matrix{RT}(undef, nequispaced, NP)
-    l = (Vector{RT}(undef, NP), Vector{RT}(undef, NP))
-    y = fill(zero(RT), NP)
-    for i in 1:NP
+    D = Matrix{RT}(undef, np, np)
+    node2eq = Matrix{RT}(undef, nequispaced, np)
+    l = (Vector{RT}(undef, np), Vector{RT}(undef, np))
+    y = fill(zero(RT), np)
+    for i in 1:np
         y[i] = one(RT)
         li = Polynomials.fit(_ξ, y)
         dli = Polynomials.derivative(li)
@@ -167,14 +171,14 @@ function FRStdSegment{RT}(
     D♯ = 2D - B
 
     # Temporary storage
-    cache = FRStdRegionCache{RT}(1, NP, nvars)
+    cache = FRStdRegionCache{RT}(1, np, nvars)
 
     return FRStdSegment{
-        NP,
-        typeof(qtype),
+        typeof(ntype),
         RT,
         typeof(cache),
     }(
+        ntype,
         fstd,
         ξe,
         ξc,
@@ -196,11 +200,11 @@ function Base.show(io::IO, ::MIME"text/plain", s::FRStdSegment)
 
     rt = eltype(s.D[1])
     qt = nodetype(s)
-    np = ndofs(s)
+    np = nnodes(qt)
 
-    qname = if qt == GaussNodes
+    qname = if qt isa GaussNodes
         "Gauss"
-    elseif qt == GaussLobattoNodes
+    elseif qt isa GaussLobattoNodes
         "Gauss-Lobatto"
     else
         @assert false "[StdRegion.show] You shouldn't be here..."
@@ -214,7 +218,8 @@ end
 #==========================================================================================#
 #                                       Standard quad                                      #
 
-struct FRStdQuad{NP,SN,RT,F,C} <: AbstractStdQuad{NP,SN}
+struct FRStdQuad{SN,RT,F,C} <: AbstractStdQuad{SN}
+    nodetype::SN
     face::F
     ξe::Vector{SVector{2,RT}}
     ξc::NTuple{2,Matrix{SVector{2,RT}}}
@@ -231,34 +236,32 @@ struct FRStdQuad{NP,SN,RT,F,C} <: AbstractStdQuad{NP,SN}
 end
 
 function FRStdQuad{RT}(
-    np::Integer,
-    qtype,
+    ntype,
     reconstruction,
     nvars=1;
-    nequispaced=np,
+    nequispaced=nnodes(ntype),
 ) where {
     RT,
 }
     return FRStdQuad{RT}(
-        Val(np), qtype, reconstruction, Val(nvars); nequispaced=nequispaced,
+        ntype, reconstruction, Val(nvars); nequispaced=nequispaced,
     )
 end
 
 function FRStdQuad{RT}(
-    ::Val{NP},
-    qtype::AbstractNodeDistribution,
+    ntype::AbstractNodeDistribution,
     reconstruction::Symbol,
     nvars::Val{NV}=Val(1);
-    nequispaced=NP,
+    nequispaced=nnodes(ntype),
 ) where {
     RT<:Real,
-    NP,
     NV,
 }
     # Face regions
-    fstd = FRStdSegment{RT}(Val(NP), qtype, reconstruction, nvars; nequispaced=nequispaced)
+    fstd = FRStdSegment{RT}(ntype, reconstruction, nvars; nequispaced=nequispaced)
 
     # Quadrature
+    np = nnodes(ntype)
     ξ = vec([SVector(ξx[1], ξy[1]) for ξx in fstd.ξ, ξy in fstd.ξ])
     ω = vec([ωx * ωy for ωx in fstd.ω, ωy in fstd.ω])
 
@@ -272,7 +275,7 @@ function FRStdQuad{RT}(
     ξc = (ξc1, ξc2)
 
     # Derivative matrices
-    I = Diagonal(ones(NP))
+    I = Diagonal(ones(np))
     D = (
         kron(I, fstd.D[1]),
         kron(fstd.D[1], I),
@@ -300,15 +303,15 @@ function FRStdQuad{RT}(
     )
 
     # Temporary storage
-    cache = FRStdRegionCache{RT}(2, NP, nvars)
+    cache = FRStdRegionCache{RT}(2, np, nvars)
 
     return FRStdQuad{
-        NP,
-        typeof(qtype),
+        typeof(ntype),
         RT,
         typeof(fstd),
         typeof(cache),
     }(
+        ntype,
         fstd,
         ξe,
         ξc,
@@ -329,13 +332,13 @@ function Base.show(io::IO, ::MIME"text/plain", s::FRStdQuad)
     @nospecialize
 
     rt = eltype(s.D[1])
-    np = ndofs(s, 1)
     qt = nodetype(s)
+    np = nnodes(qt)
 
     nodes = "$(np)×$(np)"
-    qname = if qt == GaussNodes
+    qname = if qt isa GaussNodes
         "Gauss"
-    elseif qt == GaussLobattoNodes
+    elseif qt isa GaussLobattoNodes
         "Gauss-Lobatto"
     else
         @assert false "[StdRegion.show] You shouldn't be here..."
@@ -347,14 +350,10 @@ function Base.show(io::IO, ::MIME"text/plain", s::FRStdQuad)
 end
 
 #==========================================================================================#
-#                                     Standard triangle                                    #
-
-struct FRStdTri{NP,SN} <: AbstractStdTri{NP,SN} end
-
-#==========================================================================================#
 #                                       Standard hex                                       #
 
-struct FRStdHex{NP,SN,RT,F,E,C} <: AbstractStdHex{NP,SN}
+struct FRStdHex{SN,RT,F,E,C} <: AbstractStdHex{SN}
+    nodetype::SN
     face::F
     edge::E
     ξe::Vector{SVector{3,RT}}
@@ -372,35 +371,33 @@ struct FRStdHex{NP,SN,RT,F,E,C} <: AbstractStdHex{NP,SN}
 end
 
 function FRStdHex{RT}(
-    np::Integer,
-    qtype,
+    ntype,
     reconstruction,
     nvars=1;
-    nequispaced=np,
+    nequispaced=nnodes(ntype),
 ) where {
     RT,
 }
     return FRStdHex{RT}(
-        Val(np), qtype, reconstruction, Val(nvars); nequispaced=nequispaced,
+        ntype, reconstruction, Val(nvars); nequispaced=nequispaced,
     )
 end
 
 function FRStdHex{RT}(
-    ::Val{NP},
-    qtype::AbstractNodeDistribution,
+    ntype::AbstractNodeDistribution,
     reconstruction::Symbol,
     nvars::Val{NV}=Val(1);
-    nequispaced=NP,
+    nequispaced=nnodes(ntype),
 ) where {
     RT<:Real,
-    NP,
     NV,
 }
     # Face and edge regions
-    fstd = FRStdQuad{RT}(Val(NP), qtype, reconstruction, nvars; nequispaced=nequispaced)
+    fstd = FRStdQuad{RT}(ntype, reconstruction, nvars; nequispaced=nequispaced)
     estd = fstd.face
 
     # Quadrature
+    np = nnodes(ntype)
     ξ = vec([
         SVector(ξx[1], ξy[1], ξz[1])
         for ξx in estd.ξ, ξy in estd.ξ, ξz in estd.ξ
@@ -430,7 +427,7 @@ function FRStdHex{RT}(
     ξc = (ξc1, ξc2, ξc3)
 
     # Derivative matrices
-    I = Diagonal(ones(NP))
+    I = Diagonal(ones(np))
     D = (
         kron(I, I, estd.D[1]),
         kron(I, estd.D[1], I),
@@ -464,16 +461,16 @@ function FRStdHex{RT}(
     )
 
     # Temporary storage
-    cache = FRStdRegionCache{RT}(3, NP, nvars)
+    cache = FRStdRegionCache{RT}(3, np, nvars)
 
     return FRStdHex{
-        NP,
-        typeof(qtype),
+        typeof(ntype),
         RT,
         typeof(fstd),
         typeof(estd),
         typeof(cache),
     }(
+        ntype,
         fstd,
         estd,
         ξe,
@@ -495,13 +492,13 @@ function Base.show(io::IO, ::MIME"text/plain", s::FRStdHex)
     @nospecialize
 
     rt = eltype(s.D[1])
-    np = ndofs(s, 1)
     qt = nodetype(s)
+    np = nnodes(qt)
 
     nodes = "$(np)×$(np)×$(np)"
-    qname = if qt == GaussNodes
+    qname = if qt isa GaussNodes
         "Gauss"
-    elseif qt == GaussLobattoNodes
+    elseif qt isa GaussLobattoNodes
         "Gauss-Lobatto"
     else
         @assert false "[StdRegion.show] You shouldn't be here..."

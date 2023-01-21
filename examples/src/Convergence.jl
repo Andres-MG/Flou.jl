@@ -52,9 +52,9 @@ end
     return sqrt(s / ndofs(dg))
 end
 
-@everywhere function run(nelem, order, quad, ∇, tf, solver, equation, cfl)
+@everywhere function run(nelem, nodes, ∇, tf, solver, equation, cfl)
     # Solve the problem
-    std = FRStdSegment{Float64}(order + 1, quad, :DGSEM, nvariables(equation))
+    std = FRStdSegment{Float64}(nodes, :DGSEM, nvariables(equation))
     mesh = CartesianMesh{1,Float64}(-1, 1, nelem)
     apply_periodicBCs!(mesh, "1" => "2")
     dg = FR(mesh, std, equation, ∇, ())
@@ -73,11 +73,18 @@ end
 end
 
 # Parallel execution
-tasks = [(nelem, order, quad)
-    for nelem in nelem_list,
-    order in order_list,
-    quad in (GLL(), GL())
-]
+tasks = cat(
+    [(nelem, quad)
+        for nelem in nelem_list,
+        quad in GLL.(order_list .+ 1)
+    ],
+    [(nelem, quad)
+        for nelem in nelem_list,
+        quad in GL.(order_list .+ 1)
+    ],
+    dims=3
+)
+
 error = pmap((t) -> run(t..., ∇, tf, solver, equation, cfl_callback), tasks)
 
 # Post-processing

@@ -157,13 +157,12 @@ function surface_contribution!(
     Q,
     Fn,
     ielem,
-    std::AbstractStdRegion{ND,NP,<:GaussNodes},
+    std::AbstractStdRegion{ND,<:GaussNodes},
     fr::FR,
     equation::AbstractEquation,
     op::SplitDivOperator,
 ) where {
     ND,
-    NP,
 }
     # Unpack
     (; mesh, geometry) = fr
@@ -527,13 +526,12 @@ function surface_contribution!(
     Q,
     Fn,
     ielem,
-    std::AbstractStdRegion{ND,NP,<:GaussNodes},
+    std::AbstractStdRegion{ND,<:GaussNodes},
     fr::FR,
     equation::AbstractEquation,
     op::SSFVDivOperator,
 ) where {
     ND,
-    NP,
 }
     # Unpack
     (; geometry) = fr
@@ -839,13 +837,12 @@ function volume_contribution!(
     _,
     _,
     _,
-    ::AbstractStdRegion{ND,NP,<:GaussNodes},
+    ::AbstractStdRegion{ND,<:GaussNodes},
     ::FR,
     ::AbstractEquation,
     ::SSFVDivOperator,
 ) where {
     ND,
-    NP,
 }
     # Do everything in the surface operator since we need the values of the Riemann problem
     return nothing

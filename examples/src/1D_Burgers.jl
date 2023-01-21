@@ -32,11 +32,11 @@ solver = ORK256(williamson_condition=false)
 
 equation = BurgersEquation()
 
-std = FRStdSegment{Float64}(4, GLL(), :DGSEM, nvariables(equation))
+std = FRStdSegment{Float64}(GLL(4), :DGSEM, nvariables(equation))
 mesh = CartesianMesh{1,Float64}(0, 1, 20)
 apply_periodicBCs!(mesh, "1" => "2")
 
-∇ = WeakDivOperator(LxFNumericalFlux(StdAverageNumericalFlux(), 1.0))
+∇ = StrongDivOperator(LxFNumericalFlux(StdAverageNumericalFlux(), 1.0))
 dg = FR(mesh, std, equation, ∇, ())
 
 x0 = 0.4

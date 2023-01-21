@@ -38,7 +38,7 @@ solver = ORK256(williamson_condition=false)
 
 equation = EulerEquation{3}(1.4)
 
-std = FRStdHex{Float64}(4, GLL(), :DGSEM, nvariables(equation))
+std = FRStdHex{Float64}(GLL(4), :DGSEM, nvariables(equation))
 mesh = UnstructuredMesh{3,Float64}("../test/meshes/3D_bullet_refined.msh")
 
 Q0 = Flou.vars_prim2cons((1.0, 2.0, 0.0, 0.0, 1.0), equation)
