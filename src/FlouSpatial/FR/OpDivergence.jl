@@ -49,9 +49,9 @@ function surface_contribution!(
 end
 
 #==========================================================================================#
-#                                 Weak divergence operator                                 #
+#                                Strong divergence operator                                #
 
-struct WeakDivOperator{F<:AbstractNumericalFlux} <: AbstractDivOperator
+struct StrongDivOperator{F<:AbstractNumericalFlux} <: AbstractDivOperator
     numflux::F
 end
 
@@ -62,7 +62,7 @@ function volume_contribution!(
     std::AbstractStdRegion,
     fr::FR,
     equation::AbstractEquation,
-    ::WeakDivOperator,
+    ::StrongDivOperator,
 )
     # Unpack
     (; geometry) = fr
@@ -77,8 +77,8 @@ function volume_contribution!(
 
     # Weak derivative
     rt = datatype(dQ)
-    @inbounds for s in eachindex(std.Dw)
-        mul!(dQ, std.Dw[s], view(F̃, :, s), -one(rt), one(rt))
+    @inbounds for idir in eachdirection(std)
+        mul!(dQ, std.Ds[idir], view(F̃, :, idir), -one(rt), one(rt))
     end
     return nothing
 end

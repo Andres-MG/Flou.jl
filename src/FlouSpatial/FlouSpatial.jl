@@ -24,6 +24,7 @@ using BlockDiagonals: BlockDiagonals, BlockDiagonal, blocks
 using SparseArrays: SparseArrays, SparseMatrixCSC, sparse, mul!
 using FastGaussQuadrature: FastGaussQuadrature, gausslegendre, gausschebyshev, gausslobatto
 using Polynomials: Polynomials
+using SpecialPolynomials: SpecialPolynomials, Legendre
 using Polyester: Polyester, @batch
 using HDF5: HDF5, File, write, create_group, attributes
 
@@ -48,8 +49,8 @@ export EulerInflowBC, EulerOutflowBC, EulerSlipBC
 export FR
 export FRStdPoint, FRStdSegment, FRStdQuad, FRStdHex
 
-export WeakDivOperator, SplitDivOperator, SSFVDivOperator
-export WeakGradOperator
+export StrongDivOperator, SplitDivOperator, SSFVDivOperator
+export StrongGradOperator
 
 # export SD
 # export SDStdPoint, SDStdSegment, SDStdQuad, SDStdHex

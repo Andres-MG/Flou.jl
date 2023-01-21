@@ -83,8 +83,8 @@ export EulerInflowBC, EulerOutflowBC, EulerSlipBC
 export FR
 export FRStdPoint, FRStdSegment, FRStdQuad, FRStdHex
 
-export WeakDivOperator, SplitDivOperator, SSFVDivOperator
-export WeakGradOperator
+export StrongDivOperator, SplitDivOperator, SSFVDivOperator
+export StrongGradOperator
 
 # export SD
 # export SDStdPoint, SDStdSegment, SDStdQuad, SDStdHex

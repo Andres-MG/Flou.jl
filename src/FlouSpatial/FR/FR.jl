@@ -13,6 +13,9 @@
 # You should have received a copy of the GNU General Public License along with Flou.jl. If
 # not, see <https://www.gnu.org/licenses/>.
 
+# Flux reconstruction functions, gₗ(x), gᵣ(x)
+include("Reconstruction.jl")
+
 # Standard regions
 include("StdRegions.jl")
 

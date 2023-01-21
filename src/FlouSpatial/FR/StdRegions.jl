@@ -65,7 +65,7 @@ struct FRStdSegment{NP,SN,RT,C} <: AbstractStdSegment{NP,SN}
     ξ::Vector{SVector{1,RT}}
     ω::Vector{RT}
     D::Tuple{Transpose{RT,Matrix{RT}}}
-    Dw::Tuple{Transpose{RT,Matrix{RT}}}
+    Ds::Tuple{Transpose{RT,Matrix{RT}}}
     D♯::Tuple{Transpose{RT,Matrix{RT}}}
     l::NTuple{2,Transpose{RT,Vector{RT}}}   # Row vectors
     ∂g::NTuple{2,Vector{RT}}
@@ -151,7 +151,11 @@ function FRStdSegment{RT}(
 
     # Surface contribution
     if reconstruction == :DGSEM
-        ∂g = (l[1] ./ ω, l[2] ./ ω)
+        ∂g = dgsem_reconstruction(_ξ)  # Equivalent to (l[1] ./ ω, l[2] ./ ω)
+    elseif reconstruction == :SD
+        ∂g = sd_reconstruction(_ξ)
+    elseif reconstruction == :Huynh
+        ∂g = huynh_reconstruction(_ξ)
     else
         throw(ArgumentError("Unkown flux reconstruction type: $(reconstruction)"))
     end
@@ -159,7 +163,7 @@ function FRStdSegment{RT}(
 
     # Derivative matrices
     B = ∂g[2] * l[2] - ∂g[1] * l[1]
-    Dw = -D' .* ((1 ./ ω) * ω')
+    Ds = D - B
     D♯ = 2D - B
 
     # Temporary storage
@@ -177,7 +181,7 @@ function FRStdSegment{RT}(
         ξ,
         ω,
         D |> transpose |> collect |> transpose |> tuple,
-        Dw |> transpose |> collect |> transpose |> tuple,
+        Ds |> transpose |> collect |> transpose |> tuple,
         D♯ |> transpose |> collect |> transpose |> tuple,
         l,
         ∂g,
@@ -217,7 +221,7 @@ struct FRStdQuad{NP,SN,RT,F,C} <: AbstractStdQuad{NP,SN}
     ξ::Vector{SVector{2,RT}}
     ω::Vector{RT}
     D::NTuple{2,Transpose{RT,SparseMatrixCSC{RT,Int}}}
-    Dw::NTuple{2,Transpose{RT,SparseMatrixCSC{RT,Int}}}
+    Ds::NTuple{2,Transpose{RT,SparseMatrixCSC{RT,Int}}}
     D♯::NTuple{2,Transpose{RT,SparseMatrixCSC{RT,Int}}}
     l::NTuple{4,Transpose{RT,SparseMatrixCSC{RT,Int}}}
     ∂g::NTuple{4,Transpose{RT,SparseMatrixCSC{RT,Int}}}
@@ -273,9 +277,9 @@ function FRStdQuad{RT}(
         kron(I, fstd.D[1]),
         kron(fstd.D[1], I),
     )
-    Dw = (
-        kron(I, fstd.Dw[1]),
-        kron(fstd.Dw[1], I),
+    Ds = (
+        kron(I, fstd.Ds[1]),
+        kron(fstd.Ds[1], I),
     )
     D♯ = ntuple(_ -> fstd.D♯[1], 2)
 
@@ -311,7 +315,7 @@ function FRStdQuad{RT}(
         ξ,
         ω,
         D .|> transpose .|> sparse .|> transpose |> Tuple,
-        Dw .|> transpose .|> sparse .|> transpose |> Tuple,
+        Ds .|> transpose .|> sparse .|> transpose |> Tuple,
         D♯ .|> transpose .|> collect .|> transpose |> Tuple,
         l .|> transpose .|> sparse .|> transpose |> Tuple,
         ∂g .|> transpose .|> sparse .|> transpose |> Tuple,
@@ -358,7 +362,7 @@ struct FRStdHex{NP,SN,RT,F,E,C} <: AbstractStdHex{NP,SN}
     ξ::Vector{SVector{3,RT}}
     ω::Vector{RT}
     D::NTuple{3,Transpose{RT,SparseMatrixCSC{RT,Int}}}
-    Dw::NTuple{3,Transpose{RT,SparseMatrixCSC{RT,Int}}}
+    Ds::NTuple{3,Transpose{RT,SparseMatrixCSC{RT,Int}}}
     D♯::NTuple{3,Transpose{RT,Matrix{RT}}}
     l::NTuple{6,Transpose{RT,SparseMatrixCSC{RT,Int}}}
     ∂g::NTuple{6,Transpose{RT,SparseMatrixCSC{RT,Int}}}
@@ -432,10 +436,10 @@ function FRStdHex{RT}(
         kron(I, estd.D[1], I),
         kron(estd.D[1], I, I),
     )
-    Dw = (
-        kron(I, I, estd.Dw[1]),
-        kron(I, estd.Dw[1], I),
-        kron(estd.Dw[1], I, I),
+    Ds = (
+        kron(I, I, estd.Ds[1]),
+        kron(I, estd.Ds[1], I),
+        kron(estd.Ds[1], I, I),
     )
     D♯ = ntuple(_ -> estd.D♯[1], 3)
 
@@ -477,7 +481,7 @@ function FRStdHex{RT}(
         ξ,
         ω,
         D .|> transpose .|> sparse .|> transpose |> Tuple,
-        Dw .|> transpose .|> sparse .|> transpose |> Tuple,
+        Ds .|> transpose .|> sparse .|> transpose |> Tuple,
         D♯ .|> transpose .|> collect .|> transpose |> Tuple,
         l .|> transpose .|> sparse .|> transpose |> Tuple,
         ∂g .|> transpose .|> sparse .|> transpose |> Tuple,

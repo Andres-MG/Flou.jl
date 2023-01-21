@@ -39,9 +39,9 @@ function surface_contribution!(
 end
 
 #==========================================================================================#
-#                                  Weak gradient operator                                  #
+#                                 Strong gradient operator                                 #
 
-struct WeakGradOperator{F<:AbstractNumericalFlux} <: AbstractGradOperator
+struct StrongGradOperator{F<:AbstractNumericalFlux} <: AbstractGradOperator
     numflux::F
 end
 
@@ -52,7 +52,7 @@ function volume_contribution!(
     std::AbstractStdRegion,
     fr::FR,
     ::AbstractEquation,
-    ::WeakGradOperator,
+    ::StrongGradOperator,
 )
     # Unpack
     (; geometry) = fr
@@ -61,7 +61,7 @@ function volume_contribution!(
     d = std.cache.state[Threads.threadid()][1]
     Ja = geometry.elements[ielem].Ja
     @inbounds for dir in eachdirection(std)
-        mul!(d, std.Dw[dir], Q)
+        mul!(d, std.Ds[dir], Q)
         for i in eachdof(std), innerdir in eachdirection(std)
             G[i, innerdir] += d[i] * Ja[i][innerdir, dir]
         end
