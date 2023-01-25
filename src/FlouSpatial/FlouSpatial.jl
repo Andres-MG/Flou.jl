@@ -22,16 +22,19 @@ using LinearAlgebra: LinearAlgebra, Transpose, Diagonal
 using LinearAlgebra: dot, cross, mul!, lmul!, diag, factorize, normalize, norm
 using BlockDiagonals: BlockDiagonals, BlockDiagonal, blocks
 using SparseArrays: SparseArrays, SparseMatrixCSC, sparse, mul!
-using FastGaussQuadrature: FastGaussQuadrature, gausslegendre, gausschebyshev, gausslobatto
 using Polynomials: Polynomials
 using SpecialPolynomials: SpecialPolynomials, Legendre
 using Polyester: Polyester, @batch
 using HDF5: HDF5, File, write, create_group, attributes
 
+# Nodal distributions and related functionality
+include("ApproximationBases.jl")
+using .ApproximationBases
+
 export StateVector, BlockVector
 
 export GaussNodes, GaussChebyshevNodes, GaussLobattoNodes
-export GL, GC, GLL
+export GL, GCL, GLL
 
 export dofsize, lineardofs, cartesiandofs, ndofs, eachdof
 export ndirections, eachdirection
@@ -47,20 +50,14 @@ export GenericBC
 export EulerInflowBC, EulerOutflowBC, EulerSlipBC
 
 export FR
+export VCJH, reconstruction_name
 export FRStdPoint, FRStdSegment, FRStdQuad, FRStdHex
 
 export StrongDivOperator, SplitDivOperator, SSFVDivOperator
 export StrongGradOperator
 
-# export SD
-# export SDStdPoint, SDStdSegment, SDStdQuad, SDStdHex
-# export nodetype_flux
-
-# Abstract spatial discretization for flux-reconstruction methods
-abstract type AbstractFluxReconstruction{ND,RT} <: AbstractSpatialDiscretization{ND,RT} end
-
-FlouCommon.nelements(disc::AbstractFluxReconstruction) = nelements(disc.dh)
-ndofs(disc::AbstractFluxReconstruction) = ndofs(disc.dh)
+FlouCommon.nelements(disc::AbstractSpatialDiscretization) = nelements(disc.dh)
+ndofs(disc::AbstractSpatialDiscretization) = ndofs(disc.dh)
 
 # Code common to all spatial discretizations
 include("StdRegions.jl")

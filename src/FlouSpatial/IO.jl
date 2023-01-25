@@ -13,7 +13,7 @@
 # You should have received a copy of the GNU General Public License along with Flou.jl. If
 # not, see <https://www.gnu.org/licenses/>.
 
-function FlouBiz.open_for_write!(file::File, disc::AbstractFluxReconstruction)
+function FlouBiz.open_for_write!(file::File, disc::AbstractSpatialDiscretization)
     # Unpack
     (; mesh) = disc
 
@@ -64,7 +64,7 @@ function FlouBiz.open_for_write!(file::File, disc::AbstractFluxReconstruction)
     return nothing
 end
 
-function FlouBiz.pointdata2VTKHDF(Q::StateVector, disc::AbstractFluxReconstruction)
+function FlouBiz.pointdata2VTKHDF(Q::StateVector, disc::AbstractSpatialDiscretization)
     rt = eltype(Q)
     npoints = ndofs(disc)
     nvars = nvariables(Q)
@@ -85,7 +85,7 @@ function FlouBiz.pointdata2VTKHDF(Q::StateVector, disc::AbstractFluxReconstructi
     return Qe
 end
 
-function FlouBiz.pointdata2VTKHDF(Q::BlockVector, disc::AbstractFluxReconstruction)
+function FlouBiz.pointdata2VTKHDF(Q::BlockVector, disc::AbstractSpatialDiscretization)
     rt = eltype(Q)
     npoints = ndofs(disc)
     dims = spatialdim(Q)

@@ -72,7 +72,7 @@ export nequispaced, nodetype
 export integrate
 
 export GaussNodes, GaussChebyshevNodes, GaussLobattoNodes
-export GL, GC, GLL
+export GL, GCL, GLL
 
 export StdAverageNumericalFlux, LxFNumericalFlux
 export ChandrasekharAverage, ScalarDissipation, MatrixDissipation
@@ -81,6 +81,7 @@ export GenericBC
 export EulerInflowBC, EulerOutflowBC, EulerSlipBC
 
 export FR
+export VCJH, reconstruction_name
 export FRStdPoint, FRStdSegment, FRStdQuad, FRStdHex
 
 export StrongDivOperator, SplitDivOperator, SSFVDivOperator

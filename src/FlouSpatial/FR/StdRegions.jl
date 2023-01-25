@@ -53,17 +53,17 @@ end
 #==========================================================================================#
 #                                      Standard point                                      #
 
-struct FRStdPoint <: AbstractStdPoint
+struct FRStdPoint{RT} <: AbstractStdPoint
     nodetype::GaussNodes
-    function FRStdPoint()
-        return new(GaussNodes(1))
+    function FRStdPoint{RT}() where {RT}
+        return new(GaussNodes{RT}(1))
     end
 end
 
 #==========================================================================================#
 #                                     Standard segment                                     #
 
-struct FRStdSegment{SN,RT,C} <: AbstractStdSegment{SN}
+struct FRStdSegment{SN,RT,C,R} <: AbstractStdSegment{SN}
     nodetype::SN
     face::FRStdPoint
     ξe::Vector{SVector{1,RT}}
@@ -77,44 +77,28 @@ struct FRStdSegment{SN,RT,C} <: AbstractStdSegment{SN}
     ∂g::NTuple{2,Vector{RT}}
     node2eq::Transpose{RT,Matrix{RT}}
     cache::C
-    reconstruction::Symbol
+    reconstruction::R
 end
 
-function FRStdSegment{RT}(
-    ntype,
-    reconstruction,
-    nvars=1;
-    nequispaced=nnodes(ntype),
-) where {
-    RT,
-}
-    return FRStdSegment{RT}(
-        ntype, reconstruction, Val(nvars); nequispaced=nequispaced,
-    )
+function FRStdSegment(ntype, reconstruction, nvars=1; nequispaced=nnodes(ntype))
+    return FRStdSegment(ntype, reconstruction, Val(nvars); nequispaced=nequispaced)
 end
 
-function FRStdSegment{RT}(
-    ntype::AbstractNodeDistribution,
-    reconstruction::Symbol,
+function FRStdSegment(
+    ntype::AbstractNodeDistribution{RT},
+    rtype::AbstractReconstruction{RT},
     nvars::Val{NV}=Val(1);
     nequispaced=nnodes(ntype),
 ) where {
-    RT<:Real,
+    RT,
     NV,
 }
     # Face regions
-    fstd = FRStdPoint()
+    fstd = FRStdPoint{RT}()
 
     # Quadrature
     np = nnodes(ntype)
-    _ξ, ω = if ntype isa(GaussNodes)
-        gausslegendre(np)
-    elseif ntype isa(GaussLobattoNodes)
-        gausslobatto(np)
-    else
-        throw(ArgumentError("Only Gauss and Gauss-Lobatto quadratures are implemented."))
-    end
-    _ξ, ω = convert.(RT, _ξ), convert.(RT, ω)
+    _ξ, ω = ntype.ξ, ntype.ω
     ξ = [SVector(ξi) for ξi in _ξ]
 
     # Equispaced nodes
@@ -137,32 +121,17 @@ function FRStdSegment{RT}(
     ξc[np + 1] = SVector(one(RT))
     ξc = tuple(ξc)
 
-    # Lagrange basis
-    D = Matrix{RT}(undef, np, np)
-    node2eq = Matrix{RT}(undef, nequispaced, np)
-    l = (Vector{RT}(undef, np), Vector{RT}(undef, np))
-    y = fill(zero(RT), np)
-    for i in 1:np
-        y[i] = one(RT)
-        li = Polynomials.fit(_ξ, y)
-        dli = Polynomials.derivative(li)
-        D[:, i] .= dli.(_ξ)
-        l[1][i] = li(-one(RT))
-        l[2][i] = li(+one(RT))
-        node2eq[:, i] .= li.(_ξe)
-        y[i] = zero(RT)
-    end
+    # Some matrix operators
+    D = derivative_matrix(_ξ, ntype)
+    node2eq = interp_matrix(_ξe, ntype)
+    l = (
+        interp_matrix([-one(RT)], ntype) |> vec,
+        interp_matrix([+one(RT)], ntype) |> vec,
+    )
 
     # Surface contribution
-    if reconstruction == :DGSEM
-        ∂g = dgsem_reconstruction(_ξ)  # Equivalent to (l[1] ./ ω, l[2] ./ ω)
-    elseif reconstruction == :SD
-        ∂g = sd_reconstruction(_ξ)
-    elseif reconstruction == :Huynh
-        ∂g = huynh_reconstruction(_ξ)
-    else
-        throw(ArgumentError("Unkown flux reconstruction type: $(reconstruction)"))
-    end
+    ∂g = reconstruction(_ξ, rtype)
+    ∂g[1] .= -∂g[1]
     l = l .|> transpose |> Tuple
 
     # Derivative matrices
@@ -177,6 +146,7 @@ function FRStdSegment{RT}(
         typeof(ntype),
         RT,
         typeof(cache),
+        typeof(rtype),
     }(
         ntype,
         fstd,
@@ -191,7 +161,7 @@ function FRStdSegment{RT}(
         ∂g,
         node2eq |> transpose |> collect |> transpose,
         cache,
-        reconstruction,
+        rtype,
     )
 end
 
@@ -202,6 +172,7 @@ function Base.show(io::IO, ::MIME"text/plain", s::FRStdSegment)
     qt = nodetype(s)
     np = nnodes(qt)
 
+    rname = reconstruction_name(s.reconstruction)
     qname = if qt isa GaussNodes
         "Gauss"
     elseif qt isa GaussLobattoNodes
@@ -210,7 +181,7 @@ function Base.show(io::IO, ::MIME"text/plain", s::FRStdSegment)
         @assert false "[StdRegion.show] You shouldn't be here..."
     end
     print(io, "FRStdSegment{", rt, "}: ")
-    print(io, np, " ", qname, " node(s) with ", s.reconstruction, " reconstruction")
+    print(io, np, " ", qname, " node(s) with ", rname, " reconstruction")
 
     return nothing
 end
@@ -218,7 +189,7 @@ end
 #==========================================================================================#
 #                                       Standard quad                                      #
 
-struct FRStdQuad{SN,RT,F,C} <: AbstractStdQuad{SN}
+struct FRStdQuad{SN,RT,F,C,R} <: AbstractStdQuad{SN}
     nodetype::SN
     face::F
     ξe::Vector{SVector{2,RT}}
@@ -232,33 +203,24 @@ struct FRStdQuad{SN,RT,F,C} <: AbstractStdQuad{SN}
     ∂g::NTuple{4,Transpose{RT,SparseMatrixCSC{RT,Int}}}
     node2eq::Transpose{RT,Matrix{RT}}
     cache::C
-    reconstruction::Symbol
+    reconstruction::R
 end
 
-function FRStdQuad{RT}(
-    ntype,
-    reconstruction,
-    nvars=1;
-    nequispaced=nnodes(ntype),
-) where {
-    RT,
-}
-    return FRStdQuad{RT}(
-        ntype, reconstruction, Val(nvars); nequispaced=nequispaced,
-    )
+function FRStdQuad(ntype, reconstruction, nvars=1; nequispaced=nnodes(ntype))
+    return FRStdQuad(ntype, reconstruction, Val(nvars); nequispaced=nequispaced)
 end
 
-function FRStdQuad{RT}(
-    ntype::AbstractNodeDistribution,
-    reconstruction::Symbol,
+function FRStdQuad(
+    ntype::AbstractNodeDistribution{RT},
+    rtype::AbstractReconstruction{RT},
     nvars::Val{NV}=Val(1);
     nequispaced=nnodes(ntype),
 ) where {
-    RT<:Real,
+    RT,
     NV,
 }
     # Face regions
-    fstd = FRStdSegment{RT}(ntype, reconstruction, nvars; nequispaced=nequispaced)
+    fstd = FRStdSegment(ntype, rtype, nvars; nequispaced=nequispaced)
 
     # Quadrature
     np = nnodes(ntype)
@@ -310,6 +272,7 @@ function FRStdQuad{RT}(
         RT,
         typeof(fstd),
         typeof(cache),
+        typeof(rtype),
     }(
         ntype,
         fstd,
@@ -324,7 +287,7 @@ function FRStdQuad{RT}(
         ∂g .|> transpose .|> sparse .|> transpose |> Tuple,
         node2eq |> transpose |> collect |> transpose,
         cache,
-        reconstruction,
+        rtype,
     )
 end
 
@@ -336,6 +299,7 @@ function Base.show(io::IO, ::MIME"text/plain", s::FRStdQuad)
     np = nnodes(qt)
 
     nodes = "$(np)×$(np)"
+    rname = reconstruction_name(s.reconstruction)
     qname = if qt isa GaussNodes
         "Gauss"
     elseif qt isa GaussLobattoNodes
@@ -344,7 +308,7 @@ function Base.show(io::IO, ::MIME"text/plain", s::FRStdQuad)
         @assert false "[StdRegion.show] You shouldn't be here..."
     end
     print(io, "FRStdQuad{", rt, "}: ")
-    print(io, nodes, " ", qname, " node(s) with ", s.reconstruction, " reconstruction")
+    print(io, nodes, " ", qname, " node(s) with ", rname, " reconstruction")
 
     return nothing
 end
@@ -352,7 +316,7 @@ end
 #==========================================================================================#
 #                                       Standard hex                                       #
 
-struct FRStdHex{SN,RT,F,E,C} <: AbstractStdHex{SN}
+struct FRStdHex{SN,RT,F,E,C,R} <: AbstractStdHex{SN}
     nodetype::SN
     face::F
     edge::E
@@ -367,33 +331,24 @@ struct FRStdHex{SN,RT,F,E,C} <: AbstractStdHex{SN}
     ∂g::NTuple{6,Transpose{RT,SparseMatrixCSC{RT,Int}}}
     node2eq::Transpose{RT,Matrix{RT}}
     cache::C
-    reconstruction::Symbol
+    reconstruction::R
 end
 
-function FRStdHex{RT}(
-    ntype,
-    reconstruction,
-    nvars=1;
-    nequispaced=nnodes(ntype),
-) where {
-    RT,
-}
-    return FRStdHex{RT}(
-        ntype, reconstruction, Val(nvars); nequispaced=nequispaced,
-    )
+function FRStdHex(ntype, reconstruction, nvars=1; nequispaced=nnodes(ntype))
+    return FRStdHex(ntype, reconstruction, Val(nvars); nequispaced=nequispaced)
 end
 
-function FRStdHex{RT}(
-    ntype::AbstractNodeDistribution,
-    reconstruction::Symbol,
+function FRStdHex(
+    ntype::AbstractNodeDistribution{RT},
+    rtype::AbstractReconstruction{RT},
     nvars::Val{NV}=Val(1);
     nequispaced=nnodes(ntype),
 ) where {
-    RT<:Real,
+    RT,
     NV,
 }
     # Face and edge regions
-    fstd = FRStdQuad{RT}(ntype, reconstruction, nvars; nequispaced=nequispaced)
+    fstd = FRStdQuad(ntype, rtype, nvars; nequispaced=nequispaced)
     estd = fstd.face
 
     # Quadrature
@@ -469,6 +424,7 @@ function FRStdHex{RT}(
         typeof(fstd),
         typeof(estd),
         typeof(cache),
+        typeof(rtype),
     }(
         ntype,
         fstd,
@@ -484,7 +440,7 @@ function FRStdHex{RT}(
         ∂g .|> transpose .|> sparse .|> transpose |> Tuple,
         node2eq |> transpose |> collect |> transpose,
         cache,
-        reconstruction,
+        rtype,
     )
 end
 
@@ -496,6 +452,7 @@ function Base.show(io::IO, ::MIME"text/plain", s::FRStdHex)
     np = nnodes(qt)
 
     nodes = "$(np)×$(np)×$(np)"
+    rname = reconstruction_name(s.reconstruction)
     qname = if qt isa GaussNodes
         "Gauss"
     elseif qt isa GaussLobattoNodes
@@ -504,7 +461,7 @@ function Base.show(io::IO, ::MIME"text/plain", s::FRStdHex)
         @assert false "[StdRegion.show] You shouldn't be here..."
     end
     print(io, "FRStdHex{", rt, "}: ")
-    print(io, nodes, " ", qname, " node(s) with ", s.reconstruction, " reconstruction")
+    print(io, nodes, " ", qname, " node(s) with ", rname, " reconstruction")
 
     return nothing
 end

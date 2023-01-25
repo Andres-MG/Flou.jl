@@ -13,31 +13,6 @@
 # You should have received a copy of the GNU General Public License along with Flou.jl. If
 # not, see <https://www.gnu.org/licenses/>.
 
-abstract type AbstractNodeDistribution end
-
-"""
-    nnodes(nodes)
-
-Return the number of nodes in the `nodes` distribution.
-"""
-function nnodes(nd::AbstractNodeDistribution)
-    return nd.n
-end
-
-struct GaussNodes <: AbstractNodeDistribution
-    n::Int
-end
-struct GaussChebyshevNodes <: AbstractNodeDistribution
-    n::Int
-end
-struct GaussLobattoNodes <: AbstractNodeDistribution
-    n::Int
-end
-
-const GL = GaussNodes
-const GC = GaussChebyshevNodes
-const GLL = GaussLobattoNodes
-
 abstract type AbstractStdRegion{ND,NT} end
 
 """

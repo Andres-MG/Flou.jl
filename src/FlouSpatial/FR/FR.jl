@@ -13,6 +13,9 @@
 # You should have received a copy of the GNU General Public License along with Flou.jl. If
 # not, see <https://www.gnu.org/licenses/>.
 
+# Abstract spatial discretization for flux-reconstruction methods
+abstract type AbstractFluxReconstruction{ND,RT} <: AbstractSpatialDiscretization{ND,RT} end
+
 # Flux reconstruction functions, gₗ(x), gᵣ(x)
 include("Reconstruction.jl")
 
