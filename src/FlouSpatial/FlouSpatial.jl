@@ -66,6 +66,7 @@ include("PhysicalRegions.jl")
 include("Containers.jl")
 include("IO.jl")
 include("Interfaces.jl")
+include("GlobalContainers.jl")
 
 abstract type AbstractOperator end
 
