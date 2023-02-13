@@ -28,19 +28,29 @@ function StateVector(data::AbstractMatrix)
     return StateVector{nv}(data)
 end
 
-function StateVector{NV,RT}(
+function StateVector(data::AbstractVector)
+    data = reshape(data, :, 1)
+    return StateVector{1}(data)
+end
+
+function StateVector{NV}(
     value::Union{UndefInitializer,Missing,Nothing},
     ndofs::Int,
+    ftype=Float64,
 ) where {
-    NV,
-    RT
+    NV
 }
-    data = Matrix{RT}(value, ndofs, NV)
+    data = Matrix{ftype}(value, ndofs, NV)
     return StateVector{NV}(data)
 end
 
 function Base.similar(s::StateVector, ::Type{T}, dims::Dims) where {T}
     data = similar(s.data, T, dims)
+    return StateVector(data)
+end
+
+function Base.similar(s::StateVector)
+    data = similar(s.data)
     return StateVector(data)
 end
 
@@ -67,63 +77,65 @@ Base.@propagate_inbounds ndofs(s::StateVector) = size(s.data, 1)
 FlouCommon.eachvariable(s::StateVector) = Base.OneTo(nvariables(s))
 Base.@propagate_inbounds eachdof(s::StateVector) = Base.OneTo(ndofs(s))
 
-struct SVDofs{NV,RT} <: AbstractVector{SVector{NV,RT}}
-    s::StateVector{NV,RT}
+struct SVDofs{NV,M,RT} <: AbstractVector{SVector{NV,RT}}
+    s::StateVector{NV,M}
 end
-@inline function Base.size(d::SVDofs)
-    return (ndofs(d.s),)
+function SVDofs(s::StateVector{NV,M}) where {NV,M}
+    rt = datatype(s)
+    return SVDofs{NV,M,rt}(s)
 end
-function Base.getindex(d::SVDofs{NV}, i) where {NV}
+function Base.getindex(d::SVDofs{NV}, i::Integer) where {NV}
     @boundscheck checkbounds(d, i)
     return SVector{NV}(ntuple(iv -> @inbounds(d.s.data[i, iv]), NV))
 end
-@inline function Base.setindex!(d::SVDofs{NV}, val, i) where {NV}
+@inline function Base.setindex!(d::SVDofs{NV}, val, i::Integer) where {NV}
     @boundscheck checkbounds(d, i); checkbounds(val, 1:NV)
-    @inbounds begin
-        for iv in 1:NV
-            d.s.data[i, iv] = val[iv]
-        end
-        return view(d.s.data, i, :)
-    end
+    return @inbounds d.s.data[i, :] = val
 end
+Base.IndexStyle(::Type{<:SVDofs}) = IndexLinear()
+Base.size(d::SVDofs) = (ndofs(d.s),)
 
-struct SVDofsMut{NV,RT} <: AbstractVector{SVector{NV,RT}}
-    s::StateVector{NV,RT}
+const SVDofsView{RT} =
+    SubArray{RT,1,Matrix{RT},Tuple{Int64,Base.Slice{Base.OneTo{Int64}}},true}
+
+struct SVDofsMut{NV,M,RT} <: AbstractVector{SVDofsView{RT}}
+    s::StateVector{NV,M}
 end
-@inline function Base.size(d::SVDofsMut)
-    return (ndofs(d.s),)
+function SVDofsMut(s::StateVector{NV,M}) where {NV,M}
+    rt = datatype(s)
+    return SVDofsMut{NV,M,rt}(s)
 end
-function Base.getindex(d::SVDofsMut{NV}, i) where {NV}
+function Base.getindex(d::SVDofsMut{NV}, i::Integer) where {NV}
     @boundscheck checkbounds(d, i)
     return @inbounds view(d.s.data, i, :)
 end
-@inline function Base.setindex!(d::SVDofsMut{NV}, val, i) where {NV}
+@inline function Base.setindex!(d::SVDofsMut{NV}, val, i::Integer) where {NV}
     @boundscheck checkbounds(d, i); checkbounds(val, 1:NV)
-    @inbounds begin
-        for iv in 1:NV
-            d.s.data[i, iv] = val[iv]
-        end
-        return view(d.s.data, i, :)
-    end
+    return @inbounds d.s.data[i, :] = val
 end
+Base.IndexStyle(::Type{<:SVDofsMut}) = IndexLinear()
+Base.size(d::SVDofsMut) = (ndofs(d.s),)
 
 const SVVarsView{RT} =
     SubArray{RT,1,Matrix{RT},Tuple{Base.Slice{Base.OneTo{Int64}},Int64},true}
 
-struct SVVars{NV,RT} <: AbstractVector{SVVarsView{RT}}
-    s::StateVector{NV,RT}
+struct SVVars{NV,M,RT} <: AbstractVector{SVVarsView{RT}}
+    s::StateVector{NV,M}
 end
-@inline function Base.size(::SVVars{NV}) where {NV}
-    return (NV,)
+function SVVars(s::StateVector{NV,M}) where {NV,M}
+    rt = datatype(s)
+    return SVVars{NV,M,rt}(s)
 end
-@inline function Base.getindex(v::SVVars, i)
+@inline function Base.getindex(v::SVVars, i::Integer)
     @boundscheck checkbounds(v, i)
     return @inbounds view(v.s.data, :, i)
 end
-@inline function Base.setindex!(v::SVVars, val, i)
+@inline function Base.setindex!(v::SVVars, val, i::Integer)
     @boundscheck checkbounds(v, i); checkbounds(val, 1:ndofs(v.s))
     return @inbounds v.s.data[:, i] = val
 end
+Base.IndexStyle(::Type{<:SVVars}) = IndexLinear()
+Base.size(::SVVars{NV}) where {NV} = (NV,)
 
 Base.propertynames(::StateVector) = (:dofs, :dofsmut, :vars, fieldnames(StateVector)...)
 function Base.getproperty(sv::StateVector, s::Symbol)
@@ -153,20 +165,30 @@ function BlockVector(data::AbstractArray{RT,3}) where {RT}
     return BlockVector{nv}(data)
 end
 
-function BlockVector{NV,RT}(
+function BlockVector(data::AbstractMatrix)
+    data = reshape(data, size(data, 1), 1, :)
+    return BlockVector{1}(data)
+end
+
+function BlockVector{NV}(
     value::Union{UndefInitializer,Missing,Nothing},
     ndofs::Int,
     ndims::Int,
+    ftype=Float64,
 ) where {
-    NV,
-    RT
+    NV
 }
-    data = Array{RT,3}(value, ndofs, NV, ndims)
+    data = Array{ftype,3}(value, ndofs, NV, ndims)
     return BlockVector{NV}(data)
 end
 
 function Base.similar(b::BlockVector, ::Type{T}, dims::Dims) where {T}
     data = similar(b.data, T, dims)
+    return BlockVector(data)
+end
+
+function Base.similar(b::BlockVector)
+    data = similar(b.data)
     return BlockVector(data)
 end
 
@@ -197,63 +219,65 @@ eachdof(b::BlockVector) = Base.OneTo(ndofs(b))
 FlouCommon.spatialdim(b::BlockVector) = size(b.data, 3)
 FlouCommon.eachdim(b::BlockVector) = Base.OneTo(spatialdim(b))
 
-struct BVDofs{NV,RT} <: AbstractMatrix{SVector{NV,RT}}
-    b::BlockVector{NV,RT}
+struct BVDofs{NV,A,RT} <: AbstractMatrix{SVector{NV,RT}}
+    b::BlockVector{NV,A}
 end
-@inline function Base.size(d::BVDofs{NV}) where {NV}
-    return (ndofs(d.b), spatialdim(d.b))
+function BVDofs(b::BlockVector{NV,A}) where {NV,A}
+    rt = datatype(b)
+    return BVDofs{NV,A,rt}(b)
 end
-@inline function Base.getindex(d::BVDofs{NV}, i, j) where {NV}
+@inline function Base.getindex(d::BVDofs{NV}, i::Integer, j::Integer) where {NV}
     @boundscheck checkbounds(d, i, j)
     return SVector(ntuple(iv -> @inbounds(d.b.data[i, iv, j]), NV))
 end
-@inline function Base.setindex!(d::BVDofs{NV}, val, i, j) where {NV}
+@inline function Base.setindex!(d::BVDofs{NV}, val, i::Integer, j::Integer) where {NV}
     @boundscheck checkbounds(d, i, j); checkbounds(val, 1:NV)
-    @inbounds begin
-        for iv in 1:NV
-            d.b.data[i, iv, j] = val[iv]
-        end
-        return view(d.b.data, i, :, j)
-    end
+    return @inbounds d.b.data[i, :, j] = val
 end
+Base.IndexStyle(::Type{<:BVDofs}) = IndexCartesian()
+Base.size(d::BVDofs{NV}) where {NV} = (ndofs(d.b), spatialdim(d.b))
 
-struct BVDofsMut{NV,RT} <: AbstractMatrix{SVector{NV,RT}}
-    b::BlockVector{NV,RT}
+const BVDofsView{RT} =
+    SubArray{RT,1,Array{RT,3},Tuple{Int64,Base.Slice{Base.OneTo{Int64}},Int64},true}
+
+struct BVDofsMut{NV,A,RT} <: AbstractMatrix{BVDofsView{RT}}
+    b::BlockVector{NV,A}
 end
-@inline function Base.size(d::BVDofsMut{NV}) where {NV}
-    return (ndofs(d.b), spatialdim(d.b))
+function BVDofsMut(b::BlockVector{NV,A}) where {NV,A}
+    rt = datatype(b)
+    return BVDofsMut{NV,A,rt}(b)
 end
-@inline function Base.getindex(d::BVDofsMut{NV}, i, j) where {NV}
+@inline function Base.getindex(d::BVDofsMut{NV}, i::Integer, j::Integer) where {NV}
     @boundscheck checkbounds(d, i, j)
     return @inbounds view(d.b.data, i, :, j)
 end
-@inline function Base.setindex!(d::BVDofsMut{NV}, val, i, j) where {NV}
+@inline function Base.setindex!(d::BVDofsMut{NV}, val, i::Integer, j::Integer) where {NV}
     @boundscheck checkbounds(d, i, j); checkbounds(val, 1:NV)
-    @inbounds begin
-        for iv in 1:NV
-            d.b.data[i, iv, j] = val[iv]
-        end
-        return view(d.b.data, i, :, j)
-    end
+    return @inbounds d.b.data[i, :, j] = val
 end
+Base.IndexStyle(::Type{<:BVDofsMut}) = IndexCartesian()
+Base.size(d::BVDofsMut{NV}) where {NV} = (ndofs(d.b), spatialdim(d.b))
 
 const BVVarsView{RT} =
     SubArray{RT,1,Array{RT,3},Tuple{Base.Slice{Base.OneTo{Int64}},Int64,Int64},true}
 
-struct BVVars{NV,RT} <: AbstractMatrix{BVVarsView{RT}}
-    b::BlockVector{NV,RT}
+struct BVVars{NV,A,RT} <: AbstractMatrix{BVVarsView{RT}}
+    b::BlockVector{NV,A}
 end
-@inline function Base.size(v::BVVars{NV}) where {NV}
-    return (NV, spatialdim(v.b))
+function BVVars(b::BlockVector{NV,A}) where {NV,A}
+    rt = datatype(b)
+    return BVVars{NV,A,rt}(b)
 end
-@inline function Base.getindex(v::BVVars, i, j)
+@inline function Base.getindex(v::BVVars, i::Integer, j::Integer)
     @boundscheck checkbounds(v, i, j)
     return @inbounds view(v.b.data, :, i, j)
 end
-@inline function Base.setindex!(v::BVVars, val, i, j)
+@inline function Base.setindex!(v::BVVars, val, i::Integer, j::Integer)
     @boundscheck checkbounds(v, i, j); checkbounds(val, 1:ndofs(v.b))
     return @inbounds v.b.data[:, i, j] = val
 end
+Base.IndexStyle(::Type{<:BVVars}) = IndexCartesian()
+Base.size(v::BVVars{NV}) where {NV} = (NV, spatialdim(v.b))
 
 Base.propertynames(::BlockVector) = (:dofs, :dofsmut, :vars, fieldnames(BlockVector)...)
 function Base.getproperty(bv::BlockVector, s::Symbol)

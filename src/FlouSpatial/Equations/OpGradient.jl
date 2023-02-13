@@ -18,23 +18,22 @@ abstract type AbstractGradOperator <: AbstractOperator end
 function surface_contribution!(
     G,
     _,
-    Fn,
     ielem,
     std::AbstractStdRegion,
-    fr::FR,
+    disc::MultielementDisc,
     equation::AbstractEquation,
     ::AbstractGradOperator,
 )
     # Unpack
-    (; mesh) = fr
+    (; mesh) = disc
 
-    rt = datatype(G)
     iface = mesh.elements[ielem].faceinds
     facepos = mesh.elements[ielem].facepos
+    sub_array_operator!(G.elements[ielem], std.∂g, disc.cache.Fn, iface, facepos)
+    #@inbounds for (s, (face, pos)) in enumerate(zip(iface, facepos))
+    #    mul!(G, std.∂g[s], Fn.face[face][pos], one(rt), one(rt))
+    #end
 
-    @inbounds for (s, (face, pos)) in enumerate(zip(iface, facepos))
-        mul!(G, std.∂g[s], Fn.face[face][pos], one(rt), one(rt))
-    end
     return nothing
 end
 
@@ -50,21 +49,22 @@ function volume_contribution!(
     Q,
     ielem,
     std::AbstractStdRegion,
-    fr::FR,
+    disc::MultielementDisc,
     ::AbstractEquation,
     ::StrongGradOperator,
 )
     # Unpack
-    (; geometry) = fr
+    (; geometry) = disc
 
     # Weak gradient operator
     d = std.cache.state[Threads.threadid()][1]
     Ja = geometry.elements[ielem].Ja
-    @inbounds for dir in eachdirection(std)
-        mul!(d, std.Ds[dir], Q)
-        for i in eachdof(std), innerdir in eachdirection(std)
-            G[i, innerdir] += d[i] * Ja[i][innerdir, dir]
-        end
-    end
+    #@inbounds for dir in eachdirection(std)
+    #    mul!(d, std.Ds[dir], Q)
+    #    for i in eachdof(std), innerdir in eachdirection(std)
+    #        G[i, innerdir] += d[i] * Ja[i][innerdir, dir]
+    #    end
+    #end
+    sub_array_operator!(G, std.Ds, Q)
     return nothing
 end

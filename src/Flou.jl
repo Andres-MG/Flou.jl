@@ -65,31 +65,28 @@ using .FlouBiz
 include("FlouSpatial/FlouSpatial.jl")
 using .FlouSpatial
 
+export LagrangeBasis, RBFpolyBasis
+export hasboundaries, nnodes, basisname, nodesname
+
 export StateVector, BlockVector
+export GlobalStateVector, GlobalBlockVector
 
 export dofsize, ndofs, eachdof
-export nequispaced, nodetype
+export nequispaced, basis
 export integrate
 
-export GaussNodes, GaussChebyshevNodes, GaussLobattoNodes
-export GL, GCL, GLL
-
-export StdAverageNumericalFlux, LxFNumericalFlux
+export StdAverage, LxF
 export ChandrasekharAverage, ScalarDissipation, MatrixDissipation
 
 export GenericBC
 export EulerInflowBC, EulerOutflowBC, EulerSlipBC
 
-export FR
-export VCJH, reconstruction_name
-export FRStdPoint, FRStdSegment, FRStdQuad, FRStdHex
+export MultielementDisc
+export NodalRec, VCJHrec, DGSEMrec, reconstruction, reconstruction_name
+export StdPoint, StdSegment, StdQuad, StdHex
 
-export StrongDivOperator, SplitDivOperator, SSFVDivOperator
+export StrongDivOperator, SplitDivOperator, HybridDivOperator
 export StrongGradOperator
-
-# export SD
-# export SDStdPoint, SDStdSegment, SDStdQuad, SDStdHex
-# export nodetype_solution, nodetype_flux
 
 # Time discretizations
 include("FlouTime/FlouTime.jl")

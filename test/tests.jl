@@ -5,24 +5,31 @@ function Advection1D()
 
     equation = LinearAdvection(2.0)
 
-    std = FRStdSegment{Float64}(GL(5), :DGSEM, nvariables(equation))
+    basis = LagrangeBasis(:GL, 5)
+    rec = basis |> DGSEMrec
+    std = StdSegment(basis, rec, nvariables(equation))
     mesh = CartesianMesh{1,Float64}(0, 1, 20)
     apply_periodicBCs!(mesh, "1" => "2")
 
-    ∇ = StrongDivOperator(LxFNumericalFlux(StdAverageNumericalFlux(), 1.0))
-    dg = FR(mesh, std, equation, ∇, ())
+    ∇ = StrongDivOperator(
+        LxF(
+            StdAverage(),
+            1.0,
+        ),
+    )
+    dg = MultielementDisc(mesh, std, equation, ∇, ())
 
     x0 = 0.5
     sx = 0.1
     h = 1.0
-    Q = StateVector{nvariables(equation),Float64}(undef, dg.dofhandler)
+    Q = GlobalStateVector{nvariables(equation)}(undef, dg.dofhandler)
     for i in eachdof(dg)
         x = dg.geometry.elements.coords[i][1]
-        Q.dof[i] = Flou.gaussian_bump(x, x0, sx, h)
+        Q.dofsmut[i][1] = Flou.gaussian_bump(x, x0, sx, h)
     end
 
     sol, _ = timeintegrate(
-        Q, dg, equation, solver, tf;
+        Q.data, dg, equation, solver, tf;
         saveat=(0, tf), adaptive=false, dt=Δt, alias_u0=true,
     )
     return sol
@@ -35,24 +42,31 @@ function Advection2D()
 
     equation = LinearAdvection(3.0, 4.0)
 
-    std = FRStdQuad{Float64}(GL(5), :DGSEM, nvariables(equation))
+    basis = LagrangeBasis(:GL, 5)
+    rec = basis |> DGSEMrec
+    std = StdQuad(basis, rec, nvariables(equation))
     mesh = CartesianMesh{2,Float64}((0, 0), (1.5, 2), (20, 10))
     apply_periodicBCs!(mesh, "1" => "2", "3" => "4")
 
-    ∇ = StrongDivOperator(LxFNumericalFlux(StdAverageNumericalFlux(), 1.0))
-    dg = FR(mesh, std, equation, ∇, ())
+    ∇ = StrongDivOperator(
+        LxF(
+            StdAverage(),
+            1.0,
+        ),
+    )
+    dg = MultielementDisc(mesh, std, equation, ∇, ())
 
     x0, y0 = 0.75, 1.0
     sx, sy = 0.2, 0.2
     h = 1.0
-    Q = StateVector{nvariables(equation),Float64}(undef, dg.dofhandler)
+    Q = GlobalStateVector{nvariables(equation)}(undef, dg.dofhandler)
     for i in eachdof(dg)
         x, y = dg.geometry.elements.coords[i]
-        Q.dof[i] = Flou.gaussian_bump(x, y, x0, y0, sx, sy, h)
+        Q.dofsmut[i][1] = Flou.gaussian_bump(x, y, x0, y0, sx, sy, h)
     end
 
     sol, _ = timeintegrate(
-        Q, dg, equation, solver, tf;
+        Q.data, dg, equation, solver, tf;
         saveat=(0, tf), adaptive=false, dt=Δt, alias_u0=true,
     )
     return sol
@@ -65,7 +79,9 @@ function SodTube1D()
 
     equation = EulerEquation{1}(1.4)
 
-    std = FRStdSegment{Float64}(GLL(4), :DGSEM, nvariables(equation))
+    basis = LagrangeBasis(:GLL, 4)
+    rec = basis |> DGSEMrec
+    std = StdSegment(basis, rec, nvariables(equation))
     mesh = CartesianMesh{1,Float64}(0, 1, 20)
 
     function Qext(_, x, _, _, eq)
@@ -82,19 +98,21 @@ function SodTube1D()
     )
 
     ∇ = SplitDivOperator(
-        ChandrasekharAverage(),
-        MatrixDissipation(ChandrasekharAverage(), 1.0),
+        MatrixDissipation(
+            ChandrasekharAverage(),
+            1.0,
+        ),
     )
-    dg = FR(mesh, std, equation, ∇, ∂Ω)
+    dg = MultielementDisc(mesh, std, equation, ∇, ∂Ω)
 
-    Q = StateVector{nvariables(equation),Float64}(undef, dg.dofhandler)
+    Q = GlobalStateVector{nvariables(equation)}(undef, dg.dofhandler)
     for i in eachdof(dg)
         x = dg.geometry.elements.coords[i]
-        Q.dof[i] = Qext((), x, (), 0.0, equation)
+        Q.dofs[i] = Qext((), x, (), 0.0, equation)
     end
 
     sol, _ = timeintegrate(
-        Q, dg, equation, solver, tf;
+        Q.data, dg, equation, solver, tf;
         saveat=(0, tf), adaptive=false, dt=Δt, alias_u0=true,
     )
     return sol
@@ -107,7 +125,9 @@ function Shockwave2D()
 
     equation = EulerEquation{2}(1.4)
 
-    std = FRStdQuad{Float64}(GL(6), :DGSEM, nvariables(equation))
+    basis = LagrangeBasis(:GLL, 6)
+    rec = basis |> DGSEMrec
+    std = StdQuad(basis, rec, nvariables(equation))
     mesh = CartesianMesh{2,Float64}((-1, 0), (1, 1), (11, 3))
     apply_periodicBCs!(mesh, "3" => "4")
 
@@ -127,25 +147,23 @@ function Shockwave2D()
         "2" => GenericBC(Qext),
     )
 
-    ∇ = SSFVDivOperator(
-        ChandrasekharAverage(),
-        LxFNumericalFlux(
-            StdAverageNumericalFlux(),
+    ∇ = HybridDivOperator(
+        MatrixDissipation(
+            ChandrasekharAverage(),
             1.0,
         ),
-        MatrixDissipation(ChandrasekharAverage(), 1.0),
-        1e+0,
+        1.0,
     )
-    dg = FR(mesh, std, equation, ∇, ∂Ω)
+    dg = MultielementDisc(mesh, std, equation, ∇, ∂Ω)
 
-    Q = StateVector{nvariables(equation),Float64}(undef, dg.dofhandler)
+    Q = GlobalStateVector{nvariables(equation)}(undef, dg.dofhandler)
     for i in eachdof(dg)
         xy = dg.geometry.elements.coords[i]
-        Q.dof[i] = Qext((), xy, (), 0.0, equation)
+        Q.dofs[i] = Qext((), xy, (), 0.0, equation)
     end
 
     sol, _ = timeintegrate(
-        Q, dg, equation, solver, tf;
+        Q.data, dg, equation, solver, tf;
         saveat=(0, tf), adaptive=false, dt=Δt, alias_u0=true,
     )
     return sol
@@ -159,7 +177,9 @@ function Implosion2D()
 
     equation = EulerEquation{2}(1.4)
 
-    std = FRStdQuad{Float64}(GLL(4), :DGSEM, nvariables(equation))
+    basis = LagrangeBasis(:GLL, 4)
+    rec = basis |> DGSEMrec
+    std = StdQuad(basis, rec, nvariables(equation))
     mesh = CartesianMesh{2,Float64}((0, 0), (0.3, 0.3), (100, 100))
     ∂Ω = Dict(
         "1" => EulerSlipBC(),
@@ -169,23 +189,25 @@ function Implosion2D()
     )
 
     ∇ = SplitDivOperator(
-        ChandrasekharAverage(),
-        MatrixDissipation(ChandrasekharAverage(), 1.0),
+        MatrixDissipation(
+            ChandrasekharAverage(),
+            1.0,
+        ),
     )
-    dg = FR(mesh, std, equation, ∇, ∂Ω)
+    dg = MultielementDisc(mesh, std, equation, ∇, ∂Ω)
 
-    Q = StateVector{nvariables(equation),Float64}(undef, dg.dofhandler)
+    Q = GlobalStateVector{nvariables(equation)}(undef, dg.dofhandler)
     for i in eachdof(dg)
         x, y = dg.geometry.elements.coords[i]
         if x <= 0.15 && y <= 0.15 - x
-            Q.dof[i] = (0.125, 0.0, 0.0, 0.14 / 0.4)
+            Q.dofs[i] = SVector(0.125, 0.0, 0.0, 0.14 / 0.4)
         else
-            Q.dof[i] = (1.0, 0.0, 0.0, 1.0 / 0.4)
+            Q.dofs[i] = SVector(1.0, 0.0, 0.0, 1.0 / 0.4)
         end
     end
 
     sol, _ = timeintegrate(
-        Q, dg, equation, solver, tf;
+        Q.data, dg, equation, solver, tf;
         saveat=(0, tf), adaptive=false, dt=Δt, alias_u0=true,
     )
     return sol
@@ -198,7 +220,9 @@ function ForwardFacingStep2D()
 
     equation = EulerEquation{2}(1.4)
 
-    std = FRStdQuad{Float64}(GLL(8), :DGSEM, nvariables(equation))
+    basis = LagrangeBasis(:GLL, 8)
+    rec = basis |> DGSEMrec
+    std = StdQuad(basis, rec, nvariables(equation))
     mesh = StepMesh{Float64}((0,0), (3, 1), 0.6, 0.2, ((10, 5), (10, 20), (40, 20)))
 
     M0 = 3.0
@@ -213,24 +237,22 @@ function ForwardFacingStep2D()
         "6" => EulerSlipBC(),
     )
 
-    ∇ = SSFVDivOperator(
-        ChandrasekharAverage(),
-        LxFNumericalFlux(
-            StdAverageNumericalFlux(),
-            0.2,
+    ∇ = HybridDivOperator(
+        MatrixDissipation(
+            ChandrasekharAverage(),
+            1.0,
         ),
         0.1^2,
-        MatrixDissipation(ChandrasekharAverage(), 1.0),
     )
-    dg = FR(mesh, std, equation, ∇, ∂Ω)
+    dg = MultielementDisc(mesh, std, equation, ∇, ∂Ω)
 
-    Q = StateVector{nvariables(equation),Float64}(undef, dg.dofhandler)
+    Q = GlobalStateVector{nvariables(equation)}(undef, dg.dofhandler)
     for i in eachdof(Q)
-        Q.dof[i] = Q0
+        Q.dofs[i] = Q0
     end
 
     sol, _ = timeintegrate(
-        Q, dg, equation, solver, tf;
+        Q.data, dg, equation, solver, tf;
         saveat=(0, tf), adaptive=false, dt=Δt, alias_u0=true,
     )
     return sol

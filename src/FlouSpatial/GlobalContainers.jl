@@ -18,20 +18,30 @@ function GlobalStateVector(data::Matrix, dh::DofHandler)
     return GlobalStateVector{nv}(data, dh)
 end
 
-function GlobalStateVector{NV,RT}(
+function GlobalStateVector(data::Vector, dh::DofHandler)
+    data = reshape(data, :, 1)
+    return GlobalStateVector{1}(data, dh)
+end
+
+function GlobalStateVector{NV}(
     value::Union{UndefInitializer,Missing,Nothing},
     dh::DofHandler,
+    ftype=Float64,
 ) where {
-    NV,
-    RT
+    NV
 }
-    parent = StateVector{NV,RT}(value, ndofs(dh))
+    parent = StateVector{NV}(value, ndofs(dh), ftype)
     return GlobalStateVector{NV}(parent.data, dh)
 end
 
 function Base.similar(s::GlobalStateVector, ::Type{T}, dims::Dims) where {T}
     parent = similar(s.parent, T, dims)
     return GlobalStateVector(parent.data, s.dh)
+end
+
+function Base.similar(s::GlobalStateVector)
+    data = similar(s.data)
+    return GlobalStateVector(data, s.dh)
 end
 
 function Base.show(io::IO, ::MIME"text/plain", s::GlobalStateVector)
@@ -65,6 +75,7 @@ struct GSVElement{NV,RT}
     s::GlobalStateVector{NV,RT}
     elem::Int
 end
+FlouCommon.datatype(e::GSVElement) = datatype(e.s)
 Base.propertynames(::GSVElement) = (:dofs, :dofsmut, :vars, fieldnames(GSVElement)...)
 function Base.getproperty(e::GSVElement{NV}, s::Symbol) where {NV}
     @inbounds return if s == :dofs
@@ -93,13 +104,12 @@ end
 struct GSVElements{NV,RT} <: AbstractVector{GSVElement{NV,RT}}
     s::GlobalStateVector{NV,RT}
 end
-@inline function Base.size(e::GSVElements)
-    return (nelements(e.s),)
-end
-@inline function Base.getindex(e::GSVElements, i::Int)
+@inline function Base.getindex(e::GSVElements, i::Integer)
     @boundscheck checkbounds(e, i)
     return GSVElement(e.s, i)
 end
+Base.IndexStyle(::Type{<:GSVElements}) = IndexLinear()
+Base.size(e::GSVElements) = (nelements(e.s),)
 
 Base.propertynames(::GlobalStateVector) = (
     :dofs, :dofsmut, :vars, :elements, fieldnames(GlobalStateVector)...
@@ -134,25 +144,34 @@ end
 
 function GlobalBlockVector(data::Array{<:Any,3}, dh::DofHandler)
     nv = size(data, 2)
-    nd = size(data, 3)
-    return GlobalBlockVector{nv,nd}(data, dh)
+    return GlobalBlockVector{nv}(data, dh)
 end
 
-function GlobalBlockVector{NV,RT}(
+function GlobalBlockVector(data::Matrix, dh::DofHandler)
+    data = reshape(data, ndofs(dh), 1, :)
+    return GlobalBlockVector{1}(data, dh)
+end
+
+function GlobalBlockVector{NV}(
     value::Union{UndefInitializer,Missing,Nothing},
     dh::DofHandler,
     ndims::Int,
+    ftype=Float64,
 ) where {
-    NV,
-    RT
+    NV
 }
-    parent = BlockVector{NV,RT}(value, ndofs(dh), ndims)
+    parent = BlockVector{NV}(value, ndofs(dh), ndims, ftype)
     return GlobalBlockVector{NV}(parent.data, dh)
 end
 
 function Base.similar(b::GlobalBlockVector, ::Type{T}, dims::Dims) where {T}
     parent = similar(b.parent, T, dims)
     return GlobalBlockVector(parent.data, b.dh)
+end
+
+function Base.similar(b::GlobalBlockVector)
+    data = similar(b.data)
+    return GlobalBlockVector(data, b.dh)
 end
 
 function Base.show(io::IO, ::MIME"text/plain", b::GlobalBlockVector)
@@ -190,6 +209,7 @@ struct GBVElement{NV,RT}
     b::GlobalBlockVector{NV,RT}
     elem::Int
 end
+FlouCommon.datatype(e::GBVElement{NV,RT}) where {NV,RT} = datatype(e.b)
 Base.propertynames(::GBVElement) = (:dofs, :dofsmut, :vars, fieldnames(GBVElement)...)
 function Base.getproperty(e::GBVElement{NV}, s::Symbol) where {NV}
     @inbounds return if s == :dofs
@@ -218,13 +238,12 @@ end
 struct GBVElements{NV,RT} <: AbstractVector{GBVElement{NV,RT}}
     b::GlobalBlockVector{NV,RT}
 end
-@inline function Base.size(e::GBVElements)
-    return (nelements(e.b),)
-end
-@inline function Base.getindex(e::GBVElements, i::Int)
+@inline function Base.getindex(e::GBVElements, i::Integer)
     @boundscheck checkbounds(e, i)
     return GBVElement(e.b, i)
 end
+Base.IndexStyle(::Type{<:GBVElements}) = IndexLinear()
+Base.size(e::GBVElements) = (nelements(e.b),)
 
 Base.propertynames(::GlobalBlockVector) = (
     :dofs, :dofsmut, :vars, :elements, fieldnames(GlobalBlockVector)...
@@ -264,23 +283,18 @@ function FaceStateVector(data::NTuple{2,Matrix{<:Any}}, dh::DofHandler)
     return FaceStateVector{nv}(data, dh)
 end
 
-function FaceStateVector{NV,RT}(
+function FaceStateVector{NV}(
     value::Union{UndefInitializer,Missing,Nothing},
     dh::DofHandler,
+    ftype=Float64,
 ) where {
-    NV,
-    RT
+    NV
 }
     sides = (
-        StateVector{NV,RT}(value, nfacedofs(dh)),
-        StateVector{NV,RT}(value, nfacedofs(dh)),
+        StateVector{NV}(value, nfacedofs(dh), ftype),
+        StateVector{NV}(value, nfacedofs(dh), ftype),
     )
     return FaceStateVector{NV}((sides[1].data, sides[2].data), dh)
-end
-
-function Base.similar(s::FaceStateVector, ::Type{T}, dims::Dims) where {T}
-    sides = (similar(s.sides[1], T, dims), similar(s.sides[2], T, dims))
-    return FaceStateVector((sides[1].data, sides[2].data), s.dh)
 end
 
 function Base.show(io::IO, ::MIME"text/plain", s::FaceStateVector)
@@ -316,6 +330,7 @@ struct FSVFaceSide{NV,RT}
     face::Int
     side::Int
 end
+FlouCommon.datatype(f::FSVFaceSide) = datatype(f.s)
 Base.propertynames(::FSVFaceSide) = (:dofs, :dofsmut, :vars, fieldnames(FSVFaceSide)...)
 function Base.getproperty(f::FSVFaceSide{NV}, s::Symbol) where {NV}
     @inbounds return if s == :dofs
@@ -348,6 +363,7 @@ struct FSVFace{NV,RT}
     s::FaceStateVector{NV,RT}
     face::Int
 end
+FlouCommon.datatype(f::FSVFace) = datatype(f.s)
 Base.propertynames(::FSVFace) = (:sides, fieldnames(FSVFace)...)
 function Base.getproperty(f::FSVFace, s::Symbol)
     return if s == :sides
@@ -362,13 +378,12 @@ end
 struct FSVFaces{NV,RT} <: AbstractVector{FSVFace{NV,RT}}
     s::FaceStateVector{NV,RT}
 end
-@inline function Base.size(f::FSVFaces)
-    return (nfaces(f.s),)
-end
-@inline function Base.getindex(f::FSVFaces{NV}, i::Int) where {NV}
+@inline function Base.getindex(f::FSVFaces{NV}, i::Integer) where {NV}
     @boundscheck checkbounds(f, i)
     return FSVFace(f.s, i)
 end
+Base.IndexStyle(::Type{<:FSVFaces}) = IndexLinear()
+Base.size(f::FSVFaces) = (nfaces(f.s),)
 
 Base.propertynames(::FaceStateVector) = (:faces, fieldnames(FaceStateVector)...)
 function Base.getproperty(sv::FaceStateVector, s::Symbol)
@@ -394,38 +409,31 @@ struct FaceBlockVector{NV,RT}
         RT
     }
         sides = (BlockVector{NV}(data[1]), BlockVector{NV}(data[2]))
-        ndofs(sides[1]) == nfacedofs(dh) || throw(DimensionMismatch())
-        ndofs(sides[2]) == nfacedofs(dh) || throw(DimensionMismatch())
+        ndofs(sides[1]) == ndofs(sides[2]) == nfacedofs(dh) || throw(DimensionMismatch())
+        spatialdim(sides[1]) == spatialdim(sides[2]) || throw(DimensionMismatch())
         return new{NV,RT}(sides, data, dh)
     end
 end
 
 function FaceBlockVector(data::NTuple{2,Array{<:Any,3}}, dh::DofHandler)
     nv = size(data[1], 2)
-    nd = size(data, 3)
     size(data[2], 2) == nv || throw(DimensionMismatch())
-    size(data[2], 3) == nd || throw(DimensionMismatch())
-    return FaceBlockVector{nv,nd}(data, dh)
+    return FaceBlockVector{nv}(data, dh)
 end
 
-function FaceBlockVector{NV,RT}(
+function FaceBlockVector{NV}(
     value::Union{UndefInitializer,Missing,Nothing},
     dh::DofHandler,
     ndims::Int,
+    ftype=Float64,
 ) where {
-    NV,
-    RT
+    NV
 }
     sides = (
-        BlockVector{NV,RT}(value, nfacedofs(dh), ndims),
-        BlockVector{NV,RT}(value, nfacedofs(dh), ndims),
+        BlockVector{NV}(value, nfacedofs(dh), ndims, ftype),
+        BlockVector{NV}(value, nfacedofs(dh), ndims, ftype),
     )
     return FaceBlockVector{NV}((sides[1].data, sides[2].data), dh)
-end
-
-function Base.similar(b::FaceBlockVector, ::Type{T}, dims::Dims) where {T}
-    sides = (similar(b.sides[1], T, dims), similar(b.sides[2], T, dims))
-    return FaceBlockVector((sides[1].data, sides[2].data), b.dh)
 end
 
 function Base.show(io::IO, ::MIME"text/plain", b::FaceBlockVector)
@@ -465,6 +473,7 @@ struct FBVFaceSide{NV,RT}
     face::Int
     side::Int
 end
+FlouCommon.datatype(f::FBVFaceSide) = datatype(f.b)
 Base.propertynames(::FBVFaceSide) = (:dofs, :dofsmut, :vars, fieldnames(FBVFaceSide)...)
 function Base.getproperty(f::FBVFaceSide{NV}, s::Symbol) where {NV}
     @inbounds return if s == :dofs
@@ -497,6 +506,7 @@ struct FBVFace{NV,RT}
     b::FaceBlockVector{NV,RT}
     face::Int
 end
+FlouCommon.datatype(f::FBVFace) = datatype(f.b)
 Base.propertynames(::FBVFace) = (:sides, fieldnames(FBVFace)...)
 function Base.getproperty(f::FBVFace, s::Symbol)
     return if s == :sides
@@ -511,13 +521,12 @@ end
 struct FBVFaces{NV,RT} <: AbstractVector{FBVFace{NV,RT}}
     b::FaceBlockVector{NV,RT}
 end
-@inline function Base.size(f::FBVFaces)
-    return (nfaces(f.b),)
-end
-@inline function Base.getindex(f::FBVFaces, i::Int)
+@inline function Base.getindex(f::FBVFaces, i::Integer)
     @boundscheck checkbounds(f, i)
     return FBVFace(f.b, i)
 end
+Base.IndexStyle(::Type{<:FBVFaces}) = IndexLinear()
+Base.size(f::FBVFaces) = (nfaces(f.b),)
 
 Base.propertynames(::FaceBlockVector) = (:faces, fieldnames(FaceBlockVector)...)
 function Base.getproperty(bv::FaceBlockVector, s::Symbol)

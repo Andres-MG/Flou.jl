@@ -13,7 +13,7 @@
 # You should have received a copy of the GNU General Public License along with Flou.jl. If
 # not, see <https://www.gnu.org/licenses/>.
 
-function FlouBiz.open_for_write!(file::File, disc::AbstractSpatialDiscretization)
+function FlouBiz.open_for_write!(file::File, disc::MultielementDisc)
     # Unpack
     (; mesh) = disc
 
@@ -40,7 +40,7 @@ function FlouBiz.open_for_write!(file::File, disc::AbstractSpatialDiscretization
         append!(connectivities, conns)
 
         # Offsets
-        push!(offsets, ndofs(std, equispaced=Val(true)) + last(offsets))
+        push!(offsets, nequispaced(std) + last(offsets))
 
         # Types
         push!(types, vtk_type(std))
@@ -64,45 +64,52 @@ function FlouBiz.open_for_write!(file::File, disc::AbstractSpatialDiscretization
     return nothing
 end
 
-function FlouBiz.pointdata2VTKHDF(Q::StateVector, disc::AbstractSpatialDiscretization)
-    rt = eltype(Q)
+function FlouBiz.pointdata2VTKHDF(Q::GlobalStateVector, disc::MultielementDisc)
+    (; std) = disc
+    rt = datatype(Q)
     npoints = ndofs(disc)
     nvars = nvariables(Q)
 
     Qe = [rt[] for _ in 1:nvars]
-    for i in 1:nvars
-        sizehint!(Qe[i], npoints)
-    end
+    sizehint!.(Qe, npoints)
 
-    std = disc.std
-    tmp = HybridVector{nvars,rt}(undef, ndofs(std, equispaced=Val(true)))
+    tmp = std.cache.state[1][1]
     for ie in eachelement(disc)
-        project2equispaced!(tmp, Q.element[ie], std)
         for iv in 1:nvars
-            append!(Qe[iv], view(tmp.flat, iv, :))
+            project2equispaced!(tmp.vars[iv], Q.elements[ie].vars[iv], std)
+            append!(Qe[iv], tmp.vars[iv])
         end
     end
     return Qe
 end
 
-function FlouBiz.pointdata2VTKHDF(Q::BlockVector, disc::AbstractSpatialDiscretization)
-    rt = eltype(Q)
+function FlouBiz.pointdata2VTKHDF(_Q::AbstractVecOrMat, disc::MultielementDisc)
+    Q = GlobalStateVector(_Q, disc.dofhandler)
+    return FlouBiz.pointdata2VTKHDF(Q, disc)
+end
+
+function FlouBiz.pointdata2VTKHDF(_Q::GlobalBlockVector, disc::MultielementDisc)
+    (; dofhandler, std) = disc
+    Q = GlobalBlockVector(_Q, dofhandler)
+    rt = datatype(Q)
     npoints = ndofs(disc)
     dims = spatialdim(Q)
     nvars = nvariables(Q)
 
     Qe = [rt[] for _ in 1:nvars, _ in 1:dims]
-    for i in eachindex(Qe)
-        sizehint!(Qe[i], npoints)
-    end
+    sizehint!.(Qe, npoints)
 
-    std = disc.std
-    tmp = HybridMatrix{nvars,rt}(undef, ndofs(std, equispaced=Val(true)), dims)
+    tmp = std.cache.block[1][1]
     for ie in eachelement(disc)
-        project2equispaced!(tmp, Q.element[ie], std)
         for id in 1:dims, iv in 1:nvars
-            append!(Qe[iv, id], view(tmp.flat, iv, :, id))
+            project2equispaced!(tmp.vars[iv, id], Q.elements[ie].vars[iv, id], std)
+            append!(Qe[iv, id], tmp.vars[iv, id])
         end
     end
     return Qe |> vec
+end
+
+function FlouBiz.pointdata2VTKHDF(_Q::AbstractArray{<:Any,3}, disc::MultielementDisc)
+    Q = GlobalBlockVector(_Q, disc.dofhandler)
+    return FlouBiz.pointdata2VTKHDF(Q, disc)
 end

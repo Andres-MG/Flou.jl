@@ -42,6 +42,23 @@ function (d::PhsDerivative)(x)
     end
 end
 
-#==========================================================================================#
-#                                      Gaussian RBF                                        #
+struct PhsIntegral{RT}
+    p::Phs{RT}
+end
 
+function Polynomials.integrate(p::Phs)
+    return PhsIntegral(p)
+end
+
+function (int::PhsIntegral{RT})(x) where {RT}
+    p = int.p
+    xx = x - p.x0
+    s = sign(xx)
+    r = s * xx
+    k = p.e
+    return if p.even
+        s * r * (k + 1) / (k + 1)^2 * ((k + 1) * log(r) - one(RT))
+    else
+        s * r ^ (k + 1) / (k + 1)
+    end
+end

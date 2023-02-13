@@ -38,7 +38,9 @@ solver = ORK256(williamson_condition=false)
 
 equation = EulerEquation{3}(1.4)
 
-std = FRStdHex{Float64}(GLL(4), :DGSEM, nvariables(equation))
+basis = LagrangeBasis(:GLL, 4)
+rec = basis |> DGSEMrec
+std = StdHex(basis, rec, nvariables(equation))
 mesh = UnstructuredMesh{3,Float64}("../test/meshes/3D_bullet_refined.msh")
 
 Q0 = Flou.vars_prim2cons((1.0, 2.0, 0.0, 0.0, 1.0), equation)
@@ -53,26 +55,29 @@ Q0 = Flou.vars_prim2cons((1.0, 2.0, 0.0, 0.0, 1.0), equation)
 )
 
 ∇ = SplitDivOperator(
-    MatrixDissipation(ChandrasekharAverage(), 1.0)
+    MatrixDissipation(
+        ChandrasekharAverage(),
+        1.0,
+    ),
 )
-dg = FR(mesh, std, equation, ∇, ∂Ω)
+fr = MultielementDisc(mesh, std, equation, ∇, ∂Ω)
 
-Q = StateVector{nvariables(equation),Float64}(undef, dg.dofhandler)
+Q = GlobalStateVector{nvariables(equation)}(undef, fr.dofhandler)
 for i in eachdof(Q)
-    Q.dof[i] = Q0
+    Q.dofs[i] = Q0
 end
 
-display(dg)
+display(fr)
 println()
 
-mb, mvals = get_monitor_callback(Float64, dg, equation, :entropy)
+mb, mvals = get_monitor_callback(Float64, Float64, fr, equation, :entropy)
 sb = get_save_callback("../results/solution"; iter=save_steps)
 cb = make_callback_list(mb, sb)
 
 @info "Starting simulation..."
 
 _, exetime = timeintegrate(
-    Q, dg, equation, solver, tf;
+    Q.data, fr, equation, solver, tf;
     save_everystep=false, alias_u0=true, adaptive=false, dt=Δt, callback=cb,
     progress=true, progress_steps=5,
 )

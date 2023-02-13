@@ -44,6 +44,7 @@ function logarithmic_mean(al, ar)
 end
 
 macro flouthreads(expr)
+    # return esc(:($(expr)))
     # esc(quote
     #     return if Threads.nthreads() == 1
     #         $(expr)
@@ -51,6 +52,7 @@ macro flouthreads(expr)
     #         Threads.@threads $(expr)
     #     end
     # end)
+    # return esc(:(Threads.@threads $(expr)))
     return esc(:(@batch $(expr)))
 end
 
@@ -78,12 +80,12 @@ end
 Base.size(v::LazyVector) = size(v.indices)
 Base.IndexStyle(::Type{<:LazyVector}) = IndexLinear()
 
-@inline function Base.getindex(v::LazyVector, i)
+@inline function Base.getindex(v::LazyVector, i::Integer)
     @boundscheck checkbounds(v, i)
     return @inbounds v.data[v.indices[i]]
 end
 
-@inline function Base.setindex!(v::LazyVector, x, i)
+@inline function Base.setindex!(v::LazyVector, x, i::Integer)
     @boundscheck checkbounds(v, i)
     @inbounds v.data[v.indices[i]] = x
 end
