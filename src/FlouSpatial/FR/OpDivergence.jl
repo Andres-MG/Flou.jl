@@ -146,8 +146,7 @@ Base.@propagate_inbounds function _split_gauss_deriv_1d!(
     l_Fli = l * Fli
     r_Fri = r * Fri
     for i in eachdof(std, idir)
-        dQ[i] += (l[i] * (Fli[i] - l_Fli - Fnl) -
-                 r[i] * (Fri[i] - r_Fri + Fnr)) / ω[i]
+        dQ[i] += (l[i] * (Fli[i] - l_Fli - Fnl) - r[i] * (Fri[i] - r_Fri + Fnr)) / ω[i]
     end
     return nothing
 end
@@ -390,7 +389,7 @@ end
 #                               Telescopic divergence operator                             #
 
 """
-    SSFVDivOperator([tpflux=numflux.avg, [fvflux=numflux]], numflux, blend)
+    HybridDivOperator([tpflux=numflux.avg, [fvflux=numflux]], numflux, blend)
 
 Split-divergence operator in telescopic form. Only implemented for tensor-product elements.
 
@@ -399,7 +398,7 @@ sub-element finite volume scheme. The `twopointflux` and `fvflux` are both combi
 an entropy-stable interface flux that controls the volume dissipation through the
 subcell interface Riemann solver.
 """
-struct SSFVDivOperator{
+struct HybridDivOperator{
     T<:AbstractNumericalFlux,
     F<:AbstractNumericalFlux,
     N<:AbstractNumericalFlux,
@@ -411,39 +410,17 @@ struct SSFVDivOperator{
     blend::RT
 end
 
-function SSFVDivOperator(tpflux, numflux, blend)
-    return SSFVDivOperator(tpflux, numflux, numflux, blend)
+function HybridDivOperator(tpflux, numflux, blend)
+    return HybridDivOperator(tpflux, numflux, numflux, blend)
 end
 
-function SSFVDivOperator(numflux, blend)
-    return SSFVDivOperator(numflux.avg, numflux, numflux, blend)
+function HybridDivOperator(numflux, blend)
+    return HybridDivOperator(numflux.avg, numflux, numflux, blend)
 end
 
-requires_subgrid(::SSFVDivOperator, ::AbstractStdRegion) = true
+requires_subgrid(::HybridDivOperator, ::AbstractStdRegion) = true
 
-function _ssfv_compute_delta(b, c)
-    # Fisher
-    # δ = sqrt(b^2 + c)
-    # δ = (δ - b) / δ
-
-    # Ours
-    δ = if b <= 0
-        one(b)
-    elseif b >= c
-        zero(b)
-    else
-        (1 + cospi(b / c)) / 2
-    end
-
-    # Constant
-    # return c
-
-    # Limiting
-    return max(δ, 0.5)
-    # return δ
-end
-
-Base.@propagate_inbounds function _ssfv_gauss_flux_1d!(
+Base.@propagate_inbounds function _hybrid_gauss_flux_1d(
     F̄c, F♯, F̃, Fnl, Fnr, Q, W, Fli, Fri, D♯, Ja, frames, Js,
     std, l, r, ω, equation, op, idir,
 )
@@ -491,16 +468,13 @@ Base.@propagate_inbounds function _ssfv_gauss_flux_1d!(
     end
 
     # Complementary grid fluxes
-    # The "mathematically correct" way to do this is to compute `F̄c[end]` also in the loop,
-    # but this is a bit more accurate and efficient.
     F̄c[1] = -Fnl
-    F̄c[end] = Fnr
     l_Fli = l * Fli
     r_Fri = r * Fri
-    for i in 1:(ndofs(std, idir) - 1)
+    for i in 1:ndofs(std, idir)
         @views F̄c[i + 1] = F̄c[i] + dot(D♯[i, :], F♯[:, i]) * ω[i] -
-                    l[i] * (Fli[i] - l_Fli - Fnl) +
-                    r[i] * (Fri[i] - r_Fri + Fnr)
+                           l[i] * (Fli[i] - l_Fli - Fnl) +
+                           r[i] * (Fri[i] - r_Fri + Fnr)
     end
 
     # Interior points
@@ -513,10 +487,7 @@ Base.@propagate_inbounds function _ssfv_gauss_flux_1d!(
         F̄v *= Js[i]
 
         # Blending
-        Wl = W[i - 1]
-        Wr = W[i]
-        b = dot(Wr - Wl, F̄c[i] - F̄v)
-        δ = _ssfv_compute_delta(b, op.blend)
+        δ = op.blend
         F̄c[i] = (1 - δ) * F̄v + δ * F̄c[i]
     end
     return nothing
@@ -530,7 +501,7 @@ function surface_contribution!(
     std::AbstractStdRegion{ND,NP,<:GaussNodes},
     fr::FR,
     equation::AbstractEquation,
-    op::SSFVDivOperator,
+    op::HybridDivOperator,
 ) where {
     ND,
     NP,
@@ -568,7 +539,7 @@ function surface_contribution!(
         Fri = std.cache.state[tid][3]
         l = std.l[1]
         r = std.l[2]
-        _ssfv_gauss_flux_1d!(
+        _hybrid_gauss_flux_1d(
             F̄c, F♯[1], F̃,
             Fn.face[iface[1]][facepos[1]][1], Fn.face[iface[2]][facepos[2]][1],
             Q, W, Fli, Fri, std.D♯[1], Jar, frames[1], Js[1],
@@ -591,7 +562,7 @@ function surface_contribution!(
 
         # X direction
         @inbounds for j in eachdof(std, 2)
-            @views _ssfv_gauss_flux_1d!(
+            @views _hybrid_gauss_flux_1d(
                 F̄c, F♯[1], F̃r[:, j, 1],
                 Fn.face[iface[1]][facepos[1]][j], Fn.face[iface[2]][facepos[2]][j],
                 Qr[:, j], W, Fli, Fri, std.D♯[1],
@@ -607,7 +578,7 @@ function surface_contribution!(
 
         # Y direction
         @inbounds for i in eachdof(std, 1)
-            @views _ssfv_gauss_flux_1d!(
+            @views _hybrid_gauss_flux_1d(
                 F̄c, F♯[2], F̃r[i, :, 2],
                 Fn.face[iface[3]][facepos[3]][i], Fn.face[iface[4]][facepos[4]][i],
                 Qr[i, :], W, Fli, Fri, std.D♯[2],
@@ -634,7 +605,7 @@ function surface_contribution!(
         # X direction
         @inbounds for k in eachdof(std, 3), j in eachdof(std, 2)
             ind = li[j, k]
-            @views _ssfv_gauss_flux_1d!(
+            @views _hybrid_gauss_flux_1d(
                 F̄c, F♯[1], F̃r[:, j, k, 1],
                 Fn.face[iface[1]][facepos[1]][ind], Fn.face[iface[2]][facepos[2]][ind],
                 Qr[:, j, k], W, Fli, Fri, std.D♯[1], Jar[:, j, k],
@@ -651,7 +622,7 @@ function surface_contribution!(
         # Y direction
         @inbounds for k in eachdof(std, 3), i in eachdof(std, 1)
             ind = li[i, k]
-            @views _ssfv_gauss_flux_1d!(
+            @views _hybrid_gauss_flux_1d(
                 F̄c, F♯[2], F̃r[i, :, k, 2],
                 Fn.face[iface[3]][facepos[3]][ind], Fn.face[iface[4]][facepos[4]][ind],
                 Qr[i, :, k], W, Fli, Fri, std.D♯[2], Jar[i, :, k],
@@ -668,7 +639,7 @@ function surface_contribution!(
         # Z direction
         @inbounds for j in eachdof(std, 2), i in eachdof(std, 1)
             ind = li[i, j]
-            @views _ssfv_gauss_flux_1d!(
+            @views _hybrid_gauss_flux_1d(
                 F̄c, F♯[3], F̃r[i, j, :, 3],
                 Fn.face[iface[5]][facepos[5]][ind], Fn.face[iface[6]][facepos[6]][ind],
                 Qr[i, j, :], W, Fli, Fri, std.D♯[3], Jar[i, j, :],
@@ -685,7 +656,7 @@ function surface_contribution!(
     return nothing
 end
 
-Base.@propagate_inbounds function _ssfv_flux_1d!(
+Base.@propagate_inbounds function _hybrid_flux_1d(
     F̄c, Q, D, ω, Ja, frames, Js, std, equation, op, idir,
 )
     # Zero everything, boundaries will remain zero
@@ -713,10 +684,7 @@ Base.@propagate_inbounds function _ssfv_flux_1d!(
         F̄v *= Js[i]
 
         # Blending
-        Wl = vars_cons2entropy(Q[i - 1], equation)
-        Wr = vars_cons2entropy(Q[i], equation)
-        b = dot(Wr - Wl, F̄c[i] - F̄v)
-        δ = _ssfv_compute_delta(b, op.blend)
+        δ = op.blend
         F̄c[i] = (1 - δ) * F̄v + δ * F̄c[i]
     end
     return nothing
@@ -729,7 +697,7 @@ function volume_contribution!(
     std::AbstractStdRegion{ND},
     fr::FR,
     equation::AbstractEquation,
-    op::SSFVDivOperator,
+    op::HybridDivOperator,
 ) where {
     ND
 }
@@ -751,7 +719,7 @@ function volume_contribution!(
 
     if ND == 1
         ω = std.ω
-        _ssfv_flux_1d!(F̄, Q, std.D[1], ω, Ja, frames[1], Js[1], std, equation, op, 1)
+        _hybrid_flux_1d(F̄, Q, std.D[1], ω, Ja, frames[1], Js[1], std, equation, op, 1)
 
         # Strong derivative
         @inbounds for i in eachdof(std)
@@ -762,7 +730,7 @@ function volume_contribution!(
         # X direction
         ω = std.face.ω
         @inbounds for j in eachdof(std, 2)
-            @views _ssfv_flux_1d!(
+            @views _hybrid_flux_1d(
                 F̄, Qr[:, j], std.face.D[1], ω, Ja[:, j],
                 frames[1][:, j], Js[1][:, j],
                 std, equation, op, 1,
@@ -776,7 +744,7 @@ function volume_contribution!(
 
         # Y derivative
         @inbounds for i in eachdof(std, 1)
-            @views _ssfv_flux_1d!(
+            @views _hybrid_flux_1d(
                 F̄, Qr[i, :], std.face.D[1], ω, Ja[i, :],
                 frames[2][i, :], Js[2][i, :],
                 std, equation, op, 2,
@@ -792,7 +760,7 @@ function volume_contribution!(
         # X direction
         ω = std.edge.ω
         @inbounds for k in eachdof(std, 3), j in eachdof(std, 2)
-            @views _ssfv_flux_1d!(
+            @views _hybrid_flux_1d(
                 F̄, Qr[:, j, k], std.edge.D[1], ω, Ja[:, j, k],
                 frames[1][:, j, k], Js[1][:, j, k],
                 std, equation, op, 1,
@@ -806,7 +774,7 @@ function volume_contribution!(
 
         # Y direction
         @inbounds for k in eachdof(std, 3), i in eachdof(std, 1)
-            @views _ssfv_flux_1d!(
+            @views _hybrid_flux_1d(
                 F̄, Qr[i, :, k], std.edge.D[1], ω, Ja[i, :, k],
                 frames[2][i, :, k], Js[2][i, :, k],
                 std, equation, op, 2,
@@ -820,7 +788,7 @@ function volume_contribution!(
 
         # Z direction
         @inbounds for j in eachdof(std, 2), i in eachdof(std, 1)
-            @views _ssfv_flux_1d!(
+            @views _hybrid_flux_1d(
                 F̄, Qr[i, j, :], std.edge.D[1], ω, Ja[i, j, :],
                 frames[3][i, j, :], Js[3][i, j, :],
                 std, equation, op, 3,
@@ -842,7 +810,7 @@ function volume_contribution!(
     ::AbstractStdRegion{ND,NP,<:GaussNodes},
     ::FR,
     ::AbstractEquation,
-    ::SSFVDivOperator,
+    ::HybridDivOperator,
 ) where {
     ND,
     NP,

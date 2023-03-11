@@ -1,11 +1,24 @@
 # Flou
 
-[![Docs-stable](https://img.shields.io/badge/docs-dev-blue?style=flat-square)](https://andres-mg.github.io/Flou.jl/dev/)
+[![arXiv:2211.05066](https://img.shields.io/badge/arXiv-2211.05066-green?style=flat-square)](https://arxiv.org/abs/2211.05066)
 
 Flou is a (very incomplete) framework to solve partial differential equations. It currently
 implements solvers for hyperbolic equations using a high-order flux-reconstruction approach,
 supporting only the *Discontinuous Galerkin Spectral Element Method* (DGSEM) reconstruction
 functions.
+
+This repository contains the code to reproduce the results of Fig. 2 in <https://arxiv.org/abs/2211.05066>.
+The spatial discretization is implemented in `src/FlouCommon/` and `src/FlouSpatial/`, and the
+results can be recovered by running `figure2/src/convergence.jl` and `figure2/src/errors.jl`:
+
+```console
+$ cd figure2
+$ julia -p <n procs> --project=. -- src/convergence.jl
+$ julia -p <n procs> --project=. -- src/errors.jl
+```
+
+You might need to run ```julia -e "using Pkg; Pkg.instantiate()"``` after entering the `figure2`
+folder.
 
 ## License notice
 
