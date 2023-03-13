@@ -44,24 +44,24 @@ apply_periodicBCs!(mesh, "1" => "2")
         1.0,
     ),
 )
-fr = MultielementDisc(mesh, std, equation, ∇, ())
+dg = MultielementDisc(mesh, std, equation, ∇, ())
 
 x0 = 0.4
 sx = 0.1
 h = 1.0
-Q = GlobalStateVector{nvariables(equation)}(undef, fr.dofhandler)
-for i in eachdof(fr)
-    x = fr.geometry.elements.coords[i][1]
+Q = GlobalStateVector{nvariables(equation)}(undef, dg.dofhandler)
+for i in eachdof(dg)
+    x = dg.geometry.elements.coords[i][1]
     Q.dofsmut[i][1] = Flou.gaussian_bump(x, x0, sx, h)
 end
 
-display(fr)
+display(dg)
 println()
 
 @info "Starting simulation..."
 
 sol, exetime = timeintegrate(
-    Q.data, fr, equation, solver, tf;
+    Q.data, dg, equation, solver, tf;
     alias_u0=true, adaptive=false, dt=Δt,
 )
 
