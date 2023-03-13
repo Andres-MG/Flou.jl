@@ -32,15 +32,15 @@ end
 
 struct PhysicalSubgridVector{ND,RT} <: AbstractVector{PhysicalSubgrid}
     dh::DofHandler
-    frames::Vector{NTuple{ND,Array{ReferenceFrame{ND,RT},ND}}}
-    jac::Vector{NTuple{ND,Array{RT,ND}}}
+    frames::Vector{NTuple{ND,Vector{ReferenceFrame{ND,RT}}}}
+    jac::Vector{NTuple{ND,Vector{RT}}}
     function PhysicalSubgridVector(dh, frames, jac)
         length(frames) == length(jac) && length(frames) == nelements(dh) ||
             throw(DimensionMismatch(
                 "There must be as many frames and Jacobians as elements in the DofHandler."
             ))
-        nd = length(frames[1])
-        rt = eltype(jac[1][1])
+        nd = length(first(frames))
+        rt = eltype(first(jac)[1])
         return new{nd,rt}(dh, frames, jac)
     end
 end
@@ -48,16 +48,16 @@ end
 Base.length(sv::PhysicalSubgridVector) = length(sv.frames)
 Base.size(sv::PhysicalSubgridVector) = (length(sv),)
 
-@inline function Base.getindex(sv::PhysicalSubgridVector, i)
+@inline function Base.getindex(sv::PhysicalSubgridVector, i::Integer)
     @boundscheck 1 <= i <= nelements(sv.dh) || throw(BoundsError(sv, i))
     return @inbounds PhysicalSubgrid(
-        view(sv.frames, i),
-        view(sv.jac, i),
+        sv.frames[i],
+        sv.jac[i],
     )
 end
 
-function PhysicalSubgridVector(std, dh::DofHandler, mesh::AbstractMesh)
-    subgridvec = [PhysicalSubgrid(std, mesh, ie) for ie in eachelement(mesh)]
+function PhysicalSubgridVector(ξc, dh::DofHandler, mesh::AbstractMesh)
+    subgridvec = [PhysicalSubgrid(ξc, mesh, ie) for ie in eachelement(mesh)]
     return PhysicalSubgridVector(
         dh,
         [s.frames for s in subgridvec],
@@ -65,23 +65,24 @@ function PhysicalSubgridVector(std, dh::DofHandler, mesh::AbstractMesh)
     )
 end
 
-function PhysicalSubgrid(std, ::CartesianMesh{1,RT}, _) where {RT}
-    nx = ndofs(std) + 1
+function PhysicalSubgrid(ξc, ::CartesianMesh{1,RT}, _) where {RT}
+    n = length(ξc[1])
     frames = ([
         ReferenceFrame(
             SVector(one(RT)),
             SVector(zero(RT)),
             SVector(zero(RT)),
         )
-        for _ in 1:nx
+        for _ in 1:n
     ],)
-    jac = (fill(one(RT), nx),)
+    jac = (fill(one(RT), n),)
     return PhysicalSubgrid(frames, jac)
 end
 
-function PhysicalSubgrid(std, mesh::CartesianMesh{2,RT}, _) where {RT}
+function PhysicalSubgrid(ξc, mesh::CartesianMesh{2,RT}, _) where {RT}
     (; Δx) = mesh
-    nx, ny = dofsize(std)
+    n1 = length(ξc[1])
+    n2 = length(ξc[2])
     frames = (
         [
             ReferenceFrame(
@@ -89,7 +90,7 @@ function PhysicalSubgrid(std, mesh::CartesianMesh{2,RT}, _) where {RT}
                 SVector(zero(RT), one(RT)),
                 SVector(zero(RT), zero(RT)),
             )
-            for _ in 1:(nx+1), _ in 1:ny
+            for _ in 1:n1
         ],
         [
             ReferenceFrame(
@@ -97,19 +98,21 @@ function PhysicalSubgrid(std, mesh::CartesianMesh{2,RT}, _) where {RT}
                 SVector(-one(RT), zero(RT)),
                 SVector(zero(RT), zero(RT)),
             )
-            for _ in 1:nx, _ in 1:(ny+1)
+            for _ in 1:n2
         ],
     )
     jac = (
-        fill(Δx[2] / 2, nx + 1, ny),
-        fill(Δx[1] / 2, nx, ny + 1),
+        [Δx[2] / 2 for _ in 1:n1],
+        [Δx[1] / 2 for _ in 1:n2],
     )
     return PhysicalSubgrid(frames, jac)
 end
 
-function PhysicalSubgrid(std, mesh::CartesianMesh{3,RT}, _) where {RT}
+function PhysicalSubgrid(ξc, mesh::CartesianMesh{3,RT}, _) where {RT}
     (; Δx) = mesh
-    nx, ny, nz = dofsize(std)
+    n1 = length(ξc[1])
+    n2 = length(ξc[2])
+    n3 = length(ξc[3])
     frames = (
         [
             ReferenceFrame(
@@ -117,7 +120,7 @@ function PhysicalSubgrid(std, mesh::CartesianMesh{3,RT}, _) where {RT}
                 SVector(zero(RT), one(RT), zero(RT)),
                 SVector(zero(RT), zero(RT), one(RT)),
             )
-            for _ in 1:(nx+1), _ in 1:ny, _ in 1:nz
+            for _ in 1:n1
         ],
         [
             ReferenceFrame(
@@ -125,7 +128,7 @@ function PhysicalSubgrid(std, mesh::CartesianMesh{3,RT}, _) where {RT}
                 SVector(zero(RT), zero(RT), one(RT)),
                 SVector(one(RT), zero(RT), zero(RT)),
             )
-            for _ in 1:nx, _ in 1:(ny+1), _ in 1:nz
+            for _ in 1:n2
         ],
         [
             ReferenceFrame(
@@ -133,21 +136,22 @@ function PhysicalSubgrid(std, mesh::CartesianMesh{3,RT}, _) where {RT}
                 SVector(one(RT), zero(RT), zero(RT)),
                 SVector(zero(RT), one(RT), zero(RT)),
             )
-            for _ in 1:nx, _ in 1:ny, _ in 1:(nz+1)
+            for _ in 1:n3
         ],
     )
     jac = (
-        fill(Δx[2] * Δx[3] / 4, nx + 1, ny, nz),
-        fill(Δx[1] * Δx[3] / 4, nx, ny + 1, nz),
-        fill(Δx[1] * Δx[2] / 4, nx, ny, nz + 1),
+        [Δx[2] * Δx[3] / 4 for _ in 1:n1],
+        [Δx[1] * Δx[3] / 4 for _ in 1:n2],
+        [Δx[1] * Δx[2] / 4 for _ in 1:n3],
     )
     return PhysicalSubgrid(frames, jac)
 end
 
-function PhysicalSubgrid(std, mesh::StepMesh{RT}, ie) where {RT}
+function PhysicalSubgrid(ξc, mesh::StepMesh{RT}, ie) where {RT}
     (; Δx) = mesh
     ireg = region(mesh, ie)
-    nx, ny = dofsize(std)
+    n1 = length(ξc[1])
+    n2 = length(ξc[2])
     frames = (
         [
             ReferenceFrame(
@@ -155,7 +159,7 @@ function PhysicalSubgrid(std, mesh::StepMesh{RT}, ie) where {RT}
                 SVector(zero(RT), one(RT)),
                 SVector(zero(RT), zero(RT)),
             )
-            for _ in 1:(nx+1), _ in 1:ny
+            for _ in 1:n1
         ],
         [
             ReferenceFrame(
@@ -163,22 +167,22 @@ function PhysicalSubgrid(std, mesh::StepMesh{RT}, ie) where {RT}
                 SVector(-one(RT), zero(RT)),
                 SVector(zero(RT), zero(RT)),
             )
-            for _ in 1:nx, _ in 1:(ny+1)
+            for _ in 1:n2
         ],
     )
     jac = (
-        fill(Δx[ireg][2] / 2, nx + 1, ny),
-        fill(Δx[ireg][1] / 2, nx, ny + 1),
+        [Δx[ireg][2] / 2 for _ in 1:n1],
+        [Δx[ireg][1] / 2 for _ in 1:n2],
     )
     return PhysicalSubgrid(frames, jac)
 end
 
-function PhysicalSubgrid(std, mesh::UnstructuredMesh{1,RT}, ie) where {RT}
-    nx = ndofs(std)
-    frames = (Vector{ReferenceFrame{1,RT}}(undef, nx + 1),)
-    jac = (Vector{RT}(undef, nx + 1),)
-    for i in 1:(nx+1)
-        ξ = std.ξc[1][i]
+function PhysicalSubgrid(ξc, mesh::UnstructuredMesh{1,RT}, ie) where {RT}
+    n = length(ξc[1])
+    frames = (Vector{ReferenceFrame{1,RT}}(undef, n),)
+    jac = (Vector{RT}(undef, n),)
+    for i in 1:n
+        ξ = ξc[1][i]
         main = map_basis(ξ, mesh, ie)
         dual = map_dual_basis(main, mesh, ie)
         s = map_jacobian(main, mesh, ie) |> sign
@@ -192,84 +196,97 @@ function PhysicalSubgrid(std, mesh::UnstructuredMesh{1,RT}, ie) where {RT}
     return PhysicalSubgrid(frames, jac)
 end
 
-function PhysicalSubgrid(std, mesh::UnstructuredMesh{2,RT}, ie) where {RT}
-    nx, ny = dofsize(std)
+function PhysicalSubgrid(ξc, mesh::UnstructuredMesh{2,RT}, ie) where {RT}
+    n1 = length(ξc[1])
+    n2 = length(ξc[2])
     frames = (
-        Matrix{ReferenceFrame{2,RT}}(undef, nx + 1, ny),
-        Matrix{ReferenceFrame{2,RT}}(undef, nx, ny + 1),
+        Vector{ReferenceFrame{2,RT}}(undef, n1),
+        Vector{ReferenceFrame{2,RT}}(undef, n2),
     )
-    jac = (Matrix{RT}(undef, nx + 1, ny), Matrix{RT}(undef, nx, ny + 1))
-    for j in 1:ny, i in 1:(nx+1)  # Vertical faces
-        ξ = std.ξc[1][i, j]
+    jac = (Vector{RT}(undef, n1), Vector{RT}(undef, n2))
+
+    # Vertical faces
+    for i in 1:n1
+        ξ = ξc[1][i]
         main = map_basis(ξ, mesh, ie)
         dual = map_dual_basis(main, mesh, ie)
         s = map_jacobian(main, mesh, ie) |> sign
         n = s * dual[1]
         t = s * normalize(main[2])
         b = SVector(zero(RT), zero(RT))
-        jac[1][i, j] = norm(n)
-        n /= jac[1][i, j]
-        frames[1][i, j] = ReferenceFrame(n, t, b)
+        jac[1][i] = norm(n)
+        n /= jac[1][i]
+        frames[1][i] = ReferenceFrame(n, t, b)
     end
-    for j in 1:(ny+1), i in 1:nx  # Horizontal faces
-        ξ = std.ξc[2][i, j]
+
+    # Horizontal faces
+    for i in 1:n2
+        ξ = ξc[2][i]
         main = map_basis(ξ, mesh, ie)
         dual = map_dual_basis(main, mesh, ie)
         s = map_jacobian(main, mesh, ie) |> sign
         n = s * dual[2]
         t = -s * normalize(main[1])
         b = SVector(zero(RT), zero(RT))
-        jac[2][i, j] = norm(n)
-        n /= jac[2][i, j]
-        frames[2][i, j] = ReferenceFrame(n, t, b)
+        jac[2][i] = norm(n)
+        n /= jac[2][i]
+        frames[2][i] = ReferenceFrame(n, t, b)
     end
     return PhysicalSubgrid(frames, jac)
 end
 
-function PhysicalSubgrid(std, mesh::UnstructuredMesh{3,RT}, ie) where {RT}
-    nx, ny, nz = dofsize(std)
+function PhysicalSubgrid(ξc, mesh::UnstructuredMesh{3,RT}, ie) where {RT}
+    n1 = length(ξc[1])
+    n2 = length(ξc[2])
+    n3 = length(ξc[3])
     frames = (
-        Array{ReferenceFrame{3,RT},3}(undef, nx + 1, ny, nz),
-        Array{ReferenceFrame{3,RT},3}(undef, nx, ny + 1, nz),
-        Array{ReferenceFrame{3,RT},3}(undef, nx, ny, nz + 1),
+        Vector{ReferenceFrame{3,RT}}(undef, n1),
+        Vector{ReferenceFrame{3,RT}}(undef, n2),
+        Vector{ReferenceFrame{3,RT}}(undef, n3),
     )
     jac = (
-        Array{RT,3}(undef, nx + 1, ny, nz),
-        Array{RT,3}(undef, nx, ny + 1, nz),
-        Array{RT,3}(undef, nx, ny, nz + 1),
+        Vector{RT}(undef, n1),
+        Vector{RT}(undef, n2),
+        Vector{RT}(undef, n3),
     )
-    for k in 1:nz, j in 1:ny, i in 1:(nx+1)  # X faces
-        ξ = std.ξc[1][i, j, k]
+
+    # X faces
+    for i in 1:n1
+        ξ = ξc[1][i]
         main = map_basis(ξ, mesh, ie)
         dual = map_dual_basis(main, mesh, ie)
         n = dual[1]
         t = normalize(main[2])
         b = normalize(cross(n, t))
-        jac[1][i, j, k] = norm(n)
-        n /= jac[1][i, j, k]
-        frames[1][i, j, k] = ReferenceFrame(n, t, b)
+        jac[1][i] = norm(n)
+        n /= jac[1][i]
+        frames[1][i] = ReferenceFrame(n, t, b)
     end
-    for k in 1:nz, j in 1:(ny+1), i in 1:nx  # Y faces
-        ξ = std.ξc[2][i, j, k]
+
+    # Y faces
+    for i in 1:n2
+        ξ = ξc[2][i]
         main = map_basis(ξ, mesh, ie)
         dual = map_dual_basis(main, mesh, ie)
         n = dual[2]
         t = normalize(main[3])
         b = normalize(cross(n, t))
-        jac[2][i, j, k] = norm(n)
-        n /= jac[2][i, j, k]
-        frames[2][i, j, k] = ReferenceFrame(n, t, b)
+        jac[2][i] = norm(n)
+        n /= jac[2][i]
+        frames[2][i] = ReferenceFrame(n, t, b)
     end
-    for k in 1:(nz+1), j in 1:ny, i in 1:nx  # Z faces
-        ξ = std.ξc[3][i, j, k]
+
+    # Z faces
+    for i in 1:n3
+        ξ = ξc[3][i]
         main = map_basis(ξ, mesh, ie)
         dual = map_dual_basis(main, mesh, ie)
         n = dual[3]
         t = normalize(main[1])
         b = normalize(cross(n, t))
-        jac[3][i, j, k] = norm(n)
-        n /= jac[3][i, j, k]
-        frames[3][i, j, k] = ReferenceFrame(n, t, b)
+        jac[3][i] = norm(n)
+        n /= jac[3][i]
+        frames[3][i] = ReferenceFrame(n, t, b)
     end
     return PhysicalSubgrid(frames, jac)
 end
@@ -303,20 +320,21 @@ Base.size(ev::PhysicalElementVector) = (length(ev),)
     @boundscheck 1 <= i <= nelements(ev.dh) || throw(BoundsError(ev, i))
     @inbounds begin
         i1 = ev.dh.elem_offsets[i] + 1
-        i2 = ev.dh.elem_offsets[i+1]
+        i2 = ev.dh.elem_offsets[i + 1]
         return PhysicalElement(
             view(ev.coords, i1:i2),
             view(ev.jac, i1:i2),
             view(ev.invjac, i1:i2),
             view(ev.Jω, i1:i2),
             view(ev.metric, i1:i2),
-            view(ev.volume, i),
+            ev.volume[i],
         )
     end
 end
 
 function PhysicalElementVector(
-    std,
+    ξ,
+    ω,
     dh::DofHandler,
     mesh::AbstractMesh{ND,RT},
 ) where {
@@ -331,7 +349,7 @@ function PhysicalElementVector(
     volume = RT[]
 
     for ie in eachelement(mesh)
-        elem = PhysicalElement(std, mesh, ie)
+        elem = PhysicalElement(ξ, ω, mesh, ie)
         append!(coords, elem.coords)
         append!(jac, elem.jac)
         append!(invjac, elem.invjac)
@@ -349,24 +367,25 @@ function integrate(f::AbstractVector, elem::PhysicalElement)
     return dot(elem.Jω, f)
 end
 
-function PhysicalElement(std, mesh::CartesianMesh{ND,RT}, ie) where {ND,RT}
+function PhysicalElement(ξ, ω, mesh::CartesianMesh{ND,RT}, ie) where {ND,RT}
     (; Δx) = mesh
 
     # Coordinates
-    xyz = [phys_coords(ξ, mesh, ie) for ξ in std.ξ]
+    np = length(ξ)
+    xyz = [phys_coords(ξ, mesh, ie) for ξ in ξ]
 
     # Jacobian and dual basis
-    jac = fill(prod(Δx) / (2^ND), ndofs(std))
+    jac = fill(prod(Δx) / (2^ND), np)
     invjac = inv.(jac)
     metric = if ND == 1
-        fill(SMatrix{1,1}(one(RT)), ndofs(std))
+        fill(SMatrix{1,1}(one(RT)), np)
     elseif ND == 2
         fill(
             SMatrix{2,2}(
                 Δx[2] / 2, 0,
                 0, Δx[1] / 2,
             ),
-            ndofs(std),
+            np,
         )
     else # ND == 3
         fill(
@@ -375,12 +394,12 @@ function PhysicalElement(std, mesh::CartesianMesh{ND,RT}, ie) where {ND,RT}
                 0, Δx[1] * Δx[3] / 4, 0,
                 0, 0, Δx[1] * Δx[2] / 4,
             ),
-            ndofs(std),
+            np,
         )
     end
 
     # Integration weights
-    Jω = jac .* std.ω
+    Jω = jac .* ω
 
     # Volume
     vol = sum(Jω)
@@ -388,26 +407,27 @@ function PhysicalElement(std, mesh::CartesianMesh{ND,RT}, ie) where {ND,RT}
     return PhysicalElement(xyz, jac, invjac, Jω, metric, vol)
 end
 
-function PhysicalElement(std, mesh::StepMesh{RT}, ie) where {RT}
+function PhysicalElement(ξ, ω, mesh::StepMesh{RT}, ie) where {RT}
     (; Δx) = mesh
     ireg = region(mesh, ie)
 
     # Coordinates
-    xyz = [phys_coords(ξ, mesh, ie) for ξ in std.ξ]
+    np = length(ξ)
+    xyz = [phys_coords(ξ, mesh, ie) for ξ in ξ]
 
     # Jacobian and dual basis
-    jac = fill(prod(Δx[ireg]) / 4, ndofs(std))
+    jac = fill(prod(Δx[ireg]) / 4, np)
     invjac = inv.(jac)
     metric = fill(
         SMatrix{2,2}(
             Δx[ireg][2] / 2, 0,
             0, Δx[ireg][1] / 2,
         ),
-        ndofs(std),
+        np,
     )
 
     # Integration weights
-    Jω = jac .* std.ω
+    Jω = jac .* ω
 
     # Volume
     vol = sum(Jω)
@@ -415,15 +435,16 @@ function PhysicalElement(std, mesh::StepMesh{RT}, ie) where {RT}
     return PhysicalElement(xyz, jac, invjac, Jω, metric, vol)
 end
 
-function PhysicalElement(std, mesh::UnstructuredMesh{ND,RT}, ie) where {ND,RT}
+function PhysicalElement(ξ, ω, mesh::UnstructuredMesh{ND,RT}, ie) where {ND,RT}
     # Coordinates
-    xyz = [phys_coords(ξ, mesh, ie) for ξ in std.ξ]
+    np = length(ξ)
+    xyz = [phys_coords(ξ, mesh, ie) for ξ in ξ]
 
     # Jacobian and dual basis
-    jac = Vector{RT}(undef, ndofs(std))
-    metric = Vector{SMatrix{ND,ND,RT,ND * ND}}(undef, ndofs(std))
-    for i in eachdof(std)
-        main = map_basis(std.ξ[i], mesh, ie)
+    jac = Vector{RT}(undef, np)
+    metric = Vector{SMatrix{ND,ND,RT,ND * ND}}(undef, np)
+    for i in eachindex(ξ)
+        main = map_basis(ξ[i], mesh, ie)
         dual = map_dual_basis(main, mesh, ie)
         jac[i] = map_jacobian(main, mesh, ie)
         if ND == 1
@@ -442,7 +463,7 @@ function PhysicalElement(std, mesh::UnstructuredMesh{ND,RT}, ie) where {ND,RT}
     invjac = inv.(jac)
 
     # Integration weights
-    Jω = jac .* std.ω
+    Jω = jac .* ω
 
     # Volume
     vol = sum(Jω)
@@ -483,12 +504,12 @@ Base.size(fv::PhysicalFaceVector) = (length(fv),)
             view(fv.frames, i1:i2),
             view(fv.jac, i1:i2),
             view(fv.Jω, i1:i2),
-            view(fv.surface, i),
+            fv.surface[i],
         )
     end
 end
 
-function PhysicalFaceVector(std, dh, mesh)
+function PhysicalFaceVector(ξf, ω, dh, mesh)
     coords = []
     frames = []
     jac = []
@@ -496,7 +517,7 @@ function PhysicalFaceVector(std, dh, mesh)
     surface = []
 
     for iface in eachface(mesh)
-        face = PhysicalFace(std, mesh, iface)
+        face = PhysicalFace(ξf, ω, mesh, iface)
         append!(coords, face.coords)
         append!(frames, face.frames)
         append!(jac, face.jac)
@@ -517,7 +538,7 @@ function integrate(f::AbstractVector, face::PhysicalFace)
     return dot(face.Jω, f)
 end
 
-function PhysicalFace(_, mesh::CartesianMesh{1,RT}, iface) where {RT}
+function PhysicalFace(_, _, mesh::CartesianMesh{1,RT}, iface) where {RT}
     pos = mesh.faces[iface].elempos[1]
     nind = mesh.faces[iface].nodeinds[1]
     x = [mesh.nodes[nind]]
@@ -544,12 +565,12 @@ function PhysicalFace(_, mesh::CartesianMesh{1,RT}, iface) where {RT}
     return PhysicalFace(x, frames, jac, Jω, surf)
 end
 
-function PhysicalFace(std, mesh::CartesianMesh{2,RT}, iface) where {RT}
+function PhysicalFace(ξf, ω, mesh::CartesianMesh{2,RT}, iface) where {RT}
     (; Δx) = mesh
-    fstd = std.face
+    np = length(ξf)
     pos = mesh.faces[iface].elempos[1]
     if pos == 1 || pos == 2  # Vertical
-        jac = fill(Δx[2] / 2, ndofs(fstd))
+        jac = fill(Δx[2] / 2, np)
         if pos == 1
             frames = [
                 ReferenceFrame(
@@ -557,7 +578,7 @@ function PhysicalFace(std, mesh::CartesianMesh{2,RT}, iface) where {RT}
                     SVector(zero(RT), -one(RT)),
                     SVector(zero(RT), zero(RT)),
                 )
-                for _ in 1:ndofs(fstd)
+                for _ in 1:np
             ]
         else # pos == 2
             frames = [
@@ -566,12 +587,12 @@ function PhysicalFace(std, mesh::CartesianMesh{2,RT}, iface) where {RT}
                     SVector(zero(RT), one(RT)),
                     SVector(zero(RT), zero(RT)),
                 )
-                for _ in 1:ndofs(fstd)
+                for _ in 1:np
             ]
         end
 
     else  # pos == 3 || pos == 4  # Horizontal
-        jac = fill(Δx[1] / 2, ndofs(fstd))
+        jac = fill(Δx[1] / 2, np)
         if pos == 3
             frames = [
                 ReferenceFrame(
@@ -579,7 +600,7 @@ function PhysicalFace(std, mesh::CartesianMesh{2,RT}, iface) where {RT}
                     SVector(one(RT), zero(RT)),
                     SVector(zero(RT), zero(RT)),
                 )
-                for _ in 1:ndofs(fstd)
+                for _ in 1:np
             ]
         else # pos == 4
             frames = [
@@ -588,23 +609,23 @@ function PhysicalFace(std, mesh::CartesianMesh{2,RT}, iface) where {RT}
                     SVector(-one(RT), zero(RT)),
                     SVector(zero(RT), zero(RT)),
                 )
-                for _ in 1:ndofs(fstd)
+                for _ in 1:np
             ]
         end
     end
 
-    xy = [face_phys_coords(ξ, mesh, iface) for ξ in fstd.ξ]
-    Jω = jac .* fstd.ω
+    xy = [face_phys_coords(ξ, mesh, iface) for ξ in ξf]
+    Jω = jac .* ω
     surf = sum(Jω)
     return PhysicalFace(xy, frames, jac, Jω, surf)
 end
 
-function PhysicalFace(std, mesh::CartesianMesh{3,RT}, iface) where {RT}
+function PhysicalFace(ξf, ω, mesh::CartesianMesh{3,RT}, iface) where {RT}
     (; Δx) = mesh
-    fstd = std.face
+    np = length(ξf)
     pos = mesh.faces[iface].elempos[1]
     if pos == 1 || pos == 2  # X faces
-        jac = fill(Δx[2] * Δx[3] / 4, ndofs(fstd))
+        jac = fill(Δx[2] * Δx[3] / 4, np)
         if pos == 1
             frames = [
                 ReferenceFrame(
@@ -612,7 +633,7 @@ function PhysicalFace(std, mesh::CartesianMesh{3,RT}, iface) where {RT}
                     SVector(zero(RT), -one(RT), zero(RT)),
                     SVector(zero(RT), zero(RT), one(RT)),
                 )
-                for _ in 1:ndofs(fstd)
+                for _ in 1:np
             ]
         else # pos == 2
             frames = [
@@ -621,11 +642,11 @@ function PhysicalFace(std, mesh::CartesianMesh{3,RT}, iface) where {RT}
                     SVector(zero(RT), one(RT), zero(RT)),
                     SVector(zero(RT), zero(RT), one(RT)),
                 )
-                for _ in 1:ndofs(fstd)
+                for _ in 1:np
             ]
         end
     elseif pos == 3 || pos == 4  # Y faces
-        jac = fill(Δx[1] * Δx[3] / 4, ndofs(fstd))
+        jac = fill(Δx[1] * Δx[3] / 4, np)
         if pos == 3
             frames = [
                 ReferenceFrame(
@@ -633,7 +654,7 @@ function PhysicalFace(std, mesh::CartesianMesh{3,RT}, iface) where {RT}
                     SVector(zero(RT), zero(RT), -one(RT)),
                     SVector(one(RT), zero(RT), zero(RT)),
                 )
-                for _ in 1:ndofs(fstd)
+                for _ in 1:np
             ]
         else # pos == 4
             frames = [
@@ -642,11 +663,11 @@ function PhysicalFace(std, mesh::CartesianMesh{3,RT}, iface) where {RT}
                     SVector(zero(RT), zero(RT), one(RT)),
                     SVector(one(RT), zero(RT), zero(RT)),
                 )
-                for _ in 1:ndofs(fstd)
+                for _ in 1:np
             ]
         end
     else # pos == 5 || pos == 6  # Z faces
-        jac = fill(Δx[1] * Δx[2] / 4, ndofs(fstd))
+        jac = fill(Δx[1] * Δx[2] / 4, np)
         if pos == 5
             frames = [
                 ReferenceFrame(
@@ -654,7 +675,7 @@ function PhysicalFace(std, mesh::CartesianMesh{3,RT}, iface) where {RT}
                     SVector(-one(RT), zero(RT), zero(RT)),
                     SVector(zero(RT), one(RT), zero(RT)),
                 )
-                for _ in 1:ndofs(fstd)
+                for _ in 1:np
             ]
         else # pos == 6
             frames = [
@@ -663,27 +684,26 @@ function PhysicalFace(std, mesh::CartesianMesh{3,RT}, iface) where {RT}
                     SVector(one(RT), zero(RT), zero(RT)),
                     SVector(zero(RT), one(RT), zero(RT)),
                 )
-                for _ in 1:ndofs(fstd)
+                for _ in 1:np
             ]
         end
     end
 
-    xy = [face_phys_coords(ξ, mesh, iface) for ξ in fstd.ξ]
-    Jω = jac .* fstd.ω
+    xy = [face_phys_coords(ξ, mesh, iface) for ξ in ξf]
+    Jω = jac .* ω
     surf = sum(Jω)
     return PhysicalFace(xy, frames, jac, Jω, surf)
 end
 
-function PhysicalFace(std, mesh::StepMesh{RT}, iface) where {RT}
+function PhysicalFace(ξf, ω, mesh::StepMesh{RT}, iface) where {RT}
     (; Δx) = mesh
-    fstd = std.face
+    np = length(ξf)
     ie = mesh.faces[iface].eleminds[1]
     ireg = region(mesh, ie)
     pos = mesh.faces[iface].elempos[1]
 
     if pos == 1 || pos == 2  # Vertical
-        jac = fill(Δx[ireg][2] / 2, ndofs(fstd))
-        xy = [face_phys_coords(ξ, mesh, iface) for ξ in fstd.ξ]
+        jac = fill(Δx[ireg][2] / 2, np)
         if pos == 1
             frames = [
                 ReferenceFrame(
@@ -691,7 +711,7 @@ function PhysicalFace(std, mesh::StepMesh{RT}, iface) where {RT}
                     SVector(zero(RT), -one(RT)),
                     SVector(zero(RT), zero(RT)),
                 )
-                for _ in 1:ndofs(fstd)
+                for _ in 1:np
             ]
         else # pos == 2
             frames = [
@@ -700,13 +720,12 @@ function PhysicalFace(std, mesh::StepMesh{RT}, iface) where {RT}
                     SVector(zero(RT), one(RT)),
                     SVector(zero(RT), zero(RT)),
                 )
-                for _ in 1:ndofs(fstd)
+                for _ in 1:np
             ]
         end
 
     else  # pos == 3 || pos == 4  # Horizontal
         jac = fill(Δx[ireg][1] / 2, ndofs(fstd))
-        xy = [face_phys_coords(ξ, mesh, iface) for ξ in fstd.ξ]
         if pos == 3
             frames = [
                 ReferenceFrame(
@@ -714,7 +733,7 @@ function PhysicalFace(std, mesh::StepMesh{RT}, iface) where {RT}
                     SVector(one(RT), zero(RT)),
                     SVector(zero(RT), zero(RT)),
                 )
-                for _ in 1:ndofs(fstd)
+                for _ in 1:np
             ]
         else # pos == 4
             frames = [
@@ -723,17 +742,18 @@ function PhysicalFace(std, mesh::StepMesh{RT}, iface) where {RT}
                     SVector(-one(RT), zero(RT)),
                     SVector(zero(RT), zero(RT)),
                 )
-                for _ in 1:ndofs(fstd)
+                for _ in 1:np
             ]
         end
     end
 
-    Jω = jac .* fstd.ω
+    xy = [face_phys_coords(ξf, mesh, iface) for ξ in ξf]
+    Jω = jac .* ω
     surf = sum(Jω)
     return PhysicalFace(xy, frames, jac, Jω, surf)
 end
 
-function PhysicalFace(_, mesh::UnstructuredMesh{1,RT}, iface) where {RT}
+function PhysicalFace(_, _, mesh::UnstructuredMesh{1,RT}, iface) where {RT}
     face = mesh.faces[iface]
     ielem = face.eleminds[1]
     pos = face.elempos[1]
@@ -774,19 +794,19 @@ function PhysicalFace(_, mesh::UnstructuredMesh{1,RT}, iface) where {RT}
     return PhysicalFace(x, frames, jac, Jω, surf)
 end
 
-function PhysicalFace(std, mesh::UnstructuredMesh{2,RT}, iface) where {RT}
-    fstd = std.face
+function PhysicalFace(ξf, ω, mesh::UnstructuredMesh{2,RT}, iface) where {RT}
+    np = length(ξf)
     face = mesh.faces[iface]
     ielem = face.eleminds[1]
     pos = face.elempos[1]
 
-    xy = Vector{SVector{2,RT}}(undef, ndofs(fstd))
-    frames = Vector{ReferenceFrame{2,RT}}(undef, ndofs(fstd))
-    jac = Vector{RT}(undef, ndofs(fstd))
+    xy = Vector{SVector{2,RT}}(undef, np)
+    frames = Vector{ReferenceFrame{2,RT}}(undef, np)
+    jac = Vector{RT}(undef, np)
 
     if pos == 1  # Left
-        for i in eachdof(fstd)
-            ξ = SVector(-one(RT), fstd.ξ[i][1])
+        for i in eachindex(ξf)
+            ξ = SVector(-one(RT), ξf[i][1])
             xy[i] = phys_coords(ξ, mesh, ielem)
             main = map_basis(ξ, mesh, ielem)
             dual = map_dual_basis(main, mesh, ielem)
@@ -800,8 +820,8 @@ function PhysicalFace(std, mesh::UnstructuredMesh{2,RT}, iface) where {RT}
         end
 
     elseif pos == 2  # Right
-        for i in eachdof(fstd)
-            ξ = SVector(one(RT), fstd.ξ[i][1])
+        for i in eachindex(ξf)
+            ξ = SVector(one(RT), ξf[i][1])
             xy[i] = phys_coords(ξ, mesh, ielem)
             main = map_basis(ξ, mesh, ielem)
             dual = map_dual_basis(main, mesh, ielem)
@@ -815,8 +835,8 @@ function PhysicalFace(std, mesh::UnstructuredMesh{2,RT}, iface) where {RT}
         end
 
     elseif pos == 3  # Bottom
-        for i in eachdof(fstd)
-            ξ = SVector(fstd.ξ[i][1], -one(RT))
+        for i in eachindex(ξf)
+            ξ = SVector(ξf[i][1], -one(RT))
             xy[i] = phys_coords(ξ, mesh, ielem)
             main = map_basis(ξ, mesh, ielem)
             dual = map_dual_basis(main, mesh, ielem)
@@ -830,8 +850,8 @@ function PhysicalFace(std, mesh::UnstructuredMesh{2,RT}, iface) where {RT}
         end
 
     else # pos == 4  # Top
-        for i in eachdof(fstd)
-            ξ = SVector(fstd.ξ[i][1], one(RT))
+        for i in eachindex(ξf)
+            ξ = SVector(ξf[i][1], one(RT))
             xy[i] = phys_coords(ξ, mesh, ielem)
             main = map_basis(ξ, mesh, ielem)
             dual = map_dual_basis(main, mesh, ielem)
@@ -845,24 +865,24 @@ function PhysicalFace(std, mesh::UnstructuredMesh{2,RT}, iface) where {RT}
         end
     end
 
-    Jω = jac .* fstd.ω
+    Jω = jac .* ω
     surf = sum(Jω)
     return PhysicalFace(xy, frames, jac, Jω, surf)
 end
 
-function PhysicalFace(std, mesh::UnstructuredMesh{3,RT}, iface) where {RT}
-    fstd = std.face
+function PhysicalFace(ξf, ω, mesh::UnstructuredMesh{3,RT}, iface) where {RT}
+    np = length(ξf)
     face = mesh.faces[iface]
     ielem = face.eleminds[1]
     pos = face.elempos[1]
 
-    xyz = Vector{SVector{3,RT}}(undef, ndofs(fstd))
-    frames = Vector{ReferenceFrame{3,RT}}(undef, ndofs(fstd))
-    jac = Vector{RT}(undef, ndofs(fstd))
+    xyz = Vector{SVector{3,RT}}(undef, np)
+    frames = Vector{ReferenceFrame{3,RT}}(undef, np)
+    jac = Vector{RT}(undef, np)
 
     if pos == 1  # -X face
-        for i in eachdof(fstd)
-            ξ = SVector(-one(RT), fstd.ξ[i][1], fstd.ξ[i][2])
+        for i in eachindex(ξf)
+            ξ = SVector(-one(RT), ξf[i][1], ξf[i][2])
             xyz[i] = phys_coords(ξ, mesh, ielem)
             main = map_basis(ξ, mesh, ielem)
             dual = map_dual_basis(main, mesh, ielem)
@@ -875,8 +895,8 @@ function PhysicalFace(std, mesh::UnstructuredMesh{3,RT}, iface) where {RT}
         end
 
     elseif pos == 2  # +X face
-        for i in eachdof(fstd)
-            ξ = SVector(one(RT), fstd.ξ[i][1], fstd.ξ[i][2])
+        for i in eachindex(ξf)
+            ξ = SVector(one(RT), ξf[i][1], ξf[i][2])
             xyz[i] = phys_coords(ξ, mesh, ielem)
             main = map_basis(ξ, mesh, ielem)
             dual = map_dual_basis(main, mesh, ielem)
@@ -889,8 +909,8 @@ function PhysicalFace(std, mesh::UnstructuredMesh{3,RT}, iface) where {RT}
         end
 
     elseif pos == 3  # -Y face
-        for i in eachdof(fstd)
-            ξ = SVector(fstd.ξ[i][1], -one(RT), fstd.ξ[i][2])
+        for i in eachindex(ξf)
+            ξ = SVector(ξf[i][1], -one(RT), ξf[i][2])
             xyz[i] = phys_coords(ξ, mesh, ielem)
             main = map_basis(ξ, mesh, ielem)
             dual = map_dual_basis(main, mesh, ielem)
@@ -903,8 +923,8 @@ function PhysicalFace(std, mesh::UnstructuredMesh{3,RT}, iface) where {RT}
         end
 
     elseif pos == 4  # +Y face
-        for i in eachdof(fstd)
-            ξ = SVector(fstd.ξ[i][1], one(RT), fstd.ξ[i][2])
+        for i in eachindex(ξf)
+            ξ = SVector(ξf[i][1], one(RT), ξf[i][2])
             xyz[i] = phys_coords(ξ, mesh, ielem)
             main = map_basis(ξ, mesh, ielem)
             dual = map_dual_basis(main, mesh, ielem)
@@ -917,8 +937,8 @@ function PhysicalFace(std, mesh::UnstructuredMesh{3,RT}, iface) where {RT}
         end
 
     elseif pos == 5  # -Z face
-        for i in eachdof(fstd)
-            ξ = SVector(fstd.ξ[i][1], fstd.ξ[i][2], -one(RT))
+        for i in eachindex(ξf)
+            ξ = SVector(ξf[i][1], ξf[i][2], -one(RT))
             xyz[i] = phys_coords(ξ, mesh, ielem)
             main = map_basis(ξ, mesh, ielem)
             dual = map_dual_basis(main, mesh, ielem)
@@ -931,8 +951,8 @@ function PhysicalFace(std, mesh::UnstructuredMesh{3,RT}, iface) where {RT}
         end
 
     else # pos == 6  # +Z face
-        for i in eachdof(fstd)
-            ξ = SVector(fstd.ξ[i][1], fstd.ξ[i][2], one(RT))
+        for i in eachindex(ξf)
+            ξ = SVector(ξf[i][1], ξf[i][2], one(RT))
             xyz[i] = phys_coords(ξ, mesh, ielem)
             main = map_basis(ξ, mesh, ielem)
             dual = map_dual_basis(main, mesh, ielem)
@@ -945,7 +965,7 @@ function PhysicalFace(std, mesh::UnstructuredMesh{3,RT}, iface) where {RT}
         end
     end
 
-    Jω = jac .* fstd.ω
+    Jω = jac .* ω
     surf = sum(Jω)
     return PhysicalFace(xyz, frames, jac, Jω, surf)
 end
@@ -960,10 +980,10 @@ struct Geometry{PE,PF,SG}
 end
 
 function Geometry(std, dh::DofHandler, mesh::AbstractMesh, subgrid=false)
-    elemvec = PhysicalElementVector(std, dh, mesh)
-    facevec = PhysicalFaceVector(std, dh, mesh)
+    elemvec = PhysicalElementVector(std.ξ, std.ω, dh, mesh)
+    facevec = PhysicalFaceVector(std.face.ξ, std.face.ω, dh, mesh)
     subgridvec = if subgrid
-        PhysicalSubgridVector(std, dh, mesh)
+        PhysicalSubgridVector(std.ξc, dh, mesh)
     else
         nothing
     end
@@ -978,24 +998,36 @@ FlouCommon.nfaces(g::Geometry) = nfaces(g.faces)
 ndofs(v::PhysicalElementVector) = ndofs(v.dh)
 ndofs(g::Geometry) = ndofs(g.elements)
 
-Base.@propagate_inbounds function contravariant(F, metric::SMatrix{1,1})
-    return (
-        F[1] * metric[1, 1],
+@inline function contravariant(F, metric::SMatrix{1,1}, dir)
+    @boundscheck checkbounds(metric, dir, dir)
+    return F[1] * metric[1, 1]
+end
+
+function contravariant(F, metric::SMatrix{1,1})
+    return @inbounds (contravariant(F, metric, 1),)
+end
+
+@inline function contravariant(F, metric::SMatrix{2,2}, dir)
+    @boundscheck checkbounds(metric, dir, dir)
+    return F[1] * metric[1, dir] + F[2] * metric[2, dir]
+end
+
+function contravariant(F, metric::SMatrix{2,2})
+    return @inbounds (
+        contravariant(F, metric, 1),
+        contravariant(F, metric, 2),
     )
 end
 
-Base.@propagate_inbounds function contravariant(F, metric::SMatrix{2,2})
-    return (
-        F[1] * metric[1, 1] + F[2] * metric[2, 1],
-        F[1] * metric[1, 2] + F[2] * metric[2, 2],
-    )
+@inline function contravariant(F, metric::SMatrix{3,3}, dir)
+    @boundscheck checkbounds(metric, dir, dir)
+    return F[1] * metric[1, dir] + F[2] * metric[2, dir] + F[3] * metric[3, dir]
 end
 
-Base.@propagate_inbounds function contravariant(F, metric::SMatrix{3,3})
-    return (
-        F[1] * metric[1, 1] + F[2] * metric[2, 1] + F[3] * metric[3, 1],
-        F[1] * metric[1, 2] + F[2] * metric[2, 2] + F[3] * metric[3, 2],
-        F[1] * metric[1, 3] + F[2] * metric[2, 3] + F[3] * metric[3, 3],
+function contravariant(F, metric::SMatrix{3,3})
+    return @inbounds (
+        contravariant(F, metric, 1),
+        contravariant(F, metric, 2),
+        contravariant(F, metric, 3),
     )
 end
-

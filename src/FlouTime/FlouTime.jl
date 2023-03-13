@@ -112,18 +112,19 @@ end
 
 function get_monitor_callback(
     timetype::Type{<:Real},
+    valuetype::Type{<:Number},
     disc::AbstractSpatialDiscretization,
     equation::AbstractEquation,
     name::Symbol,
     p=nothing;
     iter=true
 )
-    valuetype, monitorfunc_ = get_monitor(disc, equation, name, p)
+    _monitorfunc = get_monitor(disc, equation, name, p)
     monitor = MonitorOutput(timetype[], Int[], valuetype[])
     condition = _is_iter_selected(iter)
     affect = (integrator) -> begin
         (; disc, equation) = integrator.p
-        value = monitorfunc_(integrator.u, disc, equation)
+        value = _monitorfunc(integrator.u, disc, equation)
         push!(monitor.time, integrator.t)
         push!(monitor.iter, integrator.iter)
         push!(monitor.value, value)

@@ -16,633 +16,278 @@
 #==========================================================================================#
 #                                       State vector                                       #
 
-struct StateVector{NV,RT<:Real,D<:HybridVector{NV,RT}} <: AbstractMatrix{RT}
-    data::D
-    dh::DofHandler
-    function StateVector(data::HybridVector, dh::DofHandler)
-        length(data) == ndofs(dh) || throw(DimensionMismatch(
-            "The length of `data` must be equal to the number of degrees of freedom"
-        ))
-        nv = innerdim(data)
-        rt = datatype(data)
-        return new{nv,rt,typeof(data)}(data, dh)
+struct StateVector{NV,M}
+    data::M
+    function StateVector{NV}(data) where {NV}
+        return new{NV,typeof(data)}(data)
     end
 end
 
-struct LazyStateVectorDof{S<:StateVector}
-    s::S
-end
-@inline function Base.getindex(d::LazyStateVectorDof, i::Int)
-    @boundscheck checkbounds(d.s.data,i)
-    return @inbounds d.s.data[i]
-end
-@inline function Base.setindex!(d::LazyStateVectorDof, v, i::Int)
-    @boundscheck checkbounds(d.s.data,i)
-    @inbounds d.s.data[i] = v
+function StateVector(data::AbstractMatrix)
+    nv = size(data, 2)
+    return StateVector{nv}(data)
 end
 
-struct LazyStateVectorElement{S<:StateVector}
-    s::S
-end
-@inline function Base.getindex(e::LazyStateVectorElement, i::Int)
-    @boundscheck checkindex(Bool, 1:nelements(e.s.dh), i) || throw(ErrorException(
-        "Bounds Error: attempt to access $(nelements(e.s.dh))-element \
-        StateVector at index [$i]"
-    ))
-    @inbounds begin
-        i1 = e.s.dh.elem_offsets[i] + 1
-        i2 = e.s.dh.elem_offsets[i + 1]
-        return view(e.s.data, i1:i2)
-    end
-end
-@inline function Base.setindex!(e::LazyStateVectorElement, v, i::Int)
-    @boundscheck checkindex(Bool, 1:nelements(e.s.dh), i) || throw(ErrorException(
-        "Bounds Error: attempt to access $(nelements(e.s.dh))-element \
-        StateVector at index [$i]"
-    ))
-    @inbounds begin
-        i1 = e.s.dh.elem_offsets[i] + 1
-        i2 = e.s.dh.elem_offsets[i + 1]
-        e.s.data[i1:i2] = v
-    end
+function StateVector(data::AbstractVector)
+    data = reshape(data, :, 1)
+    return StateVector{1}(data)
 end
 
-struct LazyStateVectorVar{S<:StateVector}
-    s::S
-end
-@inline function Base.getindex(v::LazyStateVectorVar, i::Int)
-    @boundscheck checkbounds(v.s.data.flat, i, :)
-    return @inbounds view(v.s.data.flat, i, :)
-end
-@inline function Base.setindex!(sv::LazyStateVectorVar, v, i::Int)
-    @boundscheck checkbounds(sv.s.data.flat, i, :)
-    @inbounds sv.s.data.flat[i, :] = v
+function StateVector{NV}(
+    value::Union{UndefInitializer,Missing,Nothing},
+    ndofs::Int,
+    ftype=Float64,
+) where {
+    NV
+}
+    data = Matrix{ftype}(value, ndofs, NV)
+    return StateVector{NV}(data)
 end
 
-Base.propertynames(::StateVector) = (:data, :flat, :dof, :element, :var, :dh)
-Base.@propagate_inbounds function Base.getproperty(sv::StateVector, s::Symbol)
-    return if s == :flat
-        sv.data.flat
-    elseif s == :dof
-        LazyStateVectorDof(sv)
-    elseif s == :element
-        LazyStateVectorElement(sv)
-    elseif s == :var
-        LazyStateVectorVar(sv)
+function Base.similar(s::StateVector, ::Type{T}, dims::Dims) where {T}
+    data = similar(s.data, T, dims)
+    return StateVector(data)
+end
+
+function Base.similar(s::StateVector)
+    data = similar(s.data)
+    return StateVector(data)
+end
+
+function Base.show(io::IO, ::MIME"text/plain", s::StateVector)
+    @nospecialize
+    rt = datatype(s)
+    ndof = ndofs(s)
+    nvars = nvariables(s)
+    vstr = (nvars == 1) ? " variable" : " variables"
+    print(io, ndof, "-DOF StateVector{", rt, "} with ", nvars, vstr)
+    return nothing
+end
+
+function Base.fill!(s::StateVector, v)
+    fill!(s.data, v)
+    return s
+end
+
+FlouCommon.datatype(s::StateVector) = eltype(s.data)
+
+FlouCommon.nvariables(::StateVector{NV}) where {NV} = NV
+Base.@propagate_inbounds ndofs(s::StateVector) = size(s.data, 1)
+
+FlouCommon.eachvariable(s::StateVector) = Base.OneTo(nvariables(s))
+Base.@propagate_inbounds eachdof(s::StateVector) = Base.OneTo(ndofs(s))
+
+struct SVDofs{NV,M,RT} <: AbstractVector{SVector{NV,RT}}
+    s::StateVector{NV,M}
+end
+function SVDofs(s::StateVector{NV,M}) where {NV,M}
+    rt = datatype(s)
+    return SVDofs{NV,M,rt}(s)
+end
+function Base.getindex(d::SVDofs{NV}, i::Integer) where {NV}
+    @boundscheck checkbounds(d, i)
+    return SVector{NV}(ntuple(iv -> @inbounds(d.s.data[i, iv]), NV))
+end
+@inline function Base.setindex!(d::SVDofs{NV}, val, i::Integer) where {NV}
+    @boundscheck checkbounds(d, i); checkbounds(val, 1:NV)
+    return @inbounds d.s.data[i, :] = val
+end
+Base.IndexStyle(::Type{<:SVDofs}) = IndexLinear()
+Base.size(d::SVDofs) = (ndofs(d.s),)
+
+const SVDofsView{RT} =
+    SubArray{RT,1,Matrix{RT},Tuple{Int64,Base.Slice{Base.OneTo{Int64}}},true}
+
+struct SVDofsMut{NV,M,RT} <: AbstractVector{SVDofsView{RT}}
+    s::StateVector{NV,M}
+end
+function SVDofsMut(s::StateVector{NV,M}) where {NV,M}
+    rt = datatype(s)
+    return SVDofsMut{NV,M,rt}(s)
+end
+function Base.getindex(d::SVDofsMut{NV}, i::Integer) where {NV}
+    @boundscheck checkbounds(d, i)
+    return @inbounds view(d.s.data, i, :)
+end
+@inline function Base.setindex!(d::SVDofsMut{NV}, val, i::Integer) where {NV}
+    @boundscheck checkbounds(d, i); checkbounds(val, 1:NV)
+    return @inbounds d.s.data[i, :] = val
+end
+Base.IndexStyle(::Type{<:SVDofsMut}) = IndexLinear()
+Base.size(d::SVDofsMut) = (ndofs(d.s),)
+
+const SVVarsView{RT} =
+    SubArray{RT,1,Matrix{RT},Tuple{Base.Slice{Base.OneTo{Int64}},Int64},true}
+
+struct SVVars{NV,M,RT} <: AbstractVector{SVVarsView{RT}}
+    s::StateVector{NV,M}
+end
+function SVVars(s::StateVector{NV,M}) where {NV,M}
+    rt = datatype(s)
+    return SVVars{NV,M,rt}(s)
+end
+@inline function Base.getindex(v::SVVars, i::Integer)
+    @boundscheck checkbounds(v, i)
+    return @inbounds view(v.s.data, :, i)
+end
+@inline function Base.setindex!(v::SVVars, val, i::Integer)
+    @boundscheck checkbounds(v, i); checkbounds(val, 1:ndofs(v.s))
+    return @inbounds v.s.data[:, i] = val
+end
+Base.IndexStyle(::Type{<:SVVars}) = IndexLinear()
+Base.size(::SVVars{NV}) where {NV} = (NV,)
+
+Base.propertynames(::StateVector) = (:dofs, :dofsmut, :vars, fieldnames(StateVector)...)
+function Base.getproperty(sv::StateVector, s::Symbol)
+    return if s == :dofs
+        SVDofs(sv)
+    elseif s == :dofsmut
+        SVDofsMut(sv)
+    elseif s == :vars
+        SVVars(sv)
     else
         getfield(sv, s)
     end
 end
 
-function StateVector{NV}(vec::AbstractVector{<:SVector}, dh::DofHandler) where {NV}
-    return StateVector(HybridVector(vec), dh)
-end
-
-function StateVector{NV}(mat::AbstractMatrix, dh::DofHandler) where {NV}
-    return StateVector(HybridVector{NV}(mat), dh)
-end
-
-function StateVector{NV}(s::StateVector, ::DofHandler) where {NV}
-    return s
-end
-
-function StateVector{NV,RT}(
-    value::Union{UndefInitializer,Missing,Nothing},
-    dh::DofHandler,
-) where {
-    NV,
-    RT
-}
-    data = HybridVector{NV,RT}(value, ndofs(dh))
-    return StateVector(data, dh)
-end
-
-function Base.similar(s::StateVector, ::Type{T}, dims::Dims) where {T}
-    data = similar(s.data, T, Base.tail(dims))
-    return StateVector(data, s.dh)
-end
-
-function Base.show(io::IO, ::MIME"text/plain", s::StateVector)
-    @nospecialize
-    rt = eltype(s)
-    nvars = nvariables(s)
-    nelem = nelements(s)
-    vstr = (nvars == 1) ? " variable" : " variables"
-    print(io, nelem, "-element StateVector{", rt, "} with ", nvars, vstr)
-    return nothing
-end
-
-Base.IndexStyle(::Type{<:StateVector}) = IndexLinear()
-Base.size(s::StateVector) = size(s.data.flat)
-
-function Base.fill!(s::StateVector, v)
-    fill!(s.data.flat, v)
-    return s
-end
-
-@inline function Base.getindex(s::StateVector, i::Integer)
-    @boundscheck checkbounds(s, i)
-    return @inbounds s.data.flat[i]
-end
-
-@inline function Base.setindex!(s::StateVector, v, i::Integer)
-    @boundscheck checkbounds(s, i)
-    @inbounds s.data.flat[i] = v
-end
-
-FlouCommon.datatype(s::StateVector) = datatype(s.data)
-
-FlouCommon.nelements(s::StateVector) = nelements(s.dh)
-FlouCommon.nvariables(s::StateVector) = innerdim(s.data)
-ndofs(s::StateVector) = length(s.data)
-
-FlouCommon.eachelement(s::StateVector) = Base.OneTo(nelements(s))
-FlouCommon.eachvariable(s::StateVector) = Base.OneTo(nvariables(s))
-eachdof(s::StateVector) = Base.OneTo(ndofs(s))
-
 #==========================================================================================#
 #                                       Block vector                                       #
 
-struct BlockVector{NV,RT<:Real,D<:HybridMatrix{NV,RT}} <: AbstractArray{RT,3}
-    data::D
-    dh::DofHandler
-    function BlockVector(data::HybridMatrix, dh::DofHandler)
-        size(data, 1) == ndofs(dh) || throw(DimensionMismatch(
-            "The first dimension of `data` must equal the number of dofs in dh"
-        ))
-        nv = innerdim(data)
-        rt = datatype(data)
-        return new{nv,rt,typeof(data)}(data, dh)
+struct BlockVector{NV,A}
+    data::A
+    function BlockVector{NV}(data::AbstractArray{RT,3}) where {NV,RT}
+        return new{NV,typeof(data)}(data)
     end
 end
 
-struct LazyBlockVectorDof{B<:BlockVector}
-    b::B
-end
-@inline function Base.getindex(d::LazyBlockVectorDof, i::Int)
-    @boundscheck checkbounds(d.b.data,i)
-    return @inbounds view(d.b.data, i, :)
-end
-@inline function Base.setindex!(d::LazyBlockVectorDof, v, i::Int)
-    @boundscheck checkbounds(d.b.data,i)
-    @inbounds d.b.data[i, :] = v
+function BlockVector(data::AbstractArray{RT,3}) where {RT}
+    nv = size(data, 2)
+    return BlockVector{nv}(data)
 end
 
-struct LazyBlockVectorElement{B<:BlockVector}
-    b::B
-end
-@inline function Base.getindex(e::LazyBlockVectorElement, i::Int)
-    @boundscheck checkindex(Bool, 1:nelements(e.b.dh), i) || throw(ErrorException(
-        "Bounds Error: attempt to access $(nelements(e.b.dh))-element \
-        BlockVector at index [$i]"
-    ))
-    @inbounds begin
-        i1 = e.b.dh.elem_offsets[i] + 1
-        i2 = e.b.dh.elem_offsets[i + 1]
-        return view(e.b.data, i1:i2, :)
-    end
-end
-@inline function Base.setindex!(e::LazyBlockVectorElement, v, i::Int)
-    @boundscheck checkindex(Bool, 1:nelements(e.b.dh), i) || throw(ErrorException(
-        "Bounds Error: attempt to access $(nelements(e.b.dh))-element \
-        BlockVector at index [$i]"
-    ))
-    @inbounds begin
-        i1 = e.b.dh.elem_offsets[i] + 1
-        i2 = e.b.dh.elem_offsets[i + 1]
-        e.b.data[i1:i2, :] = v
-    end
+function BlockVector(data::AbstractMatrix)
+    data = reshape(data, size(data, 1), 1, :)
+    return BlockVector{1}(data)
 end
 
-struct LazyBlockVectorVar{B<:BlockVector}
-    b::B
-end
-@inline function Base.getindex(v::LazyBlockVectorVar, i::Int)
-    @boundscheck checkbounds(v.b.data.flat, i, :, :)
-    return @inbounds view(v.b.data.flat, i, :, :)
-end
-@inline function Base.setindex!(sv::LazyBlockVectorVar, v, i::Int)
-    @boundscheck checkbounds(sv.b.data.flat, i, :, :)
-    @inbounds sv.b.data.flat[i, :, :] = v
-end
-
-struct LazyBlockVectorDim{B<:BlockVector}
-    b::B
-end
-@inline function Base.getindex(d::LazyBlockVectorDim, i::Int)
-    @boundscheck checkbounds(d.b.data, :, i)
-    return @inbounds view(d.b.data, :, i)
-end
-@inline function Base.setindex!(d::LazyBlockVectorDim, v, i::Int)
-    @boundscheck checkbounds(d.b.data, :, i)
-    @inbounds d.b.data[:, i] = v
-end
-
-Base.propertynames(::BlockVector) = (:data, :flat, :dof, :element, :var, :dim, :dh)
-Base.@propagate_inbounds function Base.getproperty(b::BlockVector, s::Symbol)
-    return if s == :flat
-        b.data.flat
-    elseif s == :dof
-        LazyBlockVectorDof(b)
-    elseif s == :element
-        LazyBlockVectorElement(b)
-    elseif s == :var
-        LazyBlockVectorVar(b)
-    elseif s == :dim
-        LazyBlockVectorDim(b)
-    else
-        getfield(b, s)
-    end
-end
-
-function BlockVector{NV}(mat::AbstractMatrix{<:SVector}, dh::DofHandler) where {NV}
-    return BlockVector(HybridMatrix(mat), dh)
-end
-
-function BlockVector{NV}(array::AbstractArray{RT,3}, dh::DofHandler) where {NV,RT}
-    return BlockVector(HybridMatrix{NV}(array), dh)
-end
-
-function BlockVector{NV}(b::BlockVector, ::DofHandler) where {NV}
-    return b
-end
-
-function BlockVector{NV,RT}(
+function BlockVector{NV}(
     value::Union{UndefInitializer,Missing,Nothing},
-    ndims::Integer,
-    dh::DofHandler,
+    ndofs::Int,
+    ndims::Int,
+    ftype=Float64,
 ) where {
-    NV,
-    RT
+    NV
 }
-    data = HybridMatrix{NV,RT}(value, ndofs(dh), ndims)
-    return BlockVector(data, dh)
+    data = Array{ftype,3}(value, ndofs, NV, ndims)
+    return BlockVector{NV}(data)
 end
 
 function Base.similar(b::BlockVector, ::Type{T}, dims::Dims) where {T}
-    data = similar(b.data, T, Base.tail(dims))
-    return BlockVector(data, b.dh)
+    data = similar(b.data, T, dims)
+    return BlockVector(data)
+end
+
+function Base.similar(b::BlockVector)
+    data = similar(b.data)
+    return BlockVector(data)
 end
 
 function Base.show(io::IO, ::MIME"text/plain", b::BlockVector)
     @nospecialize
-    rt = eltype(b)
+    rt = datatype(b)
+    ndof = ndofs(b)
     nvars = nvariables(b)
-    nelem = nelements(b)
     dim = spatialdim(b)
     vstr = (nvars == 1) ? " variable" : " variables"
-    print(io, nelem, "-element ", dim, "D BlockVector{", rt, "} with ", nvars, vstr)
+    print(io, ndof, "-DOF, ", dim, "D BlockVector{", rt, "} with ", nvars, vstr)
     return nothing
 end
 
-Base.IndexStyle(::Type{<:BlockVector}) = Base.IndexLinear()
-Base.size(b::BlockVector) = size(b.data.flat)
-
 function Base.fill!(b::BlockVector, v)
-    fill!(b.data.flat, v)
+    fill!(b.data, v)
     return b
 end
 
-@inline function Base.getindex(b::BlockVector, i::Integer)
-    @boundscheck checkbounds(b, i)
-    return @inbounds b.data.flat[i]
-end
+FlouCommon.datatype(b::BlockVector) = eltype(b.data)
 
-@inline function Base.setindex!(b::BlockVector, v, i::Integer)
-    @boundscheck checkbounds(b, i)
-    @inbounds b.data.flat[i] = v
-end
-
-FlouCommon.datatype(b::BlockVector) = datatype(b.data)
-
-FlouCommon.nelements(b::BlockVector) = nelements(b.dh)
-FlouCommon.nvariables(b::BlockVector) = innerdim(b.data)
+FlouCommon.nvariables(::BlockVector{NV}) where {NV} = NV
 ndofs(b::BlockVector) = size(b.data, 1)
 
-FlouCommon.eachelement(b::BlockVector) = Base.OneTo(nelements(b))
 FlouCommon.eachvariable(b::BlockVector) = Base.OneTo(nvariables(b))
 eachdof(b::BlockVector) = Base.OneTo(ndofs(b))
 
-FlouCommon.spatialdim(b::BlockVector) = size(b.data, 2)
+FlouCommon.spatialdim(b::BlockVector) = size(b.data, 3)
 FlouCommon.eachdim(b::BlockVector) = Base.OneTo(spatialdim(b))
 
-#==========================================================================================#
-#                                     Face state vector                                    #
+struct BVDofs{NV,A,RT} <: AbstractMatrix{SVector{NV,RT}}
+    b::BlockVector{NV,A}
+end
+function BVDofs(b::BlockVector{NV,A}) where {NV,A}
+    rt = datatype(b)
+    return BVDofs{NV,A,rt}(b)
+end
+@inline function Base.getindex(d::BVDofs{NV}, i::Integer, j::Integer) where {NV}
+    @boundscheck checkbounds(d, i, j)
+    return SVector(ntuple(iv -> @inbounds(d.b.data[i, iv, j]), NV))
+end
+@inline function Base.setindex!(d::BVDofs{NV}, val, i::Integer, j::Integer) where {NV}
+    @boundscheck checkbounds(d, i, j); checkbounds(val, 1:NV)
+    return @inbounds d.b.data[i, :, j] = val
+end
+Base.IndexStyle(::Type{<:BVDofs}) = IndexCartesian()
+Base.size(d::BVDofs{NV}) where {NV} = (ndofs(d.b), spatialdim(d.b))
 
-struct FaceStateVector{NV,RT<:Real,D<:HybridVector{NV,RT}} <: AbstractMatrix{RT}
-    data::D
-    dh::DofHandler
-    function FaceStateVector(data::HybridVector, dh::DofHandler)
-        length(data) == nfacedofs(dh) || throw(DimensionMismatch(
-            "The length of `data` must equal the number of face dofs in dh"
-        ))
-        nv = innerdim(data)
-        rt = datatype(data)
-        return new{nv,rt,typeof(data)}(data, dh)
-    end
-end
+const BVDofsView{RT} =
+    SubArray{RT,1,Array{RT,3},Tuple{Int64,Base.Slice{Base.OneTo{Int64}},Int64},true}
 
-struct LazyFaceStateVectorDof{S<:FaceStateVector}
-    s::S
+struct BVDofsMut{NV,A,RT} <: AbstractMatrix{BVDofsView{RT}}
+    b::BlockVector{NV,A}
 end
-@inline function Base.getindex(d::LazyFaceStateVectorDof, i::Int)
-    @boundscheck checkindex(Bool, 1:nfacedofs(d.s.dh), i) || throw(ErrorException(
-        "Bounds Error: attempt to access $(nfacedofs(d.s.dh))-DOF \
-        FaceStateVector at index [$i]"
-    ))
-    @inbounds begin
-        i1 = 2 * d.s.dh.face_offsets[i] + 1
-        i2 = i1 + d.s.dh.face_offsets[i + 1] - d.s.dh.face_offsets[i]
-        return (d.s.data[i1], d.s.data[i2])
-    end
+function BVDofsMut(b::BlockVector{NV,A}) where {NV,A}
+    rt = datatype(b)
+    return BVDofsMut{NV,A,rt}(b)
 end
-@inline function Base.setindex!(d::LazyFaceStateVectorDof, v, i::Int)
-    @boundscheck checkindex(Bool, 1:nfacedofs(d.s.dh), i) || throw(ErrorException(
-        "Bounds Error: attempt to access $(nfacedofs(d.s.dh))-DOF \
-        FaceStateVector at index [$i]"
-    ))
-    @inbounds begin
-        i1 = 2 * d.s.dh.face_offsets[i] + 1
-        i2 = i1 + d.s.dh.face_offsets[i + 1] - d.s.dh.face_offsets[i]
-        d.s.data[i1] = v
-        d.s.data[i2] = v
-    end
+@inline function Base.getindex(d::BVDofsMut{NV}, i::Integer, j::Integer) where {NV}
+    @boundscheck checkbounds(d, i, j)
+    return @inbounds view(d.b.data, i, :, j)
 end
+@inline function Base.setindex!(d::BVDofsMut{NV}, val, i::Integer, j::Integer) where {NV}
+    @boundscheck checkbounds(d, i, j); checkbounds(val, 1:NV)
+    return @inbounds d.b.data[i, :, j] = val
+end
+Base.IndexStyle(::Type{<:BVDofsMut}) = IndexCartesian()
+Base.size(d::BVDofsMut{NV}) where {NV} = (ndofs(d.b), spatialdim(d.b))
 
-struct LazyFaceStateVectorFace{S<:FaceStateVector}
-    s::S
-end
-@inline function Base.getindex(f::LazyFaceStateVectorFace, i::Int)
-    @boundscheck checkindex(Bool, 1:nfaces(f.s.dh), i) || throw(ErrorException(
-        "Bounds Error: attempt to access $(nfaces(f.s.dh))-face \
-        FaceStateVector at index [$i]"
-    ))
-    @inbounds begin
-        i1 = 2 * f.s.dh.face_offsets[i] + 1
-        i2 = (i1 - 1) + f.s.dh.face_offsets[i + 1] - f.s.dh.face_offsets[i]
-        i3 = 2 * f.s.dh.face_offsets[i + 1]
-        return (view(f.s.data, i1:i2), view(f.s.data, (i2 + 1):i3))
-    end
-end
-@inline function Base.setindex!(f::LazyFaceStateVectorFace, v, i::Int)
-    @boundscheck checkindex(Bool, 1:nfaces(f.s.dh), i) || throw(ErrorException(
-        "Bounds Error: attempt to access $(nfaces(f.s.dh))-face \
-        FaceStateVector at index [$i]"
-    ))
-    @inbounds begin
-        i1 = 2 * f.s.dh.face_offsets[i] + 1
-        i2 = (i1 - 1) + f.s.dh.face_offsets[i + 1] - f.s.dh.face_offsets[i]
-        i3 = 2 * f.s.dh.face_offsets[i + 1]
-        f.s.data[i1:i2] = v
-        f.s.data[(i2 + 1):i3] = v
-    end
-end
+const BVVarsView{RT} =
+    SubArray{RT,1,Array{RT,3},Tuple{Base.Slice{Base.OneTo{Int64}},Int64,Int64},true}
 
-struct LazyFaceStateVectorVar{S<:FaceStateVector}
-    s::S
+struct BVVars{NV,A,RT} <: AbstractMatrix{BVVarsView{RT}}
+    b::BlockVector{NV,A}
 end
-@inline function Base.getindex(v::LazyFaceStateVectorVar, i::Int)
-    @boundscheck checkbounds(v.s.data.flat, i, :)
-    return @inbounds view(v.s.data.flat, i, :)
+function BVVars(b::BlockVector{NV,A}) where {NV,A}
+    rt = datatype(b)
+    return BVVars{NV,A,rt}(b)
 end
-@inline function Base.setindex!(sv::LazyFaceStateVectorVar, v, i::Int)
-    @boundscheck checkbounds(sv.s.data.flat, i, :)
-    @inbounds sv.s.data.flat[i, :] = v
+@inline function Base.getindex(v::BVVars, i::Integer, j::Integer)
+    @boundscheck checkbounds(v, i, j)
+    return @inbounds view(v.b.data, :, i, j)
 end
+@inline function Base.setindex!(v::BVVars, val, i::Integer, j::Integer)
+    @boundscheck checkbounds(v, i, j); checkbounds(val, 1:ndofs(v.b))
+    return @inbounds v.b.data[:, i, j] = val
+end
+Base.IndexStyle(::Type{<:BVVars}) = IndexCartesian()
+Base.size(v::BVVars{NV}) where {NV} = (NV, spatialdim(v.b))
 
-Base.propertynames(::FaceStateVector) = (:data, :flat, :dof, :face, :var, :dh)
-Base.@propagate_inbounds function Base.getproperty(fs::FaceStateVector, s::Symbol)
-    return if s == :flat
-        fs.data.flat
-    elseif s == :dof
-        LazyFaceStateVectorDof(fs)
-    elseif s == :face
-        LazyFaceStateVectorFace(fs)
-    elseif s == :var
-        LazyFaceStateVectorVar(fs)
+Base.propertynames(::BlockVector) = (:dofs, :dofsmut, :vars, fieldnames(BlockVector)...)
+function Base.getproperty(bv::BlockVector, s::Symbol)
+    return if s == :dofs
+        BVDofs(bv)
+    elseif s == :dofsmut
+        BVDofsMut(bv)
+    elseif s == :vars
+        BVVars(bv)
     else
-        getfield(fs, s)
+        getfield(bv, s)
     end
 end
-
-function FaceStateVector{NV,RT}(
-    value::Union{UndefInitializer,Missing,Nothing},
-    dh::DofHandler,
-) where {
-    NV,
-    RT
-}
-    data = HybridVector{NV,RT}(value, nfacedofs(dh))
-    return FaceStateVector(data, dh)
-end
-
-function Base.similar(s::FaceStateVector, ::Type{T}, dims::Dims) where {T}
-    data = similar(s.data, T, Base.tail(dims))
-    return FaceStateVector(data, s.dh)
-end
-
-function Base.show(io::IO, ::MIME"text/plain", s::FaceStateVector)
-    @nospecialize
-    rt = eltype(s)
-    nvars = nvariables(s)
-    nface = nfaces(s)
-    vstr = (nvars == 1) ? " variable" : " variables"
-    print(io, nface, "-face FaceStateVector{", rt, "} with ", nvars, vstr)
-    return nothing
-end
-
-Base.IndexStyle(::Type{<:FaceStateVector}) = IndexLinear()
-Base.size(s::FaceStateVector) = size(s.data.flat)
-
-function Base.fill!(s::FaceStateVector, v)
-    fill!(s.data.flat, v)
-    return s
-end
-
-@inline function Base.getindex(s::FaceStateVector, i::Integer)
-    @boundscheck checkbounds(s, i)
-    return @inbounds s.data.flat[i]
-end
-
-@inline function Base.setindex!(s::FaceStateVector, v, i::Integer)
-    @boundscheck checkbounds(s, i)
-    @inbounds s.data.flat[i] = v
-end
-
-FlouCommon.datatype(s::FaceStateVector) = datatype(s.data)
-
-FlouCommon.nfaces(s::FaceStateVector) = nfaces(s.dh)
-FlouCommon.nvariables(s::FaceStateVector) = innerdim(s.data)
-
-FlouCommon.eachface(s::FaceStateVector) = Base.OneTo(nfaces(s))
-FlouCommon.eachvariable(s::FaceStateVector) = Base.OneTo(nvariables(s))
-
-#==========================================================================================#
-#                                     Face block vector                                    #
-
-struct FaceBlockVector{NV,RT<:Real,D<:HybridMatrix{NV,RT}} <: AbstractArray{RT,3}
-    data::D
-    dh::DofHandler
-    function FaceBlockVector(data::HybridMatrix, dh::DofHandler)
-        size(data, 1) == nfacedofs(dh) || throw(DimensionMismatch(
-            "The first dimension of `data` must equal the number of face dofs in dh"
-        ))
-        nv = innerdim(data)
-        rt = datatype(data)
-        return new{nv,rt,typeof(data)}(data, dh)
-    end
-end
-
-struct LazyFaceBlockVectorDof{B<:FaceBlockVector}
-    b::B
-end
-@inline function Base.getindex(d::LazyFaceBlockVectorDof, i::Int)
-    @boundscheck checkindex(Bool, 1:nfacedofs(d.b.dh), i) || throw(ErrorException(
-        "Bounds Error: attempt to access $(nfacedofs(d.b.dh))-DOF \
-        FaceBlockVector at index [$i]"
-    ))
-    @inbounds begin
-        i1 = 2 * d.b.dh.face_offsets[i] + 1
-        i2 = i1 + d.b.dh.face_offsets[i + 1] - d.b.dh.face_offsets[i]
-        return (view(d.b.data, i1, :), view(d.b.data, i2, :))
-    end
-end
-@inline function Base.setindex!(d::LazyFaceBlockVectorDof, v, i::Int)
-    @boundscheck checkindex(Bool, 1:nfacedofs(d.b.dh), i) || throw(ErrorException(
-        "Bounds Error: attempt to access $(nfacedofs(d.b.dh))-DOF \
-        FaceBlockVector at index [$i]"
-    ))
-    @inbounds begin
-        i1 = 2 * d.b.dh.face_offsets[i] + 1
-        i2 = i1 + d.b.dh.face_offsets[i + 1] - d.b.dh.face_offsets[i]
-        d.b.data[i1, :] = v
-        d.b.data[i2, :] = v
-    end
-end
-
-struct LazyFaceBlockVectorElement{B<:FaceBlockVector}
-    b::B
-end
-@inline function Base.getindex(e::LazyFaceBlockVectorElement, i::Int)
-    @boundscheck checkindex(Bool, 1:nfaces(e.b.dh), i) || throw(ErrorException(
-        "Bounds Error: attempt to access $(nfaces(e.b.dh))-face \
-        FaceBlockVector at index [$i]"
-    ))
-    @inbounds begin
-        i1 = 2 * e.b.dh.face_offsets[i] + 1
-        i2 = (i1 - 1) + e.b.dh.face_offsets[i + 1] - e.b.dh.face_offsets[i]
-        i3 = 2 * e.b.dh.face_offsets[i + 1]
-        return (view(e.b.data, i1:i2, :), view(e.b.data, (i2 + 1):i3, :))
-    end
-end
-@inline function Base.setindex!(e::LazyFaceBlockVectorElement, v, i::Int)
-    @boundscheck checkindex(Bool, 1:nfaces(e.b.dh), i) || throw(ErrorException(
-        "Bounds Error: attempt to access $(nfaces(e.b.dh))-face \
-        FaceBlockVector at index [$i]"
-    ))
-    @inbounds begin
-        i1 = 2 * e.b.dh.face_offsets[i] + 1
-        i2 = (i1 - 1) + e.b.dh.face_offsets[i + 1] - e.b.dh.face_offsets[i]
-        i3 = 2 * e.b.dh.face_offsets[i + 1]
-        e.b.data[i1:i2, :] = v
-        e.b.data[(i2 + 1):i3, :] = v
-    end
-end
-
-struct LazyFaceBlockVectorVar{B<:FaceBlockVector}
-    b::B
-end
-@inline function Base.getindex(v::LazyFaceBlockVectorVar, i)
-    @boundscheck checkbounds(v.b.data.flat, i, :, :)
-    @inbounds view(v.b.data.flat, i, :, :)
-end
-@inline function Base.setindex!(sv::LazyFaceBlockVectorVar, v, i)
-    @boundscheck checkbounds(sv.b.data.flat, i, :, :)
-    @inbounds sv.b.data.flat[i, :, :] = v
-end
-
-struct LazyFaceBlockVectorDim{B<:FaceBlockVector}
-    b::B
-end
-@inline function Base.getindex(d::LazyFaceBlockVectorDim, i)
-    @boundscheck checkbounds(d.b.data.flat, :, :, i)
-    @inbounds view(d.b.data.flat, :, :, i)
-end
-@inline function Base.setindex!(d::LazyFaceBlockVectorDim, v, i)
-    @boundscheck checkbounds(d.b.data.flat, :, :, i)
-    @inbounds d.b.data.flat[:, :, i] = v
-end
-
-Base.propertynames(::FaceBlockVector) = (:data, :flat, :dof, :face, :var, :dim, :dh)
-Base.@propagate_inbounds function Base.getproperty(b::FaceBlockVector, s::Symbol)
-    return if s == :flat
-        b.data.flat
-    elseif s == :dof
-        LazyFaceBlockVectorDof(b)
-    elseif s == :face
-        LazyFaceBlockVectorElement(b)
-    elseif s == :var
-        LazyFaceBlockVectorVar(b)
-    elseif s == :dim
-        LazyFaceBlockVectorDim(b)
-    else
-        getfield(b, s)
-    end
-end
-
-function FaceBlockVector{NV,RT}(
-    value::Union{UndefInitializer,Missing,Nothing},
-    ndims::Integer,
-    dh::DofHandler,
-) where {
-    NV,
-    RT
-}
-    data = HybridMatrix{NV,RT}(value, nfacedofs(dh), ndims)
-    return FaceBlockVector(data, dh)
-end
-
-function Base.similar(b::FaceBlockVector, ::Type{T}, dims::Dims) where {T}
-    data = similar(b.data, T, Base.tail(dims))
-    return BlockVector(data, b.dh)
-end
-
-function Base.show(io::IO, ::MIME"text/plain", b::FaceBlockVector)
-    @nospecialize
-    rt = eltype(b)
-    nvars = nvariables(b)
-    nface = nfaces(b)
-    dim = spatialdim(b)
-    vstr = (nvars == 1) ? " variable" : " variables"
-    print(io, nface, "-face ", dim, "D FaceBlockVector{", rt, "} with ", nvars, vstr)
-    return nothing
-end
-
-Base.IndexStyle(::Type{<:FaceBlockVector}) = IndexLinear()
-Base.size(b::FaceBlockVector) = size(b.data.flat)
-
-function Base.fill!(b::FaceBlockVector, v)
-    fill!(b.data.flat, v)
-    return b
-end
-
-@inline function Base.getindex(b::FaceBlockVector, i::Integer)
-    @boundscheck checkbounds(b, i)
-    return @inbounds b.data.flat[i]
-end
-
-@inline function Base.setindex!(b::FaceBlockVector, v, i::Integer)
-    @boundscheck checkbounds(b, i)
-    @inbounds b.data.flat[i] = v
-end
-
-FlouCommon.datatype(b::FaceBlockVector) = datatype(b.data)
-
-FlouCommon.nfaces(b::FaceBlockVector) = nfaces(b.dh)
-FlouCommon.nvariables(b::FaceBlockVector) = innerdim(b.data)
-
-FlouCommon.eachface(b::FaceBlockVector) = Base.OneTo(nfaces(b))
-FlouCommon.eachvariable(b::FaceBlockVector) = Base.OneTo(nvariables(b))
-
-FlouCommon.spatialdim(b::FaceBlockVector) = size(b.data, 2)
-FlouCommon.eachdim(b::FaceBlockVector) = Base.OneTo(spatialdim(b))

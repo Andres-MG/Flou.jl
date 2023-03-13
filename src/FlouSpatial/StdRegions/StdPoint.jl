@@ -13,16 +13,37 @@
 # You should have received a copy of the GNU General Public License along with Flou.jl. If
 # not, see <https://www.gnu.org/licenses/>.
 
-function rotate2face(Qf, _, ::KPPEquation)
-    return SVector(Qf[1])
+struct StdPoint{RT} <: AbstractStdRegion{0}
+    ω::Vector{RT}
+    ωf::Vector{RT}
+    ξ::Vector{SVector{1,RT}}
+    ξf::Vector{SVector{1,RT}}
+    ξe::Vector{SVector{1,RT}}
+    ξc::Vector{SVector{1,RT}}
 end
 
-function rotate2phys(Qrot, _, ::KPPEquation)
-    return SVector(Qrot[1])
+function StdPoint(ftype=Float64)
+    return StdPoint(
+        [one(ftype)],
+        [one(ftype)],
+        [SVector(zero(ftype))],
+        [SVector(zero(ftype))],
+        [SVector(zero(ftype))],
+        [SVector(zero(ftype))],
+    )
 end
 
-function numericalflux(Ql, Qr, n, ::KPPEquation, ::StdAverageNumericalFlux)
-    Fl = sin(Ql[1]) * n[1] + cos(Ql[1]) * n[2]
-    Fr = sin(Qr[1]) * n[1] + cos(Qr[1]) * n[2]
-    return SVector((Fl + Fr) / 2)
+ndirections(::StdPoint) = 1
+nvertices(::StdPoint) = 1
+
+function tpdofs(::StdPoint, _)
+    return (Colon(),)
+end
+
+function slave2master(i::Integer, _, ::StdPoint)
+    return i
+end
+
+function master2slave(i::Integer, _, ::StdPoint)
+    return i
 end

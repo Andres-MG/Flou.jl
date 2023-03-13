@@ -19,55 +19,50 @@ using ..FlouCommon
 using ..FlouBiz
 using StaticArrays: StaticArrays, SVector, MVector, SMatrix, SDiagonal
 using LinearAlgebra: LinearAlgebra, Transpose, Diagonal
-using LinearAlgebra: dot, cross, mul!, lmul!, diag, factorize, normalize, norm
+using LinearAlgebra: dot, cross, mul!, ldiv!, diag, diagm, factorize, normalize, norm
 using BlockDiagonals: BlockDiagonals, BlockDiagonal, blocks
-using SparseArrays: SparseArrays, SparseMatrixCSC, sparse, mul!
+using Polynomials: Polynomials, Polynomial
+using SpecialPolynomials: SpecialPolynomials, Legendre
 using FastGaussQuadrature: FastGaussQuadrature, gausslegendre, gausschebyshev, gausslobatto
-using Polynomials: Polynomials
 using Polyester: Polyester, @batch
 using HDF5: HDF5, File, write, create_group, attributes
 
-export StateVector, BlockVector
+export LagrangeBasis, RBFpolyBasis
+export hasboundaries, nnodes, basisname, nodesname
+export interp_matrix, derivative_matrix
 
-export GaussNodes, GaussChebyshevNodes, GaussLobattoNodes
-export GL, GC, GLL
+export StateVector, BlockVector
+export GlobalStateVector, GlobalBlockVector, FaceStateVector, FaceBlockVector
 
 export dofsize, lineardofs, cartesiandofs, ndofs, eachdof
 export ndirections, eachdirection
-export equisize, nequispaced, nodetype
+export equisize, nequispaced, basis
 export is_tensor_product, project2equispaced!
-export nfacedofs, get_dofid
+export hasboundaries, nnodes
+export nfacedofs, eachfacedof, dofid, facedofid
 export integrate, contravariant
 
-export StdAverageNumericalFlux, LxFNumericalFlux
+export StdAverage, LxF
 export ChandrasekharAverage, ScalarDissipation, MatrixDissipation
 
 export GenericBC
 export EulerInflowBC, EulerOutflowBC, EulerSlipBC
 
-export FR
-export FRStdPoint, FRStdSegment, FRStdQuad, FRStdHex
+export MultielementDisc
+export NodalRec, VCJHrec, DGSEMrec, reconstruction, reconstruction_name
+export StdPoint, StdSegment, StdQuad, StdHex
 
-export WeakDivOperator, SplitDivOperator, SSFVDivOperator
-export WeakGradOperator
+export StrongDivOperator, SplitDivOperator, HybridDivOperator
+export StrongGradOperator
 
-# export SD
-# export SDStdPoint, SDStdSegment, SDStdQuad, SDStdHex
-# export nodetype_flux
+#==========================================================================================#
+#                    Definitions for multi-element discontinuous methods                   #
 
-# Abstract spatial discretization for flux-reconstruction methods
-abstract type AbstractFluxReconstruction{ND,RT} <: AbstractSpatialDiscretization{ND,RT} end
-
-FlouCommon.nelements(disc::AbstractFluxReconstruction) = nelements(disc.dh)
-ndofs(disc::AbstractFluxReconstruction) = ndofs(disc.dh)
-
-# Code common to all spatial discretizations
-include("StdRegions.jl")
+include("Containers.jl")
+include("StdRegions/StdRegions.jl")
 include("DofHandler.jl")
 include("PhysicalRegions.jl")
-include("Containers.jl")
-include("IO.jl")
-include("Interfaces.jl")
+include("GlobalContainers.jl")
 
 abstract type AbstractOperator end
 
@@ -95,8 +90,6 @@ function (bc::GenericBC)(Qin, x, frame, time, eq)
     return bc.Qext(Qin, x, frame, time, eq)
 end
 
-# Spatial discretizations
-include("FR/FR.jl")
-# include("StaggeredFR/StaggeredFR.jl")
+include("MultielementDiscontinuous.jl")
 
 end # FlouSpatial

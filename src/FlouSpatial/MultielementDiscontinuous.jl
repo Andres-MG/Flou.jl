@@ -13,11 +13,8 @@
 # You should have received a copy of the GNU General Public License along with Flou.jl. If
 # not, see <https://www.gnu.org/licenses/>.
 
-# Standard regions
-include("StdRegions.jl")
-
-struct FR{ND,RT,MT<:AbstractMesh{ND,RT},ST,G,O,C,BCT,M,FT} <:
-        AbstractFluxReconstruction{ND,RT}
+struct MultielementDisc{ND,RT,MT<:AbstractMesh{ND,RT},ST,G,O,C,BCT,M,FT} <:
+        AbstractSpatialDiscretization{ND,RT}
     mesh::MT
     std::ST
     dofhandler::DofHandler
@@ -25,11 +22,11 @@ struct FR{ND,RT,MT<:AbstractMesh{ND,RT},ST,G,O,C,BCT,M,FT} <:
     operators::O
     cache::C
     bcs::BCT
-    massinv::M
+    mass::M
     source!::FT
 end
 
-function FR(
+function MultielementDisc(
     mesh::AbstractMesh{ND,RT},
     std,
     equation,
@@ -67,10 +64,12 @@ function FR(
     geometry = Geometry(std, dofhandler, mesh, subgrid)
 
     # Equation cache
-    cache = construct_cache(:fr, RT, dofhandler, equation)
+    cache = construct_cache(RT, dofhandler, equation)
 
-    # Mass matrix
-    massinv = BlockDiagonal([Diagonal(elem.invjac) for elem in geometry.elements])
+    # Mass matrix (include overintegration matrix)
+    mass = BlockDiagonal(
+        [factorize(std.Pover * Diagonal(elem.jac)) for elem in geometry.elements]
+    )
 
     # Source term
     sourceterm = if isnothing(source)
@@ -79,7 +78,7 @@ function FR(
         source
     end
 
-    return FR(
+    return MultielementDisc(
         mesh,
         std,
         dofhandler,
@@ -87,40 +86,40 @@ function FR(
         _operators,
         cache,
         _bcs,
-        massinv,
+        mass,
         sourceterm,
     )
 end
 
-FlouCommon.nelements(fr::FR) = nelements(fr.dofhandler)
-FlouCommon.nfaces(fr::FR) = nfaces(fr.dofhandler)
-ndofs(fr::FR) = ndofs(fr.dofhandler)
+FlouCommon.nelements(disc::MultielementDisc) = nelements(disc.dofhandler)
+FlouCommon.nfaces(disc::MultielementDisc) = nfaces(disc.dofhandler)
+ndofs(disc::MultielementDisc) = ndofs(disc.dofhandler)
 
-FlouCommon.eachelement(fr::FR) = eachelement(fr.dofhandler)
-FlouCommon.eachface(fr::FR) = eachface(fr.dofhandler)
-eachdof(fr::FR) = eachdof(fr.dofhandler)
+FlouCommon.eachelement(disc::MultielementDisc) = eachelement(disc.dofhandler)
+FlouCommon.eachface(disc::MultielementDisc) = eachface(disc.dofhandler)
+eachdof(disc::MultielementDisc) = eachdof(disc.dofhandler)
 
-function Base.show(io::IO, m::MIME"text/plain", fr::FR)
+function Base.show(io::IO, m::MIME"text/plain", disc::MultielementDisc)
     @nospecialize
 
     # Header
     println(io, "=========================================================================")
-    println(io, "FR spatial discretization")
+    println("Discontinuous multi-element spatial discretization")
 
     # Mesh
     println(io, "\nMesh:")
     println(io, "-----")
-    show(io, m, fr.mesh)
+    show(io, m, disc.mesh)
 
     # Standard regions
     println(io, "\n\nStandard region:")
     println(io, "----------------")
-    show(io, m, fr.std)
+    show(io, m, disc.std)
 
     # Operators
     println(io, "\n\nOperators:")
     println(io, "----------")
-    for op in fr.operators
+    for op in disc.operators
         show(io, m, op)
         print(io, "\n")
     end
@@ -130,54 +129,66 @@ function Base.show(io::IO, m::MIME"text/plain", fr::FR)
     return nothing
 end
 
-function project2faces!(Qf, Q, fr::FR)
-    # Unpack
-    (; mesh, std) = fr
-
-    @flouthreads for ie in eachelement(fr)
-        iface = mesh.elements[ie].faceinds
-        facepos = mesh.elements[ie].facepos
-        @inbounds for (s, (face, pos)) in enumerate(zip(iface, facepos))
-            mul!(Qf.face[face][pos], std.l[s], Q.element[ie])
-        end
+function apply_massmatrix!(dQ, disc::MultielementDisc)
+    @flouthreads for ie in eachelement(disc)
+        ldiv!(blocks(disc.mass)[ie], dQ.elements[ie].dofs)
     end
     return nothing
 end
 
-function apply_massmatrix!(dQ, fr::FR)
-    @flouthreads for ie in eachelement(fr)
-        lmul!(blocks(fr.massinv)[ie], dQ.element[ie])
+function apply_sourceterm!(dQ, Q, disc::MultielementDisc, time)
+    (; geometry, source!) = disc
+    @flouthreads for i in eachdof(disc)
+        @inbounds x = geometry.elements.coords[i]
+        @inbounds source!(dQ.dofs[i], Q.dofs[i], x, time)
     end
     return nothing
 end
 
-function FlouCommon.get_max_dt(q, fr::FR, eq::AbstractEquation, cfl)
-    Q = StateVector{nvariables(eq)}(q, fr.dofhandler)
-    Δt = typemax(eltype(Q))
-    std = fr.std
-    d = spatialdim(fr)
+function integrate(_f::AbstractVector, disc::MultielementDisc)
+    f = GlobalStateVector(_f, disc.dofhandler)
+    return integrate(f, disc, 1)
+end
+
+function integrate(f::StateVector, disc::MultielementDisc, ivar::Integer=1)
+    (; geometry) = disc
+    integral = zero(datatype(f))
+    @flouthreads for ie in eachelement(disc)
+        @inbounds integral += integrate(f.elements[ie].vars[ivar], geometry.elements[ie])
+    end
+    return integral
+end
+
+function FlouCommon.get_max_dt(q, disc::MultielementDisc, eq::AbstractEquation, cfl)
+    Q = GlobalStateVector{nvariables(eq)}(q, disc.dofhandler)
+    Δt = typemax(datatype(Q))
+    (; std, geometry) = disc
+    d = spatialdim(disc)
     n = ndofs(std)
 
-    for ie in eachelement(fr)
-        Δx = fr.geometry.elements[ie].volume[] / n
+    for ie in eachelement(disc)
+        Δx = geometry.elements[ie].volume / n
         Δx = d == 1 ? Δx : (d == 2 ? sqrt(Δx) : cbrt(Δx))
         @inbounds for i in eachdof(std)
-            Δt = min(Δt, get_max_dt(Q.element[ie][i], Δx, cfl, eq))
+            @inbounds Δt = min(Δt, get_max_dt(Q.elements[ie].dofs[i], Δx, cfl, eq))
         end
     end
 
     return Δt
 end
 
+include("IO.jl")
+include("Interfaces.jl")
+
 # Operators
-include("OpDivergence.jl")
-include("OpGradient.jl")
+include("Equations/OpDivergence.jl")
+include("Equations/OpGradient.jl")
 
 # Equations
-include("Hyperbolic.jl")
-include("LinearAdvection.jl")
-include("Burgers.jl")
-include("KPP.jl")
-include("Euler.jl")
+include("Equations/Hyperbolic.jl")
+include("Equations/LinearAdvection.jl")
+include("Equations/Burgers.jl")
+include("Equations/KPP.jl")
+include("Equations/Euler.jl")
 
-include("Gradient.jl")
+include("Equations/Gradient.jl")

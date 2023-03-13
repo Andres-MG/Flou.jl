@@ -13,17 +13,16 @@
 # You should have received a copy of the GNU General Public License along with Flou.jl. If
 # not, see <https://www.gnu.org/licenses/>.
 
-abstract type AbstractNodeDistribution end
+abstract type AbstractStdRegion{ND,NT} end
 
-struct GaussNodes <: AbstractNodeDistribution end
-struct GaussChebyshevNodes <: AbstractNodeDistribution end
-struct GaussLobattoNodes <: AbstractNodeDistribution end
+"""
+    nodetype(std)
 
-const GL = GaussNodes
-const GC = GaussChebyshevNodes
-const GLL = GaussLobattoNodes
-
-abstract type AbstractStdRegion{ND,NP,NT} end
+Return the node distribution type of `std`.
+"""
+function nodetype(s::AbstractStdRegion)
+    return s.nodetype
+end
 
 """
     dofsize(std; equispaced=Val(false))
@@ -34,17 +33,16 @@ regions simply return the total number of nodes).
 See also [`ndofs`](@ref), [`eachdof`](@ref).
 """
 function dofsize(
-    s::AbstractStdRegion{ND,NP};
+    s::AbstractStdRegion{ND};
     equispaced::Val{E}=Val(false),
 ) where {
     ND,
-    NP,
     E,
 }
     return if E
         ntuple(i -> equisize(s, i), ND)
     else
-        ntuple(_ -> NP, ND)
+        ntuple(_ -> nnodes(s |> nodetype), ND)
     end
 end
 
@@ -207,20 +205,10 @@ function equisize(s::AbstractStdRegion{ND}) where {ND}
     return ntuple(i -> equisize(s, i), ND)
 end
 
-
-"""
-    nodetype(std)
-
-Return the node distribution type of `std`.
-"""
-function nodetype(::AbstractStdRegion{ND,NP,NT}) where {ND,NP,NT}
-    return NT
-end
-
 #==========================================================================================#
 #                                      Standard point                                      #
 
-abstract type AbstractStdPoint <: AbstractStdRegion{0,1,GaussNodes} end
+abstract type AbstractStdPoint <: AbstractStdRegion{0,GaussNodes} end
 
 ndirections(::AbstractStdPoint) = 1
 nvertices(::AbstractStdPoint) = 1
@@ -236,7 +224,7 @@ end
 #==========================================================================================#
 #                                     Standard segment                                     #
 
-abstract type AbstractStdSegment{NP,NT} <: AbstractStdRegion{1,NP,NT} end
+abstract type AbstractStdSegment{NT} <: AbstractStdRegion{1,NT} end
 
 ndirections(::AbstractStdSegment) = 1
 nvertices(::AbstractStdSegment) = 2
@@ -268,7 +256,7 @@ end
 #==========================================================================================#
 #                                  Standard quadrilateral                                  #
 
-abstract type AbstractStdQuad{NP,NT} <: AbstractStdRegion{2,NP,NT} end
+abstract type AbstractStdQuad{NT} <: AbstractStdRegion{2,NT} end
 
 ndirections(::AbstractStdQuad) = 2
 nvertices(::AbstractStdQuad) = 4
@@ -332,31 +320,9 @@ function vtk_connectivities(s::AbstractStdQuad)
 end
 
 #==========================================================================================#
-#                                     Standard triangle                                    #
-
-abstract type AbstractStdTri{NP,NT} <: AbstractStdRegion{2,NP,NT} end
-
-ndirections(::AbstractStdTri) = 3
-nvertices(::AbstractStdTri) = 3
-
-function slave2master(_, _, _::AbstractStdTri)
-    error("Not implemented yet!")
-end
-
-function master2slave(_, _, _::AbstractStdTri)
-    error("Not implemented yet!")
-end
-
-vtk_type(::AbstractStdTri) = UInt8(69)
-
-function vtk_connectivities(::AbstractStdTri)
-    error("Not implemented yet!")
-end
-
-#==========================================================================================#
 #                                    Standard hexahedron                                   #
 
-abstract type AbstractStdHex{NP,NT} <: AbstractStdRegion{3,NP,NT} end
+abstract type AbstractStdHex{NT} <: AbstractStdRegion{3,NT} end
 
 ndirections(::AbstractStdHex) = 3
 nvertices(::AbstractStdHex) = 8

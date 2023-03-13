@@ -96,51 +96,43 @@ end
 #==========================================================================================#
 #                                     Numerical fluxes                                     #
 
-function numericalflux(
-    Ql,
-    Qr,
-    _,
-    eq::EulerEquation{ND},
-    ::StdAverageNumericalFlux,
-) where {
-    ND,
-}
-    if ND == 1
-        _, ρul, ρel = Ql
-        _, ρur, ρer = Qr
-        _, ul, pl = vars_cons2prim(Ql, eq)
-        _, ur, pr = vars_cons2prim(Qr, eq)
-        return SVector(
-            (ρul + ρur) / 2,
-            (ρul * ul + pl + ρur * ur + pr) / 2,
-            ((ρel + pl) * ul + (ρer + pr) * ur) / 2,
-        )
+function numericalflux(Ql, Qr, _, eq::EulerEquation{1}, ::StdAverage)
+    _, ρul, ρel = Ql
+    _, ρur, ρer = Qr
+    _, ul, pl = vars_cons2prim(Ql, eq)
+    _, ur, pr = vars_cons2prim(Qr, eq)
+    return SVector(
+        (ρul + ρur) / 2,
+        (ρul * ul + pl + ρur * ur + pr) / 2,
+        ((ρel + pl) * ul + (ρer + pr) * ur) / 2,
+    )
+end
 
-    elseif ND == 2
-        _, ρul, ρvl, ρel = Ql
-        _, ρur, ρvr, ρer = Qr
-        _, ul, _, pl = vars_cons2prim(Ql, eq)
-        _, ur, _, pr = vars_cons2prim(Qr, eq)
-        return SVector(
-            (ρul + ρur) / 2,
-            (ρul * ul + pl + ρur * ur + pr) / 2,
-            (ρvl * ul + ρvr * ur) / 2,
-            ((ρel + pl) * ul + (ρer + pr) * ur) / 2,
-        )
+function numericalflux(Ql ,Qr, _, eq::EulerEquation{2}, ::StdAverage)
+    _, ρul, ρvl, ρel = Ql
+    _, ρur, ρvr, ρer = Qr
+    _, ul, _, pl = vars_cons2prim(Ql, eq)
+    _, ur, _, pr = vars_cons2prim(Qr, eq)
+    return SVector(
+        (ρul + ρur) / 2,
+        (ρul * ul + pl + ρur * ur + pr) / 2,
+        (ρvl * ul + ρvr * ur) / 2,
+        ((ρel + pl) * ul + (ρer + pr) * ur) / 2,
+    )
+end
 
-    else # ND == 3
-        _, ρul, ρvl, ρwl, ρel = Ql
-        _, ρur, ρvr, ρwr, ρer = Qr
-        _, ul, _, _, pl = vars_cons2prim(Ql, eq)
-        _, ur, _, _, pr = vars_cons2prim(Qr, eq)
-        return SVector(
-            (ρul + ρur) / 2,
-            (ρul * ul + pl + ρur * ur + pr) / 2,
-            (ρvl * ul + ρvr * ur) / 2,
-            (ρwl * ul + ρwr * ur) / 2,
-            ((ρel + pl) * ul + (ρer + pr) * ur) / 2,
-        )
-    end
+function numericalflux(Ql, Qr, _, eq::EulerEquation{3}, ::StdAverage)
+    _, ρul, ρvl, ρwl, ρel = Ql
+    _, ρur, ρvr, ρwr, ρer = Qr
+    _, ul, _, _, pl = vars_cons2prim(Ql, eq)
+    _, ur, _, _, pr = vars_cons2prim(Qr, eq)
+    return SVector(
+        (ρul + ρur) / 2,
+        (ρul * ul + pl + ρur * ur + pr) / 2,
+        (ρvl * ul + ρvr * ur) / 2,
+        (ρwl * ul + ρwr * ur) / 2,
+        ((ρel + pl) * ul + (ρer + pr) * ur) / 2,
+    )
 end
 
 function numericalflux(
@@ -148,7 +140,7 @@ function numericalflux(
     Qr,
     n,
     eq::EulerEquation{ND},
-    nf::LxFNumericalFlux,
+    nf::LxF,
 ) where {
     ND,
 }
@@ -390,6 +382,95 @@ end
 #==========================================================================================#
 #                                     Two-point fluxes                                     #
 
+function twopointflux(Q1, Q2, Ja1, Ja2, eq::EulerEquation{1}, ::StdAverage)
+    _, ρu1, ρe1 = Q1
+    _, ρu2, ρe2 = Q2
+    _, u1, p1 = vars_cons2prim(Q1, eq)
+    _, u2, p2 = vars_cons2prim(Q2, eq)
+
+    n = (Ja1[1] + Ja2[1]) / 2
+    f1 = (ρu1 + ρu2) / 2
+    f2 = (ρu1 * u1 + p1 + ρu2 * u2 + p2) / 2
+    f3 = ((ρe1 + p1) * u1 + (ρe2 + p2) * u2) / 2
+    return SVector(
+        f1 * n,
+        f2 * n,
+        f3 * n,
+    )
+end
+
+function twopointflux(Q1, Q2, Ja1, Ja2, eq::EulerEquation{2}, ::StdAverage)
+    _, ρu1, ρv1, ρe1 = Q1
+    _, ρu2, ρv2, ρe2 = Q2
+    _, u1, v1, p1 = vars_cons2prim(Q1, eq)
+    _, u2, v2, p2 = vars_cons2prim(Q2, eq)
+
+    n = SVector((Ja1 .+ Ja2) ./ 2)
+    f1 = SVector(
+        (ρu1 + ρu2) / 2,
+        (ρv1 + ρv2) / 2,
+    )
+    f2 = SVector(
+        (ρu1 * u1 + p1 + ρu2 * u2 + p2) / 2,
+        (ρu1 * v1 + ρu2 * v2) / 2,
+    )
+    f3 = SVector(
+        (ρv1 * u1 + ρv2 * u2) / 2,
+        (ρv1 * v1 + p1 + ρv2 * v2 + p2) / 2,
+    )
+    f4 = SVector(
+        ((ρe1 + p1) * u1 + (ρe2 + p2) * u2) / 2,
+        ((ρe1 + p1) * v1 + (ρe2 + p2) * v2) / 2,
+    )
+    return SVector(
+        f1[1] * n[1] + f1[2] * n[2],
+        f2[1] * n[1] + f2[2] * n[2],
+        f3[1] * n[1] + f3[2] * n[2],
+        f4[1] * n[1] + f4[2] * n[2],
+    )
+end
+
+function twopointflux(Q1, Q2, Ja1, Ja2, eq::EulerEquation{3}, ::StdAverage)
+    _, ρu1, ρv1, ρw1, ρe1 = Q1
+    _, ρu2, ρv2, ρw2, ρe2 = Q2
+    _, u1, v1, w1, p1 = vars_cons2prim(Q1, eq)
+    _, u2, v2, w2, p2 = vars_cons2prim(Q2, eq)
+
+    n = SVector((Ja1 .+ Ja2) ./ 2)
+    f1 = SVector(
+        (ρu1 + ρu2) / 2,
+        (ρv1 + ρv2) / 2,
+        (ρw1 + ρw2) / 2,
+    )
+    f2 = SVector(
+        (ρu1 * u1 + p1 + ρu2 * u2 + p2) / 2,
+        (ρu1 * v1 + ρu2 * v2) / 2,
+        (ρu1 * w1 + ρu2 * w2) / 2,
+    )
+    f3 = SVector(
+        (ρv1 * u1 + ρv2 * u2) / 2,
+        (ρv1 * v1 + p1 + ρv2 * v2 + p2) / 2,
+        (ρv1 * w1 + ρv2 * w2) / 2,
+    )
+    f4 = SVector(
+        (ρw1 * u1 + ρw2 * u2) / 2,
+        (ρw1 * v1 + ρw2 * v2) / 2,
+        (ρw1 * w1 + p1 + ρw2 * w2 + p2) / 2,
+    )
+    f5 = SVector(
+        ((ρe1 + p1) * u1 + (ρe2 + p2) * u2) / 2,
+        ((ρe1 + p1) * v1 + (ρe2 + p2) * v2) / 2,
+        ((ρe1 + p1) * w1 + (ρe2 + p2) * w2) / 2,
+    )
+    return SVector(
+        f1[1] * n[1] + f1[2] * n[2] + f1[3] * n[3],
+        f2[1] * n[1] + f2[2] * n[2] + f2[3] * n[3],
+        f3[1] * n[1] + f3[2] * n[2] + f3[3] * n[3],
+        f4[1] * n[1] + f4[2] * n[2] + f4[3] * n[3],
+        f5[1] * n[1] + f5[2] * n[2] + f5[3] * n[3],
+    )
+end
+
 function twopointflux(
     Q1,
     Q2,
@@ -457,46 +538,53 @@ end
 #==========================================================================================#
 #                                    Monitors                                              #
 
-function FlouCommon.list_monitors(::FR, ::EulerEquation)
+function FlouCommon.list_monitors(::MultielementDisc, ::EulerEquation)
     return (:kinetic_energy, :entropy,)
 end
 
-function FlouCommon.get_monitor(dg::FR, equation::EulerEquation, name::Symbol, _)
+function FlouCommon.get_monitor(
+    disc::MultielementDisc,
+    equation::EulerEquation,
+    name::Symbol,
+    _,
+)
     if name == :energy
-        return kinetic_energy_monitor(dg, equation)
+        return kinetic_energy_monitor(disc, equation)
     elseif name == :entropy
-        return entropy_monitor(dg, equation)
+        return entropy_monitor(disc, equation)
     else
         error("Unknown monitor '$(name)'.")
     end
 end
 
-function kinetic_energy_monitor(dg::FR, ::EulerEquation)
-    monitor = (Q, dg, equation) -> begin
-        s = zero(eltype(Q))
-        @flouthreads for ie in eachelement(dg)
-            svec = dg.std.cache.scalar[Threads.threadid()][1]
-            @inbounds for i in eachindex(svec)
-                svec[i] = kinetic_energy(Q.element[ie][i], equation)
+function kinetic_energy_monitor(::MultielementDisc, ::EulerEquation)
+    return (_Q, disc, equation) -> begin
+        Q = GlobalStateVector(_Q, disc.dofhandler)
+        s = zero(datatype(Q))
+        @flouthreads for ie in eachelement(disc)
+            Qe = Q.elements[ie]
+            svec = disc.std.cache.scalar[Threads.threadid()][1].vars[1]
+            @inbounds for (i, Qi) in enumerate(Qe.dofs)
+                svec[i] = kinetic_energy(Qi, equation)
             end
-            s += integrate(svec, dg.geometry.elements[ie])
+            s += integrate(svec, disc.geometry.elements[ie])
         end
         return s
     end
-    return (datatype(dg), monitor)
 end
 
-function entropy_monitor(dg::FR, ::EulerEquation)
-    monitor = (Q, dg, equation) -> begin
-        s = zero(eltype(Q))
-        @flouthreads for ie in eachelement(dg)
-            svec = dg.std.cache.scalar[Threads.threadid()][1]
-            @inbounds for i in eachindex(svec)
-                svec[i] = math_entropy(Q.element[ie][i], equation)
+function entropy_monitor(::MultielementDisc, ::EulerEquation)
+    return (_Q, disc, equation) -> begin
+        Q = GlobalStateVector(_Q, disc.dofhandler)
+        s = zero(datatype(Q))
+        @flouthreads for ie in eachelement(disc)
+            Qe = Q.elements[ie]
+            svec = disc.std.cache.scalar[Threads.threadid()][1].vars[1]
+            @inbounds for (i, Qi) in enumerate(Qe.dofs)
+                svec[i] = math_entropy(Qi, equation)
             end
-            s += integrate(svec, dg.geometry.elements[ie])
+            s += integrate(svec, disc.geometry.elements[ie])
         end
         return s
     end
-    return (datatype(dg), monitor)
 end

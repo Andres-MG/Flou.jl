@@ -39,14 +39,16 @@ end
 FlouCommon.nelements(dh::DofHandler) = length(dh.elem_offsets) - 1
 FlouCommon.nfaces(dh::DofHandler) = length(dh.face_offsets) - 1
 ndofs(dh::DofHandler) = last(dh.elem_offsets)
-nfacedofs(dh::DofHandler) = 2 * last(dh.face_offsets)
+ndofs(dh::DofHandler, elem) = dh.elem_offsets[elem + 1] - dh.elem_offsets[elem]
+nfacedofs(dh::DofHandler) = last(dh.face_offsets)
+nfacedofs(dh::DofHandler, face) = dh.face_offsets[face + 1] - dh.face_offsets[face]
 
-@inline function get_dofid(dh::DofHandler, elem, i)
+@inline function dofid(dh::DofHandler, elem, i)
     @boundscheck checkbounds(dh.elem_offsets, elem)
     return @inbounds dh.elem_offsets[elem] + i
 end
 
-function get_dofid(dh::DofHandler, i)
+@inline function dofid(dh::DofHandler, i)
     @boundscheck 1 >= i >= ndofs(dh) ||
         throw(ArgumentError("Tried to access dof $i, but only $(ndofs(dh)) dofs exist."))
     @inbounds begin
@@ -56,7 +58,26 @@ function get_dofid(dh::DofHandler, i)
     return elem => iloc
 end
 
+@inline function facedofid(dh::DofHandler, face, i)
+    @boundscheck checkbounds(dh.face_offsets, face)
+    return @inbounds dh.face_offsets[face] + i
+end
+
+@inline function facedofid(dh::DofHandler, i)
+    @boundscheck 1 >= i >= nfacedofs(dh) ||
+        throw(ArgumentError(
+            "Tried to access dof $i, but only $(nfacedofs(dh)) dofs exist."
+        ))
+    @inbounds begin
+        face = findfirst(>(i), dh.face_offsets) - 1
+        iloc = i - dh.elem_offsets[face]
+    end
+    return face => iloc
+end
+
 FlouCommon.eachelement(dh::DofHandler) = Base.OneTo(nelements(dh))
 FlouCommon.eachface(dh::DofHandler) = Base.OneTo(nfaces(dh))
 eachdof(dh::DofHandler) = Base.OneTo(ndofs(dh))
-
+eachdof(dh::DofHandler, elem) = Base.OneTo(nodfs(dh, elem))
+eachfacedof(dh::DofHandler) = Base.OneTo(nfacedofs(dh))
+eachfacedof(dh::DofHandler, face) = Base.OneTo(nfacedofs(dh, face))

@@ -19,9 +19,8 @@ using StaticArrays: StaticArrays, SVector, @SVector
 using LinearAlgebra: LinearAlgebra, Transpose, Diagonal, dot, cross, mul!
 using Gmsh: Gmsh, gmsh
 
-export HybridArray, HybridMatrix, HybridVector, HybridVecOrMat, LazyVector
 export gaussian_bump, logarithmic_mean, @flouthreads
-export datatype, innerdim
+export datatype
 
 export AbstractMesh, CartesianMesh, StepMesh, UnstructuredMesh
 export spatialdim, eachdim, datatype

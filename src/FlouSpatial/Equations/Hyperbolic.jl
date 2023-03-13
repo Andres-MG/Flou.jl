@@ -13,44 +13,42 @@
 # You should have received a copy of the GNU General Public License along with Flou.jl. If
 # not, see <https://www.gnu.org/licenses/>.
 
-struct HyperbolicDGcache{NV,RT,D} <: AbstractCache
-    Qf::FaceStateVector{NV,RT,D}
-    Fn::FaceStateVector{NV,RT,D}
+struct HyperbolicCache{NV,RT} <: AbstractCache
+    Qf::FaceStateVector{NV,RT}
+    Fn::FaceStateVector{NV,RT}
 end
 
 function construct_cache(
-    disctype::Symbol,
-    realtype::Type,
+    ftype::Type,
     dofhandler::DofHandler,
     equation::HyperbolicEquation,
 )
-    if disctype == :fr
-        Qf = FaceStateVector{nvariables(equation),realtype}(undef, dofhandler)
-        Fn = FaceStateVector{nvariables(equation),realtype}(undef, dofhandler)
-        return HyperbolicDGcache(Qf, Fn)
-    else
-        @error "Unknown discretization type $(disctype)"
-    end
+    Qf = FaceStateVector{nvariables(equation)}(undef, dofhandler, ftype)
+    Fn = FaceStateVector{nvariables(equation)}(undef, dofhandler, ftype)
+    return HyperbolicCache(Qf, Fn)
 end
 
 function FlouCommon.rhs!(
-    dQ::StateVector,
-    Q::StateVector,
-    p::EquationConfig{<:FR,<:HyperbolicEquation},
+    _dQ::Matrix,
+    _Q::Matrix,
+    p::EquationConfig{<:MultielementDisc,<:HyperbolicEquation},
     time::Real,
 )
     # Unpack
     (; disc, equation) = p
     cache = disc.cache
 
-    # Restart time derivative
-    fill!(dQ, zero(eltype(dQ)))
+    dQ = GlobalStateVector{nvariables(equation)}(_dQ, disc.dofhandler)
+    Q = GlobalStateVector{nvariables(equation)}(_Q, disc.dofhandler)
 
-    # Volume flux
-    volume_contribution!(dQ, Q, disc, equation, disc.operators[1])
+    # Restart time derivative
+    fill!(dQ, zero(datatype(dQ)))
 
     # Project Q to faces
     project2faces!(cache.Qf, Q, disc)
+
+    # Volume flux
+    volume_contribution!(dQ, Q, disc, equation, disc.operators[1])
 
     # Boundary conditions
     applyBCs!(cache.Qf, disc, equation, time)
@@ -59,7 +57,7 @@ function FlouCommon.rhs!(
     interface_fluxes!(cache.Fn, cache.Qf, disc, equation, disc.operators[1].numflux)
 
     # Surface contribution
-    surface_contribution!(dQ, Q, cache.Fn, disc, equation, disc.operators[1])
+    surface_contribution!(dQ, Q, disc, equation, disc.operators[1])
 
     # Apply mass matrix
     apply_massmatrix!(dQ, disc)
@@ -70,23 +68,17 @@ function FlouCommon.rhs!(
     return nothing
 end
 
-function volume_contribution!(dQ, Q, dg, equation::HyperbolicEquation, operator)
-    @flouthreads for ie in eachelement(dg)
-        @inbounds volume_contribution!(
-            dQ.element[ie], Q.element[ie],
-            ie, dg.std, dg, equation, operator,
-        )
+function volume_contribution!(dQ, Q, disc, equation::HyperbolicEquation, operator)
+    @flouthreads for ie in eachelement(disc)
+        @inbounds volume_contribution!(dQ, Q, ie, disc.std, disc, equation, operator)
     end
+
     return nothing
 end
 
-function surface_contribution!(dQ, Q, Fn, dg, equation::HyperbolicEquation, operator)
-    @flouthreads for ie in eachelement(dg)
-        @inbounds surface_contribution!(
-            dQ.element[ie], Q.element[ie],
-            Fn, ie, dg.std, dg, equation, operator,
-        )
+function surface_contribution!(dQ, Q, disc, equation::HyperbolicEquation, operator)
+    @flouthreads for ie in eachelement(disc)
+        @inbounds surface_contribution!(dQ, Q, ie, disc.std, disc, equation, operator)
     end
     return nothing
 end
-

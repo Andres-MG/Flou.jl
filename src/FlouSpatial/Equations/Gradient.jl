@@ -13,38 +13,36 @@
 # You should have received a copy of the GNU General Public License along with Flou.jl. If
 # not, see <https://www.gnu.org/licenses/>.
 
-struct GradientFRcache{NV,RT,DQ,DF} <: AbstractCache
-    Qf::FaceStateVector{NV,RT,DQ}
-    Fn::FaceBlockVector{NV,RT,DF}
+struct GradientCache{NV,RT} <: AbstractCache
+    Qf::FaceStateVector{NV,RT}
+    Fn::FaceBlockVector{NV,RT}
 end
 
 function construct_cache(
-    disctype::Symbol,
-    realtype::Type,
+    ftype::Type,
     dofhandler::DofHandler,
-    eq::GradientEquation,
+    equation::GradientEquation,
 )
-    if disctype == :fr
-        Qf = FaceStateVector{nvariables(eq),realtype}(undef, dofhandler)
-        Fn = FaceBlockVector{nvariables(eq),realtype}(undef, ndims(eq), dofhandler)
-        return GradientFRcache(Qf, Fn)
-    else
-        @error "Unknown discretization type $(disctype)"
-    end
+    Qf = FaceStateVector{nvariables(equation)}(undef, dofhandler, ftype)
+    Fn = FaceBlockVector{nvariables(equation)}(undef, dofhandler, ndims(equation), ftype)
+    return GradientCache(Qf, Fn)
 end
 
 function FlouCommon.rhs!(
-    G::BlockVector,
-    Q::StateVector,
-    p::EquationConfig{<:FR,<:GradientEquation},
+    _G::Array{<:Any,3},
+    _Q::Array{<:Any,3},
+    p::EquationConfig{<:MultielementDisc,<:GradientEquation},
     _::Real,
 )
     # Unpack
     (; disc, equation) = p
     cache = disc.cache
 
+    G = GlobalBlockVector{nvariables(equation)}(_G)
+    Q = GlobalStateVector{nvariables(equation)}(_Q)
+
     # Restart gradients
-    fill!(G, zero(eltype(G)))
+    fill!(G, zero(datatype(G)))
 
     # Volume flux
     volume_contribution!(G, Q, disc, equation, disc.operators[1])
@@ -59,7 +57,7 @@ function FlouCommon.rhs!(
     interface_fluxes!(cache.Fn, cache.Qf, disc, equation, disc.operators[1].numflux)
 
     # Surface contribution
-    surface_contribution!(G, Q, cache.Fn, disc, equation, disc.operators[1])
+    surface_contribution!(G, Q, disc, equation, disc.operators[1])
 
     # Apply mass matrix
     apply_massmatrix!(G, disc)
@@ -67,22 +65,16 @@ function FlouCommon.rhs!(
     return nothing
 end
 
-function volume_contribution!(G, Q, dg, equation::GradientEquation, operator)
-    @flouthreads for ie in eachelement(dg)
-        @inbounds volume_contribution!(
-            G.element[ie], Q.element[ie],
-            ie, dg.std, dg, equation, operator,
-        )
+function volume_contribution!(G, Q, disc, equation::GradientEquation, operator)
+    @flouthreads for ie in eachelement(disc)
+        @inbounds volume_contribution!(G, Q, ie, disc.std, disc, equation, operator)
     end
     return nothing
 end
 
-function surface_contribution!(G, Q, Fn, dg, equation::GradientEquation, operator)
-    @flouthreads for ie in eachelement(dg)
-        @inbounds surface_contribution!(
-            G.element[ie], Q.element[ie],
-            Fn, ie, dg.std, dg, equation, operator,
-        )
+function surface_contribution!(G, Q, disc, equation::GradientEquation, operator)
+    @flouthreads for ie in eachelement(disc)
+        @inbounds surface_contribution!(G, Q, ie, disc.std, disc, equation, operator)
     end
     return nothing
 end
@@ -97,10 +89,21 @@ function rotate2phys(Qrot, _, ::GradientEquation{ND,NV}) where {ND,NV}
         ), ND)
 end
 
-function numericalflux(Ql, Qr, n, eq::GradientEquation, ::StdAverageNumericalFlux)
+#==========================================================================================#
+#                                     Numerical fluxes                                     #
+
+function numericalflux(Ql, Qr, n, eq::GradientEquation, ::StdAverage)
     nd = spatialdim(eq)
     nv = nvariables(eq)
     return ntuple(d -> SVector{nv}(
         (Ql[v] + Qr[v]) * n[d] / 2 for v in 1:nv
     ), nd)
+end
+
+#==========================================================================================#
+#                                     Two-point fluxes                                     #
+
+function twopointflux(Q1, Q2, Ja1, Ja2, eq::GradientEquation, avg::StdAverage)
+    n = (Ja1 .+ Ja2) ./ 2
+    return numericalflux(Q1, Q2, n, eq, avg)
 end

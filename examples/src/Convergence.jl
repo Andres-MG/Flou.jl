@@ -28,9 +28,13 @@ solver = CarpenterKennedy2N54(williamson_condition=false)
 
 nelem_list = [2^i for i in 2:6]
 order_list = 1:5
+quad_list = (:GLL, :GL)
 
 ∇ = SplitDivOperator(
-    LxFNumericalFlux(ChandrasekharAverage(), 1.0),
+    LxF(
+        ChandrasekharAverage(),
+        1.0,
+    ),
 )
 
 equation = EulerEquation{1}(1.4)
@@ -42,41 +46,45 @@ cfl_callback = get_cfl_callback(cfl, 1.0)
     return Flou.vars_prim2cons((2 + sin((x[1] - t)π), 1, 1), eq)
 end
 
-@everywhere function l2error(q, t, dg, equation)
-    (; geometry) = dg
-    s = zero(Flou.datatype(q))
-    for (i, xi) in enumerate(geometry.elements.coords)
+@everywhere function l2error(q, t, x, equation)
+    s = 0.0
+    for (qi, xi) in zip(q, x)
         qe = solution(xi, t, equation)
-        s += sum(abs2, qe - q.dof[i])
+        s += sum(abs2, qe - qi)
     end
-    return sqrt(s / ndofs(dg))
+    return sqrt(s / length(q))
 end
 
 @everywhere function run(nelem, order, quad, ∇, tf, solver, equation, cfl)
     # Solve the problem
-    std = FRStdSegment{Float64}(order + 1, quad, :DGSEM, nvariables(equation))
     mesh = CartesianMesh{1,Float64}(-1, 1, nelem)
     apply_periodicBCs!(mesh, "1" => "2")
-    dg = FR(mesh, std, equation, ∇, ())
-    Q = StateVector{nvariables(equation),Float64}(undef, dg.dofhandler)
+
+    basis = LagrangeBasis(quad, order + 1)
+    rec = basis |> DGSEMrec
+    std = StdSegment(basis, rec, nvariables(equation))
+
+    dg = MultielementDisc(mesh, std, equation, ∇, ())
+
+    Q = GlobalStateVector{nvariables(equation)}(undef, dg.dofhandler)
     for i in eachdof(dg)
         x = dg.geometry.elements.coords[i]
-        Q.dof[i] = solution(x, 0.0, equation)
+        Q.dofs[i] = solution(x, 0.0, equation)
     end
+
     timeintegrate(
-        Q, dg, equation, solver, tf;
-        alias_u0=true, adaptive=false, callback=cfl, dt=1.0,
+        Q.data, dg, equation, solver, tf;
+        save_everystep=false, alias_u0=true, adaptive=false, callback=cfl, dt=1.0,
     )
 
     # Compute the L2 error
-    return l2error(Q, tf, dg, equation)
+    return l2error(Q.dofs, tf, dg.geometry.elements.coords, equation)
 end
 
 # Parallel execution
-tasks = [(nelem, order, quad)
-    for nelem in nelem_list,
-    order in order_list,
-    quad in (GLL(), GL())
+tasks = [
+    (nelem, order, quad)
+    for nelem in nelem_list, order in order_list, quad in quad_list
 ]
 error = pmap((t) -> run(t..., ∇, tf, solver, equation, cfl_callback), tasks)
 

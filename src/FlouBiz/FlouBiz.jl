@@ -75,7 +75,7 @@ function add_pointdata!(
     disc::AbstractSpatialDiscretization,
     name::String,
 )
-    datavec = pointdata2VTKHDF(data, disc)
+    datavec = pointdata2VTKHDF(data, disc) |> first
     write(file.handler, "VTKHDF/PointData/" * name, datavec)
     return nothing
 end
