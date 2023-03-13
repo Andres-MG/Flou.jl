@@ -121,8 +121,8 @@ using Printf
 scaling = 1e-13
 scaling_str = "\$10^{13}\$"
 
-tophead = map(x -> "h = " * @sprintf("%7.5f", x), Δx)
-lefthead = map(x -> "p = " * @sprintf("%d", x), order_list)
+tophead = map(x -> "\$h\$ = " * @sprintf("%7.5f", x), Δx)
+lefthead = map(x -> "\$N\$ = " * @sprintf("%d", x), order_list)
 error_str = map(x -> @sprintf("%7.5f", x), error / scaling)
 
 open("errors.tex", "w") do f
