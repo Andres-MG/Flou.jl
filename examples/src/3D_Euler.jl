@@ -60,24 +60,24 @@ Q0 = Flou.vars_prim2cons((1.0, 2.0, 0.0, 0.0, 1.0), equation)
         1.0,
     ),
 )
-fr = MultielementDisc(mesh, std, equation, ∇, ∂Ω)
+dg = MultielementDisc(mesh, std, equation, ∇, ∂Ω)
 
-Q = GlobalStateVector{nvariables(equation)}(undef, fr.dofhandler)
+Q = GlobalStateVector{nvariables(equation)}(undef, dg.dofhandler)
 for i in eachdof(Q)
     Q.dofs[i] = Q0
 end
 
-display(fr)
+display(dg)
 println()
 
-mb, mvals = get_monitor_callback(Float64, Float64, fr, equation, :entropy)
+mb, mvals = get_monitor_callback(Float64, Float64, dg, equation, :entropy)
 sb = get_save_callback("../results/solution"; iter=save_steps)
 cb = make_callback_list(mb, sb)
 
 @info "Starting simulation..."
 
 _, exetime = timeintegrate(
-    Q.data, fr, equation, solver, tf;
+    Q.data, dg, equation, solver, tf;
     save_everystep=false, alias_u0=true, adaptive=false, dt=Δt, callback=cb,
     progress=true, progress_steps=5,
 )
