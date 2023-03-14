@@ -512,7 +512,7 @@ function _hybrid_volume_contribution!(
     # Element-local data
     dQe = dQ.elements[ielem]
     Qe = Q.elements[ielem]
-    We = std.cache.state[Threads.nthreads()][1]
+    We = std.cache.state[Threads.threadid()][1]
 
     Ja = geometry.elements[ielem].metric
     frames = geometry.subgrids[ielem].frames
@@ -522,7 +522,7 @@ function _hybrid_volume_contribution!(
     nd = spatialdim(std)
     std1d = nd == 1 ? std : (nd == 2 ? std.face : std.edge)
     ω = std1d.ω
-    F̄e = std1d.cache.subcell[Threads.nthreads()][1]
+    F̄e = std1d.cache.subcell[Threads.threadid()][1]
 
     # Precompute entropy variables
     @inbounds for i in eachindex(We.dofs, Qe.dofs)
