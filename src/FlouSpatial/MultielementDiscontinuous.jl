@@ -150,7 +150,7 @@ function integrate(_f::AbstractVector, disc::MultielementDisc)
     return integrate(f, disc, 1)
 end
 
-function integrate(f::StateVector, disc::MultielementDisc, ivar::Integer=1)
+function integrate(f::GlobalStateVector, disc::MultielementDisc, ivar::Integer=1)
     (; geometry) = disc
     integral = zero(datatype(f))
     @flouthreads for ie in eachelement(disc)
