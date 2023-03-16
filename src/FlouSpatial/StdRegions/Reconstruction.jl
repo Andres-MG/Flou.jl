@@ -27,7 +27,7 @@ function reconstruction end
 """
     basis(reconstruction)
 
-Return the nodal basis used in `reconstruction` or `Nothing`.
+Return the nodal basis used in `reconstruction` or `nothing`.
 """
 function basis end
 

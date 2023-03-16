@@ -364,7 +364,7 @@ function PhysicalElementVector(
 end
 
 function integrate(f::AbstractVector, elem::PhysicalElement)
-    return dot(elem.Jω, f)
+    return elem.Jω' * f
 end
 
 function PhysicalElement(ξ, ω, mesh::CartesianMesh{ND,RT}, ie) where {ND,RT}
@@ -535,7 +535,7 @@ function PhysicalFaceVector(ξf, ω, dh, mesh)
 end
 
 function integrate(f::AbstractVector, face::PhysicalFace)
-    return dot(face.Jω, f)
+    return face.Jω' * f
 end
 
 function PhysicalFace(_, _, mesh::CartesianMesh{1,RT}, iface) where {RT}
