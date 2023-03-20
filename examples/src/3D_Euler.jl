@@ -34,7 +34,6 @@ end
 Δt = 1e-4
 tf = 0.1
 save_steps = range(0, 1000, 11)
-solver = ORK256(williamson_condition=false)
 
 equation = EulerEquation{3}(1.4)
 
@@ -73,6 +72,12 @@ println()
 mb, mvals = get_monitor_callback(Float64, Float64, dg, equation, :entropy)
 sb = get_save_callback("../results/solution"; iter=save_steps)
 cb = make_callback_list(mb, sb)
+
+zslimiter = get_limiter_callback(dg, equation, :zhang_shu, 1e-10)
+solver = ORK256(
+    stage_limiter! = zslimiter,
+    williamson_condition = false,
+)
 
 @info "Starting simulation..."
 
