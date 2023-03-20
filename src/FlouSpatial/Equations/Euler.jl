@@ -559,7 +559,7 @@ end
 
 function kinetic_energy_monitor(::MultielementDisc, ::EulerEquation)
     return (_Q, disc, equation) -> begin
-        Q = GlobalStateVector(_Q, disc.dofhandler)
+        Q = GlobalStateVector{nvariables(equation)}(_Q, disc.dofhandler)
         s = zero(datatype(Q))
         @flouthreads for ie in eachelement(disc)
             Qe = Q.elements[ie]
@@ -575,7 +575,7 @@ end
 
 function entropy_monitor(::MultielementDisc, ::EulerEquation)
     return (_Q, disc, equation) -> begin
-        Q = GlobalStateVector(_Q, disc.dofhandler)
+        Q = GlobalStateVector{nvariables(equation)}(_Q, disc.dofhandler)
         s = zero(datatype(Q))
         @flouthreads for ie in eachelement(disc)
             Qe = Q.elements[ie]
