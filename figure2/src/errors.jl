@@ -41,7 +41,8 @@ numflux = LxFNumericalFlux(
 )
 
 # Test space
-nelem_list = [2^i for i in 2:6]
+k_list = 1:5
+nelem_list = [2 * 2^k for k in k_list]   # The mesh has length = 2 and Δx = 1 / 2^k
 order_list = 1:5
 ∇_list = (
     SplitDivOperator(
@@ -117,11 +118,10 @@ error = pmap((t) -> run(t..., ∇_list, tf, solver, equation, cfl_callback), tas
 
 using Printf
 
-Δx = 2 ./ nelem_list
 scaling = 1e-13
 scaling_str = "\$10^{13}\$"
 
-tophead = map(x -> "\$h\$ = " * @sprintf("%7.5f", x), Δx)
+tophead = map(x -> "\$k\$ = " * @sprintf("%d", x), k_list)
 lefthead = map(x -> "\$N\$ = " * @sprintf("%d", x), order_list)
 error_str = map(x -> @sprintf("%7.5f", x), error / scaling)
 
@@ -131,7 +131,7 @@ open("errors.tex", "w") do f
 
     println(f, "\\begin{document}\n")
 
-    println(f, "\\begin{tabular}{@{} l *{$(length(Δx))}{c} @{}}")
+    println(f, "\\begin{tabular}{@{} l *{$(length(k_list))}{c} @{}}")
 
     println(f, "    \\toprule")
     println(f, "    & ", join(tophead, " & "), " \\\\")
@@ -140,7 +140,7 @@ open("errors.tex", "w") do f
         println(f, "    ", hr, " & ", join(error_str[:, p], " & "), " \\\\")
     end
     println(f, "    \\midrule")
-    println(f, "    \\multicolumn{$(1 + length(Δx))}{l}{",
+    println(f, "    \\multicolumn{$(1 + length(k_list))}{l}{",
         "\\footnotesize \$^*\$values are scaled by $scaling_str} \\\\")
     println(f, "    \\bottomrule")
     println(f, "\\end{tabular}\n")
