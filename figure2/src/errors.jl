@@ -109,7 +109,7 @@ end
 tasks = [(nelem, order) for nelem in nelem_list, order in order_list]
 error = pmap((t) -> run(t..., ∇_list, tf, solver, equation, cfl_callback), tasks)
 
-# Error[i, j] is the L₂ difference between the two formulations for a case with:
+# error[i, j] is the L₂ difference between the two formulations for a case with:
 #   - `nelem_list[i]` elements in the mesh
 #   - order `order_list[j]` polynomial approximation
 
@@ -118,12 +118,28 @@ error = pmap((t) -> run(t..., ∇_list, tf, solver, equation, cfl_callback), tas
 
 using Printf
 
-scaling = 1e-13
-scaling_str = "\$10^{13}\$"
+function split(x)
+    base = x
+    exp = 0
+    while base <= one(x)
+        base *= 10
+        exp -= 1
+    end
+    return base / 10, exp + 1
+end
 
-tophead = map(x -> "\$k\$ = " * @sprintf("%d", x), k_list)
-lefthead = map(x -> "\$N\$ = " * @sprintf("%d", x), order_list)
-error_str = map(x -> @sprintf("%7.5f", x), error / scaling)
+function sprintnum(x)
+    base, exp = split(x)
+    return if exp == 0
+        @sprintf("\$%7.5f\$", x)
+    else
+        @sprintf("\$%7.5f \\cdot 10^{%i}\$", base, exp)
+    end
+end
+
+tophead = map(x -> @sprintf("\$h = 1/%d\$", 2^x), k_list)
+lefthead = map(x -> @sprintf("\$N = %d\$", x), order_list)
+error_str = map(x -> sprintnum(x), error)
 
 open("errors.tex", "w") do f
     println(f, "\\documentclass{standalone}")
@@ -139,9 +155,6 @@ open("errors.tex", "w") do f
     for (p, hr) in enumerate(lefthead)
         println(f, "    ", hr, " & ", join(error_str[:, p], " & "), " \\\\")
     end
-    println(f, "    \\midrule")
-    println(f, "    \\multicolumn{$(1 + length(k_list))}{l}{",
-        "\\footnotesize \$^*\$values are scaled by $scaling_str} \\\\")
     println(f, "    \\bottomrule")
     println(f, "\\end{tabular}\n")
 
