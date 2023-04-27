@@ -25,7 +25,7 @@ using Polynomials: Polynomials, Polynomial
 using SpecialPolynomials: SpecialPolynomials, Legendre
 using FastGaussQuadrature: FastGaussQuadrature, gausslegendre, gausschebyshev, gausslobatto
 using Polyester: Polyester, @batch
-using HDF5: HDF5, File, write, create_group, attributes
+using HDF5: HDF5
 
 export LagrangeBasis, RBFpolyBasis
 export hasboundaries, nnodes, basisname, nodesname
