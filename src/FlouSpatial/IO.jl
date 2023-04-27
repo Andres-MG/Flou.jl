@@ -13,14 +13,25 @@
 # You should have received a copy of the GNU General Public License along with Flou.jl. If
 # not, see <https://www.gnu.org/licenses/>.
 
-function FlouBiz.open_for_write!(file::File, disc::MultielementDisc)
+function FlouBiz.open_for_write!(file::HDF5.File, disc::MultielementDisc)
     # Unpack
     (; mesh) = disc
 
     #VTKHDF group
-    root = create_group(file, "/VTKHDF")
-    attributes(root)["Version"] = [1, 0]
+    root = HDF5.create_group(file, "/VTKHDF")
 
+    # Version
+    HDF5.write_attribute(root, "Version", [1, 0])
+
+    # File type (TODO: using ASCII strings must be easier...)
+    filetype = "UnstructuredGrid"
+    space = HDF5.dataspace(filetype)
+    type = HDF5.datatype(filetype)
+    HDF5.h5t_set_cset(type.id, HDF5.H5T_CSET_ASCII)
+    att = HDF5.create_attribute(root, "Type", type, space)
+    HDF5.h5a_write(att.id, type.id, pointer(filetype))
+
+    # Mesh data
     std = disc.std
     points = datatype(disc)[]
     connectivities = Int[]
@@ -50,17 +61,17 @@ function FlouBiz.open_for_write!(file::File, disc::MultielementDisc)
     end
 
     points = reshape(points, (3, :))
-    write(root, "NumberOfPoints", [size(points, 2)])
-    write(root, "Points", points)
+    root["NumberOfPoints"] = [size(points, 2)]
+    root["Points"] = points
 
-    write(root, "NumberOfConnectivityIds", [length(connectivities)])
-    write(root, "Connectivity", connectivities)
+    root["NumberOfConnectivityIds"] = [length(connectivities)]
+    root["Connectivity"] = connectivities
 
-    write(root, "NumberOfCells", [length(types)])
-    write(root, "Types", types)
-    write(root, "Offsets", offsets)
+    root["NumberOfCells"] = [length(types)]
+    root["Types"] = types
+    root["Offsets"] = offsets
 
-    write(root, "CellData/Region", regions)
+    root["CellData/Region"] = regions
     return nothing
 end
 
