@@ -86,42 +86,20 @@ FlouCommon.eachvariable(s::GlobalStateVector) = Base.OneTo(nvariables(s))
 eachdof(s::GlobalStateVector) = Base.OneTo(ndofs(s))
 eachdof(s::GlobalStateVector, elem) = Base.OneTo(ndofs(s, elem))
 
-struct GSVElement{NV,RT}
-    s::GlobalStateVector{NV,RT}
-    elem::Int
-end
-FlouCommon.datatype(e::GSVElement) = datatype(e.s)
-Base.propertynames(::GSVElement) = (:dofs, :dofsmut, :vars, fieldnames(GSVElement)...)
-function Base.getproperty(e::GSVElement{NV}, s::Symbol) where {NV}
-    @inbounds return if s == :dofs
-        sv = getfield(e, :s)
-        elem = getfield(e, :elem)
-        i1 = dofid(sv.dh, elem, 1)
-        i2 = dofid(sv.dh, elem, ndofs(sv.dh, elem))
-        StateVector{NV}(view(sv.data, i1:i2, :)).dofs
-    elseif s == :dofsmut
-        sv = getfield(e, :s)
-        elem = getfield(e, :elem)
-        i1 = dofid(sv.dh, elem, 1)
-        i2 = dofid(sv.dh, elem, ndofs(sv.dh, elem))
-        StateVector{NV}(view(sv.data, i1:i2, :)).dofsmut
-    elseif s == :vars
-        sv = getfield(e, :s)
-        elem = getfield(e, :elem)
-        i1 = dofid(sv.dh, elem, 1)
-        i2 = dofid(sv.dh, elem, ndofs(sv.dh, elem))
-        StateVector{NV}(view(sv.data, i1:i2, :)).vars
-    else
-        getfield(e, s)
-    end
-end
+const GSVElemView{RT} =
+    SubArray{RT,2,Matrix{RT},Tuple{UnitRange{Int64},Base.Slice{Base.OneTo{Int64}}},false}
 
-struct GSVElements{NV,RT} <: AbstractVector{GSVElement{NV,RT}}
+struct GSVElements{NV,RT} <: AbstractVector{StateVector{NV,GSVElemView{RT}}}
     s::GlobalStateVector{NV,RT}
 end
-@inline function Base.getindex(e::GSVElements, i::Integer)
+@inline function Base.getindex(e::GSVElements{NV}, i::Integer) where {NV}
     @boundscheck checkbounds(e, i)
-    return GSVElement(e.s, i)
+    @inbounds begin
+        sv = getfield(e, :s)
+        i1 = dofid(sv.dh, i, 1)
+        i2 = dofid(sv.dh, i, ndofs(sv.dh, i))
+        return StateVector{NV}(view(sv.data, i1:i2, :))
+    end
 end
 Base.IndexStyle(::Type{<:GSVElements}) = IndexLinear()
 Base.size(e::GSVElements) = (nelements(e.s),)
@@ -220,42 +198,23 @@ eachdof(b::GlobalBlockVector, elem) = Base.OneTo(ndofs(b, elem))
 FlouCommon.spatialdim(b::GlobalBlockVector) = spatialdim(b.parent)
 FlouCommon.eachdim(b::GlobalBlockVector) = Base.OneTo(spatialdim(b))
 
-struct GBVElement{NV,RT}
-    b::GlobalBlockVector{NV,RT}
-    elem::Int
-end
-FlouCommon.datatype(e::GBVElement{NV,RT}) where {NV,RT} = datatype(e.b)
-Base.propertynames(::GBVElement) = (:dofs, :dofsmut, :vars, fieldnames(GBVElement)...)
-function Base.getproperty(e::GBVElement{NV}, s::Symbol) where {NV}
-    @inbounds return if s == :dofs
-        bv = getfield(e, :b)
-        elem = getfield(e, :elem)
-        i1 = dofid(bv.dh, elem, 1)
-        i2 = dofid(bv.dh, elem, ndofs(bv.dh, elem))
-        BlockVector{NV}(view(bv.data, i1:i2, :, :)).dofs
-    elseif s == :dofsmut
-        bv = getfield(e, :b)
-        elem = getfield(e, :elem)
-        i1 = dofid(bv.dh, elem, 1)
-        i2 = dofid(bv.dh, elem, ndofs(bv.dh, elem))
-        BlockVector{NV}(view(bv.data, i1:i2, :, :)).dofsmut
-    elseif s == :vars
-        bv = getfield(e, :b)
-        elem = getfield(e, :elem)
-        i1 = dofid(bv.dh, elem, 1)
-        i2 = dofid(bv.dh, elem, ndofs(bv.dh, elem))
-        BlockVector{NV}(view(bv.data, i1:i2, :, :)).vars
-    else
-        getfield(e, s)
-    end
-end
+const GBVElemView{RT} =
+    SubArray{RT,3,Array{RT,3},Tuple{
+        UnitRange{Int64},Base.Slice{Base.OneTo{Int64}},Base.Slice{Base.OneTo{Int64}}
+    },false}
 
-struct GBVElements{NV,RT} <: AbstractVector{GBVElement{NV,RT}}
+struct GBVElements{NV,RT} <: AbstractVector{GBVElemView{RT}}
     b::GlobalBlockVector{NV,RT}
 end
-@inline function Base.getindex(e::GBVElements, i::Integer)
+@inline function Base.getindex(e::GBVElements{NV}, i::Integer) where {NV}
     @boundscheck checkbounds(e, i)
-    return GBVElement(e.b, i)
+    @inbounds begin
+        bv = getfield(e, :b)
+        elem = getfield(e, :elem)
+        i1 = dofid(bv.dh, elem, 1)
+        i2 = dofid(bv.dh, elem, ndofs(bv.dh, elem))
+        return BlockVector{NV}(view(bv.data, i1:i2, :, :))
+    end
 end
 Base.IndexStyle(::Type{<:GBVElements}) = IndexLinear()
 Base.size(e::GBVElements) = (nelements(e.b),)
@@ -340,70 +299,43 @@ FlouCommon.eachvariable(s::FaceStateVector) = Base.OneTo(nvariables(s))
 eachfacedof(s::FaceStateVector) = Base.OneTo(nfacedofs(s))
 eachfacedof(s::FaceStateVector, face::Int) = Base.OneTo(nfacedofs(s, face))
 
-struct FSVFaceSide{NV,RT}
-    s::FaceStateVector{NV,RT}
-    face::Int
-    side::Int
-end
-FlouCommon.datatype(f::FSVFaceSide) = datatype(f.s)
-Base.propertynames(::FSVFaceSide) = (:dofs, :dofsmut, :vars, fieldnames(FSVFaceSide)...)
-function Base.getproperty(f::FSVFaceSide{NV}, s::Symbol) where {NV}
-    @inbounds return if s == :dofs
-        sv = getfield(f, :s)
-        face = getfield(f, :face)
-        side = getfield(f, :side)
-        i1 = facedofid(sv.dh, face, 1)
-        i2 = facedofid(sv.dh, face, nfacedofs(sv.dh, face))
-        StateVector{NV}(view(sv.data[side], i1:i2, :)).dofs
-    elseif s == :dofsmut
-        sv = getfield(f, :s)
-        face = getfield(f, :face)
-        side = getfield(f, :side)
-        i1 = facedofid(sv.dh, face, 1)
-        i2 = facedofid(sv.dh, face, nfacedofs(sv.dh, face))
-        StateVector{NV}(view(sv.data[side], i1:i2, :)).dofsmut
-    elseif s == :vars
-        sv = getfield(f, :s)
-        face = getfield(f, :face)
-        side = getfield(f, :side)
-        i1 = facedofid(sv.dh, face, 1)
-        i2 = facedofid(sv.dh, face, nfacedofs(sv.dh, face))
-        StateVector{NV}(view(sv.data[side], i1:i2, :)).vars
-    else
-        getfield(f, s)
-    end
-end
-
-struct FSVFace{NV,RT}
+struct GSVFace{NV,RT}
     s::FaceStateVector{NV,RT}
     face::Int
 end
-FlouCommon.datatype(f::FSVFace) = datatype(f.s)
-Base.propertynames(::FSVFace) = (:sides, fieldnames(FSVFace)...)
-function Base.getproperty(f::FSVFace, s::Symbol)
+FlouCommon.datatype(f::GSVFace) = datatype(f.s)
+Base.propertynames(::GSVFace) = (:sides, fieldnames(GSVFace)...)
+function Base.getproperty(f::GSVFace{NV}, s::Symbol) where {NV}
     return if s == :sides
-        sv = getfield(f, :s)
-        face = getfield(f, :face)
-        (FSVFaceSide(sv, face, 1), FSVFaceSide(sv, face, 2))
+        @inbounds begin
+            sv = getfield(f, :s)
+            face = getfield(f, :face)
+            i1 = facedofid(sv.dh, face, 1)
+            i2 = facedofid(sv.dh, face, nfacedofs(sv.dh, face))
+            return (
+                StateVector{NV}(view(sv.data[1], i1:i2, :)),
+                StateVector{NV}(view(sv.data[2], i1:i2, :)),
+            )
+        end
     else
         getfield(f, s)
     end
 end
 
-struct FSVFaces{NV,RT} <: AbstractVector{FSVFace{NV,RT}}
+struct GSVFaces{NV,RT} <: AbstractVector{GSVFace{NV,RT}}
     s::FaceStateVector{NV,RT}
 end
-@inline function Base.getindex(f::FSVFaces{NV}, i::Integer) where {NV}
+@inline function Base.getindex(f::GSVFaces, i::Integer)
     @boundscheck checkbounds(f, i)
-    return FSVFace(f.s, i)
+    return GSVFace(f.s, i)
 end
-Base.IndexStyle(::Type{<:FSVFaces}) = IndexLinear()
-Base.size(f::FSVFaces) = (nfaces(f.s),)
+Base.IndexStyle(::Type{<:GSVFaces}) = IndexLinear()
+Base.size(f::GSVFaces) = (nfaces(f.s),)
 
 Base.propertynames(::FaceStateVector) = (:faces, fieldnames(FaceStateVector)...)
 function Base.getproperty(sv::FaceStateVector, s::Symbol)
     return if s == :faces
-        FSVFaces(sv)
+        GSVFaces(sv)
     else
         getfield(sv, s)
     end
@@ -483,70 +415,43 @@ eachfacedof(b::FaceBlockVector, face::Int) = Base.OneTo(nfacedofs(b, face))
 FlouCommon.spatialdim(b::FaceBlockVector) = spatialdim(b.sides[1])
 FlouCommon.eachdim(b::FaceBlockVector) = Base.OneTo(spatialdim(b))
 
-struct FBVFaceSide{NV,RT}
-    b::FaceBlockVector{NV,RT}
-    face::Int
-    side::Int
-end
-FlouCommon.datatype(f::FBVFaceSide) = datatype(f.b)
-Base.propertynames(::FBVFaceSide) = (:dofs, :dofsmut, :vars, fieldnames(FBVFaceSide)...)
-function Base.getproperty(f::FBVFaceSide{NV}, s::Symbol) where {NV}
-    @inbounds return if s == :dofs
-        bv = getfield(f, :b)
-        face = getfield(f, :face)
-        side = getfield(f, :side)
-        i1 = facedofid(bv.dh, face, 1)
-        i2 = facedofid(bv.dh, face, nfacedofs(bv.dh, face))
-        BlockVector{NV}(view(bv.data[side], i1:i2, :, :)).dofs
-    elseif s == :dofsmut
-        bv = getfield(f, :b)
-        face = getfield(f, :face)
-        side = getfield(f, :side)
-        i1 = facedofid(bv.dh, face, 1)
-        i2 = facedofid(bv.dh, face, nfacedofs(bv.dh, face))
-        BlockVector{NV}(view(bv.data[side], i1:i2, :, :)).dofsmut
-    elseif s == :vars
-        bv = getfield(f, :b)
-        face = getfield(f, :face)
-        side = getfield(f, :side)
-        i1 = facedofid(bv.dh, face, 1)
-        i2 = facedofid(bv.dh, face, nfacedofs(bv.dh, face))
-        BlockVector{NV}(view(bv.data[side], i1:i2, :, :)).vars
-    else
-        getfield(f, s)
-    end
-end
-
-struct FBVFace{NV,RT}
+struct GBVFace{NV,RT}
     b::FaceBlockVector{NV,RT}
     face::Int
 end
-FlouCommon.datatype(f::FBVFace) = datatype(f.b)
-Base.propertynames(::FBVFace) = (:sides, fieldnames(FBVFace)...)
-function Base.getproperty(f::FBVFace, s::Symbol)
+FlouCommon.datatype(f::GBVFace) = datatype(f.b)
+Base.propertynames(::GBVFace) = (:sides, fieldnames(GBVFace)...)
+function Base.getproperty(f::GBVFace{NV}, s::Symbol) where {NV}
     return if s == :sides
-        bv = getfield(f, :b)
-        face = getfield(f, :face)
-        (FBVFaceSide(bv, face, 1), FBVFaceSide(bv, face, 2))
+        @inbounds begin
+            bv = getfield(f, :b)
+            face = getfield(f, :face)
+            i1 = facedofid(bv.dh, face, 1)
+            i2 = facedofid(bv.dh, face, nfacedofs(bv.dh, face))
+            return (
+                BlockVector{NV}(view(bv.data[1], i1:i2, :, :)),
+                BlockVector{NV}(view(bv.data[2], i1:i2, :, :)),
+            )
+        end
     else
         getfield(f, s)
     end
 end
 
-struct FBVFaces{NV,RT} <: AbstractVector{FBVFace{NV,RT}}
+struct GBVFaces{NV,RT} <: AbstractVector{GBVFace{NV,RT}}
     b::FaceBlockVector{NV,RT}
 end
-@inline function Base.getindex(f::FBVFaces, i::Integer)
+@inline function Base.getindex(f::GBVFaces, i::Integer)
     @boundscheck checkbounds(f, i)
-    return FBVFace(f.b, i)
+    return GBVFace(f.b, i)
 end
-Base.IndexStyle(::Type{<:FBVFaces}) = IndexLinear()
-Base.size(f::FBVFaces) = (nfaces(f.b),)
+Base.IndexStyle(::Type{<:GBVFaces}) = IndexLinear()
+Base.size(f::GBVFaces) = (nfaces(f.b),)
 
 Base.propertynames(::FaceBlockVector) = (:faces, fieldnames(FaceBlockVector)...)
 function Base.getproperty(bv::FaceBlockVector, s::Symbol)
     return if s == :faces
-        FBVFaces(bv)
+        GBVFaces(bv)
     else
         getfield(bv, s)
     end
