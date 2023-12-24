@@ -16,15 +16,22 @@
 #==========================================================================================#
 #                                       DOF handler                                        #
 
-struct DofHandler
-    elem_offsets::Vector{Int}
-    face_offsets::Vector{Int}
+struct DofHandler{E,O}
+    elem_offsets::O
+    face_offsets::O
+    nelements::Int
+    nfaces::Int
 end
 
 function DofHandler(mesh::AbstractMesh, std)
-    elem_dofs = fill(ndofs(std), nelements(mesh))
-    face_dofs = fill(ndofs(std.face), nfaces(mesh))
-    return DofHandler_withdofs(elem_dofs, face_dofs)
+    elem_dofs = ndofs(std)
+    face_dofs = ndofs(std.face)
+    return DofHandler{true,typeof(elem_dofs)}(
+        elem_dofs,
+        face_dofs,
+        nelements(mesh),
+        nfaces(mesh),
+    )
 end
 
 function DofHandler_withdofs(
@@ -33,23 +40,50 @@ function DofHandler_withdofs(
 )
     elem_offsets = vcat(0, cumsum(elem_dofs))
     face_offsets = vcat(0, cumsum(face_dofs))
-    return DofHandler(elem_offsets, face_offsets)
+    return DofHandler{false,typeof(elem_offsets)}(
+        elem_offsets,
+        face_offsets,
+        length(elem_dofs),
+        length(face_dofs),
+    )
 end
 
-FlouCommon.nelements(dh::DofHandler) = length(dh.elem_offsets) - 1
-FlouCommon.nfaces(dh::DofHandler) = length(dh.face_offsets) - 1
-ndofs(dh::DofHandler) = last(dh.elem_offsets)
-ndofs(dh::DofHandler, elem) = dh.elem_offsets[elem + 1] - dh.elem_offsets[elem]
-nfacedofs(dh::DofHandler) = last(dh.face_offsets)
-nfacedofs(dh::DofHandler, face) = dh.face_offsets[face + 1] - dh.face_offsets[face]
+FlouCommon.nelements(dh::DofHandler) = dh.nelements
+FlouCommon.nfaces(dh::DofHandler) = dh.nfaces
+ndofs(dh::DofHandler{true}) = dh.nelements * dh.elem_offsets
+ndofs(dh::DofHandler{false}) = last(dh.elem_offsets)
+ndofs(dh::DofHandler{true}, _) = dh.elem_offsets
+ndofs(dh::DofHandler{false}, elem) = dh.elem_offsets[elem + 1] - dh.elem_offsets[elem]
+nfacedofs(dh::DofHandler{true}) = dh.nfaces * dh.face_offsets
+nfacedofs(dh::DofHandler{false}) = last(dh.face_offsets)
+nfacedofs(dh::DofHandler{true}, _) = dh.face_offsets
+nfacedofs(dh::DofHandler{false}, face) = dh.face_offsets[face + 1] - dh.face_offsets[face]
 
-@inline function dofid(dh::DofHandler, elem, i)
+@inline function elementoffset(dh::DofHandler{true}, elem)
+    @boundscheck 1 <= elem <= nelements(dh) + 1 ||
+        throw(ArgumentError(
+            "Tried to access element $elem, but only $(nelements(dh) + 1) have offsets."
+        ))
+    return dh.elem_offsets * (elem - 1)
+end
+@inline function elementoffset(dh::DofHandler{false}, elem)
     @boundscheck checkbounds(dh.elem_offsets, elem)
-    return @inbounds dh.elem_offsets[elem] + i
+    return @inbounds dh.elem_offsets[elem]
 end
 
-@inline function dofid(dh::DofHandler, i)
-    @boundscheck 1 >= i >= ndofs(dh) ||
+@inline function dofloc(dh::DofHandler{true}, i)
+    @boundscheck 1 <= i <= ndofs(dh) ||
+        throw(ArgumentError("Tried to access dof $i, but only $(ndofs(dh)) dofs exist."))
+    elem = i ÷ dh.elem_offsets
+    iloc = i - dh.elem_offsets * elem
+    if iloc == 0
+        return elem => dh.elem_offsets
+    else
+        return elem + 1 => iloc
+    end
+end
+@inline function dofloc(dh::DofHandler{false}, i)
+    @boundscheck 1 <= i <= ndofs(dh) ||
         throw(ArgumentError("Tried to access dof $i, but only $(ndofs(dh)) dofs exist."))
     @inbounds begin
         elem = findfirst(>(i), dh.elem_offsets) - 1
@@ -58,19 +92,39 @@ end
     return elem => iloc
 end
 
-@inline function facedofid(dh::DofHandler, face, i)
+@inline function faceoffset(dh::DofHandler{true}, face)
+    @boundscheck 1 <= face <= nfaces(dh) + 1 ||
+        throw(ArgumentError(
+            "Tried to access face $face, but only $(nfaces(dh) + 1) have offsets."
+        ))
+    return dh.face_offsets * (face - 1)
+end
+@inline function faceoffset(dh::DofHandler{false}, face)
     @boundscheck checkbounds(dh.face_offsets, face)
-    return @inbounds dh.face_offsets[face] + i
+    return @inbounds dh.face_offsets[face]
 end
 
-@inline function facedofid(dh::DofHandler, i)
-    @boundscheck 1 >= i >= nfacedofs(dh) ||
+@inline function facedofloc(dh::DofHandler{true}, i)
+    @boundscheck 1 <= i <= nfacedofs(dh) ||
+        throw(ArgumentError(
+            "Tried to access dof $i, but only $(nfacedofs(dh)) dofs exist."
+        ))
+    face = i ÷ dh.face_offsets
+    iloc = i - dh.face_offsets * face
+    if iloc == 0
+        return face => dh.face_offsets
+    else
+        return face + 1 => iloc
+    end
+end
+@inline function facedofloc(dh::DofHandler{false}, i)
+    @boundscheck 1 <= i <= nfacedofs(dh) ||
         throw(ArgumentError(
             "Tried to access dof $i, but only $(nfacedofs(dh)) dofs exist."
         ))
     @inbounds begin
         face = findfirst(>(i), dh.face_offsets) - 1
-        iloc = i - dh.elem_offsets[face]
+        iloc = i - dh.face_offsets[face]
     end
     return face => iloc
 end
@@ -78,6 +132,6 @@ end
 FlouCommon.eachelement(dh::DofHandler) = Base.OneTo(nelements(dh))
 FlouCommon.eachface(dh::DofHandler) = Base.OneTo(nfaces(dh))
 eachdof(dh::DofHandler) = Base.OneTo(ndofs(dh))
-eachdof(dh::DofHandler, elem) = Base.OneTo(nodfs(dh, elem))
+eachdof(dh::DofHandler, elem) = Base.OneTo(ndofs(dh, elem))
 eachfacedof(dh::DofHandler) = Base.OneTo(nfacedofs(dh))
 eachfacedof(dh::DofHandler, face) = Base.OneTo(nfacedofs(dh, face))

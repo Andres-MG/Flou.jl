@@ -39,7 +39,7 @@ export ndirections, eachdirection
 export equisize, nequispaced, basis
 export is_tensor_product, project2equispaced!
 export hasboundaries, nnodes
-export nfacedofs, eachfacedof, dofid, facedofid
+export nfacedofs, eachfacedof, elementoffset, faceoffset, dofloc, facedofloc
 export integrate, contravariant
 
 export StdAverage, LxF

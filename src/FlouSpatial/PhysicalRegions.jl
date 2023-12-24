@@ -319,8 +319,8 @@ Base.size(ev::PhysicalElementVector) = (length(ev),)
 @inline function Base.getindex(ev::PhysicalElementVector, i::Integer)
     @boundscheck 1 <= i <= nelements(ev.dh) || throw(BoundsError(ev, i))
     @inbounds begin
-        i1 = ev.dh.elem_offsets[i] + 1
-        i2 = ev.dh.elem_offsets[i + 1]
+        i1 = elementoffset(ev.dh, i) + 1
+        i2 = elementoffset(ev.dh, i + 1)
         return PhysicalElement(
             view(ev.coords, i1:i2),
             view(ev.jac, i1:i2),
@@ -497,8 +497,8 @@ Base.size(fv::PhysicalFaceVector) = (length(fv),)
 @inline function Base.getindex(fv::PhysicalFaceVector, i::Integer)
     @boundscheck 1 <= i <= nfaces(fv.dh) || throw(BoundsError(fv, i))
     @inline begin
-        i1 = fv.dh.face_offsets[i] + 1
-        i2 = fv.dh.face_offsets[i+1]
+        i1 = faceoffset(fv.dh, i) + 1
+        i2 = faceoffset(fv.dh, i + 1)
         return PhysicalFace(
             view(fv.coords, i1:i2),
             view(fv.frames, i1:i2),

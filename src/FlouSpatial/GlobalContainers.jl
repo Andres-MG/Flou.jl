@@ -96,8 +96,8 @@ end
     @boundscheck checkbounds(e, i)
     @inbounds begin
         sv = getfield(e, :s)
-        i1 = dofid(sv.dh, i, 1)
-        i2 = dofid(sv.dh, i, ndofs(sv.dh, i))
+        i1 = elementoffset(sv.dh, i) + 1
+        i2 = elementoffset(sv.dh, i + 1)
         return StateVector{NV}(view(sv.data, i1:i2, :))
     end
 end
@@ -210,9 +210,8 @@ end
     @boundscheck checkbounds(e, i)
     @inbounds begin
         bv = getfield(e, :b)
-        elem = getfield(e, :elem)
-        i1 = dofid(bv.dh, elem, 1)
-        i2 = dofid(bv.dh, elem, ndofs(bv.dh, elem))
+        i1 = elementoffset(bv.dh, i) + 1
+        i2 = elementoffset(bv.dh, i + 1)
         return BlockVector{NV}(view(bv.data, i1:i2, :, :))
     end
 end
@@ -310,8 +309,8 @@ function Base.getproperty(f::GSVFace{NV}, s::Symbol) where {NV}
         @inbounds begin
             sv = getfield(f, :s)
             face = getfield(f, :face)
-            i1 = facedofid(sv.dh, face, 1)
-            i2 = facedofid(sv.dh, face, nfacedofs(sv.dh, face))
+            i1 = faceoffset(sv.dh, face) + 1
+            i2 = faceoffset(sv.dh, face + 1)
             return (
                 StateVector{NV}(view(sv.data[1], i1:i2, :)),
                 StateVector{NV}(view(sv.data[2], i1:i2, :)),
@@ -426,8 +425,8 @@ function Base.getproperty(f::GBVFace{NV}, s::Symbol) where {NV}
         @inbounds begin
             bv = getfield(f, :b)
             face = getfield(f, :face)
-            i1 = facedofid(bv.dh, face, 1)
-            i2 = facedofid(bv.dh, face, nfacedofs(bv.dh, face))
+            i1 = faceoffset(bv.dh, face) + 1
+            i2 = faceoffset(bv.dh, face + 1)
             return (
                 BlockVector{NV}(view(bv.data[1], i1:i2, :, :)),
                 BlockVector{NV}(view(bv.data[2], i1:i2, :, :)),
